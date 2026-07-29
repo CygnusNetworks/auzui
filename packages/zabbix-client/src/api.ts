@@ -46,6 +46,8 @@ export class ZabbixApi {
       selectParentTemplates?: "extend" | string[];
       selectHostGroups?: "extend" | string[];
       selectInventory?: "extend" | string[];
+      /** Restricts to hosts with status=0 (monitored, not "not monitored"). */
+      monitored_hosts?: boolean;
     } = {},
   ): Promise<ZabbixHost[]> {
     return this.client.call("host.get", params);

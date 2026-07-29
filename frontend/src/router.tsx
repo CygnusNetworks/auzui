@@ -11,6 +11,9 @@ import { ComingSoon } from "./routes/ComingSoon";
 import { ProblemsPage } from "./features/problems/ProblemsPage";
 import { validateProblemsSearch } from "./features/problems/search-params";
 import { MaintenancePage } from "./features/maintenance/MaintenancePage";
+import { HostsPage } from "./features/hosts/HostsPage";
+import { LatestDataPage } from "./features/latest-data/LatestDataPage";
+import { validateLatestDataSearch } from "./features/latest-data/search-params";
 import { useAuthStore } from "./lib/auth/store";
 
 const rootRoute = createRootRoute({
@@ -54,13 +57,14 @@ const problemsRoute = createRoute({
 const hostsRoute = createRoute({
   getParentRoute: () => appLayoutRoute,
   path: "/hosts",
-  component: () => <ComingSoon title="Hosts" />,
+  component: HostsPage,
 });
 
 const latestDataRoute = createRoute({
   getParentRoute: () => appLayoutRoute,
   path: "/latest-data",
-  component: () => <ComingSoon title="Latest Data" />,
+  component: LatestDataPage,
+  validateSearch: validateLatestDataSearch,
 });
 
 const maintenanceRoute = createRoute({
