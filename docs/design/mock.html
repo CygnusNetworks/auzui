@@ -1,0 +1,1221 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>auzui — Design-Entwürfe (4 Ansichten)</title>
+<style>
+/* ============ Tokens ============ */
+:root {
+  --bg: #0E1317; --surface: #151C22; --surface2: #1B242C; --surface3: #212C35;
+  --line: #26313B; --line-soft: #1D262E;
+  --ink: #DEE7ED; --ink2: #8FA1AD; --muted: #5C6E7A;
+  --accent: #3EB8C0; --accent-ink: #0E1317; --accent-soft: rgba(62,184,192,.12);
+  --sev-high: #E5484D; --sev-avg: #F76B15; --sev-warn: #F5C242; --sev-info: #6AA6F8; --sev-ok: #52A66C;
+  --sev-warn-ink: #2B2205;
+  --chart-1: #17A0AC; --chart-2: #8E7AEA; --chart-3: #C8802F; --chart-4: #4C87C8;
+  --ghost: rgba(143,161,173,.45);
+  --shadow: 0 8px 28px rgba(0,0,0,.42);
+  --radius: 8px;
+  color-scheme: dark;
+}
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg: #F2F5F6; --surface: #FFFFFF; --surface2: #F7FAFB; --surface3: #EDF1F3;
+    --line: #D8E0E4; --line-soft: #E4EAED;
+    --ink: #1B262E; --ink2: #52646F; --muted: #7E909B;
+    --accent: #12808C; --accent-ink: #FFFFFF; --accent-soft: rgba(18,128,140,.10);
+    --sev-high: #CE2C31; --sev-avg: #D9660B; --sev-warn: #B48A0A; --sev-info: #2E6FD0; --sev-ok: #35784B;
+    --chart-1: #0795A6; --chart-2: #7050E0; --chart-3: #B96A0A; --chart-4: #3D7DB8;
+    --ghost: rgba(82,100,111,.45);
+    --shadow: 0 6px 20px rgba(27,38,46,.10);
+    color-scheme: light;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0E1317; --surface: #151C22; --surface2: #1B242C; --surface3: #212C35;
+  --line: #26313B; --line-soft: #1D262E;
+  --ink: #DEE7ED; --ink2: #8FA1AD; --muted: #5C6E7A;
+  --accent: #3EB8C0; --accent-ink: #0E1317; --accent-soft: rgba(62,184,192,.12);
+  --sev-high: #E5484D; --sev-avg: #F76B15; --sev-warn: #F5C242; --sev-info: #6AA6F8; --sev-ok: #52A66C;
+  --chart-1: #17A0AC; --chart-2: #8E7AEA; --chart-3: #C8802F; --chart-4: #4C87C8;
+  --ghost: rgba(143,161,173,.45);
+  --shadow: 0 8px 28px rgba(0,0,0,.42);
+  color-scheme: dark;
+}
+:root[data-theme="light"] {
+  --bg: #F2F5F6; --surface: #FFFFFF; --surface2: #F7FAFB; --surface3: #EDF1F3;
+  --line: #D8E0E4; --line-soft: #E4EAED;
+  --ink: #1B262E; --ink2: #52646F; --muted: #7E909B;
+  --accent: #12808C; --accent-ink: #FFFFFF; --accent-soft: rgba(18,128,140,.10);
+  --sev-high: #CE2C31; --sev-avg: #D9660B; --sev-warn: #B48A0A; --sev-info: #2E6FD0; --sev-ok: #35784B;
+  --chart-1: #0795A6; --chart-2: #7050E0; --chart-3: #B96A0A; --chart-4: #3D7DB8;
+  --ghost: rgba(82,100,111,.45);
+  --shadow: 0 6px 20px rgba(27,38,46,.10);
+  color-scheme: light;
+}
+
+/* ============ Base ============ */
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  background: var(--bg); color: var(--ink);
+  font: 14px/1.45 -apple-system, "Segoe UI", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+.mono { font-family: ui-monospace, "SF Mono", "Cascadia Code", Menlo, monospace; font-variant-numeric: tabular-nums; }
+button { font: inherit; color: inherit; background: none; border: none; cursor: pointer; padding: 0; }
+button:focus-visible, a:focus-visible, [tabindex]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+svg text { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-variant-numeric: tabular-nums; }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+
+/* ============ App bar ============ */
+.appbar {
+  display: flex; align-items: center; gap: 14px;
+  padding: 0 16px; height: 52px;
+  background: var(--surface); border-bottom: 1px solid var(--line);
+  position: sticky; top: 0; z-index: 40;
+}
+.logo { font-family: ui-monospace, Menlo, monospace; font-weight: 700; font-size: 16px; letter-spacing: .02em; }
+.logo em { font-style: normal; color: var(--accent); }
+.logo-sub { font-size: 10px; color: var(--muted); letter-spacing: .14em; text-transform: uppercase; margin-left: 2px; }
+.switcher { display: flex; gap: 2px; background: var(--surface3); border-radius: 8px; padding: 3px; margin-left: 8px; }
+.switcher button {
+  padding: 5px 12px; border-radius: 6px; font-size: 12.5px; color: var(--ink2); white-space: nowrap;
+}
+.switcher button[aria-selected="true"] { background: var(--surface); color: var(--ink); box-shadow: 0 1px 3px rgba(0,0,0,.25); font-weight: 600; }
+.switcher button .k { font-family: ui-monospace, Menlo, monospace; font-size: 10px; color: var(--muted); margin-right: 5px; }
+.appbar .spacer { flex: 1; }
+.cmdk-pill {
+  display: flex; align-items: center; gap: 8px;
+  border: 1px solid var(--line); background: var(--surface2);
+  border-radius: 7px; padding: 5px 10px; color: var(--muted); font-size: 12.5px;
+}
+.cmdk-pill kbd { font-family: ui-monospace, Menlo, monospace; font-size: 11px; background: var(--surface3); border: 1px solid var(--line); border-radius: 4px; padding: 0 5px; color: var(--ink2); }
+.iconbtn { width: 32px; height: 32px; display: grid; place-items: center; border-radius: 7px; border: 1px solid var(--line); background: var(--surface2); color: var(--ink2); }
+.iconbtn:hover { color: var(--ink); }
+.envtag { font-family: ui-monospace, Menlo, monospace; font-size: 10.5px; color: var(--muted); border: 1px solid var(--line); border-radius: 5px; padding: 2px 7px; }
+
+/* ============ Layout ============ */
+.view { display: none; }
+.view.active { display: block; }
+.page { max-width: 1400px; margin: 0 auto; padding: 18px 20px 60px; }
+.pagehead { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin: 6px 0 16px; }
+.pagehead h1 { font-size: 19px; font-weight: 700; margin: 0; letter-spacing: -.01em; }
+.pagehead .desc { color: var(--ink2); font-size: 13px; }
+.genbadge {
+  font-family: ui-monospace, Menlo, monospace; font-size: 11px;
+  color: var(--accent); background: var(--accent-soft);
+  border: 1px solid color-mix(in oklab, var(--accent) 35%, transparent);
+  border-radius: 999px; padding: 3px 10px; white-space: nowrap;
+}
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); }
+.cardhead { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--line-soft); }
+.cardhead .eyebrow { flex: none; }
+.eyebrow { font-family: ui-monospace, Menlo, monospace; font-size: 10.5px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+.cardhead .title { font-weight: 600; font-size: 13.5px; }
+.cardhead .right { margin-left: auto; display: flex; gap: 8px; align-items: center; color: var(--muted); font-size: 12px; }
+
+/* severity chips */
+.sev { display: inline-flex; align-items: center; gap: 5px; font-family: ui-monospace, Menlo, monospace; font-size: 11px; border-radius: 5px; padding: 1px 7px; font-weight: 600; }
+.sev i { width: 7px; height: 7px; border-radius: 2px; display: inline-block; }
+.sev.high  { color: var(--sev-high); background: color-mix(in oklab, var(--sev-high) 14%, transparent); } .sev.high i { background: var(--sev-high); }
+.sev.avg   { color: var(--sev-avg); background: color-mix(in oklab, var(--sev-avg) 14%, transparent); } .sev.avg i { background: var(--sev-avg); }
+.sev.warn  { color: var(--sev-warn); background: color-mix(in oklab, var(--sev-warn) 16%, transparent); } .sev.warn i { background: var(--sev-warn); }
+.sev.info  { color: var(--sev-info); background: color-mix(in oklab, var(--sev-info) 14%, transparent); } .sev.info i { background: var(--sev-info); }
+.sev.ok    { color: var(--sev-ok); background: color-mix(in oklab, var(--sev-ok) 14%, transparent); } .sev.ok i { background: var(--sev-ok); }
+
+/* ============ Explorer ============ */
+.explorer-grid { display: grid; grid-template-columns: 1fr 300px; gap: 14px; align-items: start; }
+.crumbs { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--ink2); margin-bottom: 10px; flex-wrap: wrap; }
+.crumbs button { color: var(--accent); }
+.crumbs .sep { color: var(--muted); }
+.crumbs .cur { color: var(--ink); font-weight: 600; }
+.toggle2 { display: inline-flex; background: var(--surface3); border-radius: 6px; padding: 2px; }
+.toggle2 button { font-size: 11.5px; padding: 3px 10px; border-radius: 5px; color: var(--ink2); }
+.toggle2 button.on { background: var(--surface); color: var(--ink); font-weight: 600; }
+.groupgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 10px; padding: 12px; }
+.groupcard { text-align: left; background: var(--surface2); border: 1px solid var(--line); border-radius: 8px; padding: 12px; display: flex; flex-direction: column; gap: 8px; transition: border-color .12s; }
+.groupcard:hover { border-color: var(--accent); }
+.groupcard .gname { font-weight: 650; font-size: 13.5px; }
+.groupcard .gmeta { font-family: ui-monospace, Menlo, monospace; font-size: 11px; color: var(--muted); }
+.sevbar { display: flex; height: 6px; border-radius: 3px; overflow: hidden; background: var(--surface3); }
+.sevbar i { display: block; height: 100%; }
+.sevbar i + i { margin-left: 2px; }
+.hostgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 8px; padding: 12px; }
+.tile {
+  position: relative; text-align: left; border-radius: 7px; padding: 8px 9px;
+  background: var(--surface2); border: 1px solid var(--line);
+  display: flex; flex-direction: column; gap: 3px; min-height: 64px;
+  transition: transform .1s, border-color .1s;
+}
+.tile:hover { transform: translateY(-1px); border-color: var(--accent); }
+.tile .tname { font-family: ui-monospace, Menlo, monospace; font-size: 11.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tile .trole { font-size: 10px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tile .tval { font-family: ui-monospace, Menlo, monospace; font-size: 10.5px; color: var(--ink2); margin-top: auto; }
+.tile::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 3px; border-radius: 7px 0 0 7px; background: var(--tilecolor, var(--sev-ok)); }
+.tile.util::before { display: none; }
+.tile.util { background: var(--utilbg); border-color: transparent; }
+.compgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; padding: 12px; }
+.compcard { background: var(--surface2); border: 1px solid var(--line); border-radius: 8px; padding: 11px 12px; text-align: left; }
+.compcard:hover { border-color: var(--accent); }
+.compcard .cname { display: flex; align-items: center; gap: 8px; font-weight: 650; font-size: 13px; }
+.compcard .ccount { font-family: ui-monospace, Menlo, monospace; font-size: 10.5px; color: var(--muted); margin-left: auto; font-weight: 400; }
+.compcard .cspark { margin-top: 8px; }
+.compcard .cfoot { font-family: ui-monospace, Menlo, monospace; font-size: 11px; color: var(--ink2); margin-top: 6px; display: flex; justify-content: space-between; }
+.sidepanel { display: flex; flex-direction: column; gap: 14px; }
+.moverrow { display: flex; align-items: center; gap: 10px; padding: 8px 14px; border-bottom: 1px solid var(--line-soft); }
+.moverrow:last-child { border-bottom: none; }
+.moverrow .mi { min-width: 0; flex: 1; }
+.moverrow .mname { font-family: ui-monospace, Menlo, monospace; font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.moverrow .mhost { font-size: 10.5px; color: var(--muted); }
+.moverrow .mdev { font-family: ui-monospace, Menlo, monospace; font-size: 11px; font-weight: 700; white-space: nowrap; }
+.moverrow .mdev.upbad { color: var(--sev-avg); }
+.moverrow .mdev.upok { color: var(--sev-ok); }
+.problemrow { display: flex; gap: 9px; padding: 8px 14px; border-bottom: 1px solid var(--line-soft); align-items: baseline; }
+.problemrow:last-child { border-bottom: none; }
+.problemrow .pt { font-size: 12.5px; flex: 1; min-width: 0; }
+.problemrow .ph { font-family: ui-monospace, Menlo, monospace; font-size: 10.5px; color: var(--muted); }
+.problemrow .page2 { font-family: ui-monospace, Menlo, monospace; font-size: 10.5px; color: var(--muted); white-space: nowrap; }
+
+/* ============ Topology ============ */
+.topo-wrap { display: grid; grid-template-columns: 1fr 280px; gap: 14px; align-items: start; }
+.topo-canvas { position: relative; overflow: hidden; }
+.topo-canvas svg { display: block; width: 100%; height: auto; }
+.layerbox { padding: 10px 14px; display: flex; flex-direction: column; gap: 8px; }
+.layerrow { display: flex; align-items: center; gap: 9px; font-size: 12.5px; color: var(--ink2); cursor: pointer; user-select: none; }
+.layerrow input { accent-color: var(--accent); }
+.layerrow .lsample { width: 26px; height: 0; border-top: 2px solid var(--ink2); flex: none; }
+.layerrow .lsample.dashed { border-top-style: dashed; }
+.layerrow .lsample.dotted { border-top-style: dotted; }
+.layerrow .lconf { margin-left: auto; font-family: ui-monospace, Menlo, monospace; font-size: 10px; color: var(--muted); }
+.topo-legend { padding: 10px 14px; display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: var(--ink2); }
+.nodechip { display: flex; align-items: center; gap: 8px; }
+.nodechip i { width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--sev-ok); background: var(--surface); }
+edge {}
+
+/* ============ Deep-Dive ============ */
+.dd-head { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 4px; }
+.dd-head h1 { font-family: ui-monospace, Menlo, monospace; font-size: 20px; margin: 0; }
+.dd-meta { display: flex; gap: 14px; flex-wrap: wrap; color: var(--ink2); font-size: 12px; margin-bottom: 14px; }
+.dd-meta b { color: var(--ink); font-weight: 600; }
+.dd-grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 14px; }
+.span12 { grid-column: span 12; } .span8 { grid-column: span 8; } .span6 { grid-column: span 6; } .span4 { grid-column: span 4; }
+@media (max-width: 980px) { .span8, .span6, .span4 { grid-column: span 12; } .explorer-grid, .topo-wrap, .mb-wrap { grid-template-columns: 1fr !important; } }
+.portmatrix { display: grid; grid-template-columns: repeat(24, 1fr); gap: 3px; padding: 12px 14px 6px; }
+.port { aspect-ratio: 1; border-radius: 3px; background: var(--surface3); position: relative; cursor: pointer; }
+.port.up { background: color-mix(in oklab, var(--sev-ok) 55%, var(--surface3)); }
+.port.hot { background: color-mix(in oklab, var(--chart-1) 80%, var(--surface3)); }
+.port.warn { background: var(--sev-warn); }
+.port.down { background: var(--surface3); }
+.port.crit { background: var(--sev-high); }
+.port:hover { outline: 2px solid var(--accent); outline-offset: 1px; }
+.portfoot { display: flex; gap: 14px; padding: 6px 14px 12px; font-size: 11px; color: var(--muted); flex-wrap: wrap; }
+.portfoot .pk { display: inline-flex; align-items: center; gap: 5px; }
+.portfoot .pk i { width: 9px; height: 9px; border-radius: 2px; display: inline-block; }
+.chartbox { padding: 8px 10px 4px; }
+.gauge-row { display: flex; gap: 10px; padding: 12px 14px; flex-wrap: wrap; }
+.gauge { flex: 1; min-width: 110px; text-align: center; }
+.gauge .glabel { font-size: 11px; color: var(--muted); margin-top: 2px; }
+.gauge .gval { font-family: ui-monospace, Menlo, monospace; font-size: 15px; font-weight: 700; margin-top: -34px; }
+.statgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: var(--line-soft); }
+.stat { background: var(--surface); padding: 10px 14px; }
+.stat .sk { font-size: 11px; color: var(--muted); }
+.stat .sv { font-family: ui-monospace, Menlo, monospace; font-size: 14px; font-weight: 650; margin-top: 2px; }
+.stat .sv.warn { color: var(--sev-warn); }
+.stat .sv.ok { color: var(--sev-ok); }
+.loglines { font-family: ui-monospace, Menlo, monospace; font-size: 11.5px; line-height: 1.7; padding: 8px 0; overflow-x: auto; }
+.logline { display: flex; gap: 10px; padding: 1px 14px; white-space: nowrap; }
+.logline:hover { background: var(--surface2); }
+.logline .lt { color: var(--muted); flex: none; }
+.logline .ll { flex: none; width: 46px; font-weight: 700; }
+.logline .ll.err { color: var(--sev-high); } .logline .ll.warning { color: var(--sev-warn); } .logline .ll.notice { color: var(--sev-info); } .logline .ll.info2 { color: var(--muted); }
+.logline .lm { color: var(--ink2); }
+.matched { font-family: ui-monospace, Menlo, monospace; font-size: 10.5px; color: var(--muted); }
+.matched b { color: var(--ink2); font-weight: 600; }
+
+/* ============ Metric browser ============ */
+.mb-wrap { display: grid; grid-template-columns: 240px 1fr; gap: 14px; align-items: start; }
+.facet { padding: 10px 0; }
+.facet h3 { font-family: ui-monospace, Menlo, monospace; font-size: 10.5px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); margin: 8px 14px 6px; font-weight: 600; }
+.facetrow { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; padding: 4px 14px; font-size: 12.5px; color: var(--ink2); }
+.facetrow:hover { background: var(--surface2); color: var(--ink); }
+.facetrow.on { color: var(--accent); font-weight: 600; background: var(--accent-soft); }
+.facetrow .fc { margin-left: auto; font-family: ui-monospace, Menlo, monospace; font-size: 10.5px; color: var(--muted); }
+.mbgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; }
+.metcard { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px 8px; text-align: left; }
+.metcard:hover { border-color: var(--accent); }
+.metcard .mmname { font-family: ui-monospace, Menlo, monospace; font-size: 11.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.metcard .mmhost { font-size: 10.5px; color: var(--muted); margin-bottom: 6px; }
+.metcard .mmrow { display: flex; align-items: baseline; justify-content: space-between; margin-top: 5px; }
+.metcard .mmval { font-family: ui-monospace, Menlo, monospace; font-size: 14px; font-weight: 700; }
+.metcard .mmdev { font-family: ui-monospace, Menlo, monospace; font-size: 10.5px; font-weight: 700; }
+.mb-toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
+.mb-toolbar .searchbox { flex: 1; min-width: 200px; display: flex; align-items: center; gap: 8px; background: var(--surface); border: 1px solid var(--line); border-radius: 7px; padding: 6px 12px; color: var(--muted); font-size: 12.5px; }
+.selectpill { font-size: 12px; color: var(--ink2); background: var(--surface); border: 1px solid var(--line); border-radius: 7px; padding: 6px 12px; }
+.selectpill b { color: var(--ink); font-weight: 600; }
+
+/* ============ Command palette ============ */
+.cmdk-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 90; display: none; }
+.cmdk-backdrop.open { display: block; }
+.cmdk {
+  position: fixed; z-index: 100; top: 12vh; left: 50%; transform: translateX(-50%);
+  width: min(620px, calc(100vw - 32px));
+  background: var(--surface); border: 1px solid var(--line); border-radius: 12px;
+  box-shadow: var(--shadow); display: none; overflow: hidden;
+}
+.cmdk.open { display: block; }
+.cmdk input { width: 100%; background: none; border: none; outline: none; color: var(--ink); font: 15px/1.4 inherit; padding: 14px 16px; border-bottom: 1px solid var(--line-soft); }
+.cmdk .grouplabel { font-family: ui-monospace, Menlo, monospace; font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); padding: 8px 16px 2px; }
+.cmdk .item { display: flex; align-items: center; gap: 10px; padding: 7px 16px; font-size: 13px; cursor: pointer; }
+.cmdk .item:hover, .cmdk .item.sel { background: var(--accent-soft); }
+.cmdk .item .kbd { margin-left: auto; font-family: ui-monospace, Menlo, monospace; font-size: 10.5px; color: var(--muted); }
+.cmdk .item .tag2 { font-family: ui-monospace, Menlo, monospace; font-size: 10px; color: var(--muted); }
+.cmdk-foot { display: flex; gap: 14px; padding: 8px 16px; border-top: 1px solid var(--line-soft); font-size: 11px; color: var(--muted); }
+
+/* ============ Problems mainpage ============ */
+.variant-switch { display: flex; gap: 6px; margin-left: auto; }
+.variant-switch button { font-size: 12px; padding: 5px 12px; border: 1px solid var(--line); border-radius: 7px; color: var(--ink2); background: var(--surface); }
+.variant-switch button.on { border-color: color-mix(in oklab, var(--accent) 45%, transparent); color: var(--accent); background: var(--accent-soft); font-weight: 600; }
+.pv { display: none; } .pv.active { display: block; }
+
+/* A — Triage table */
+.triage-grid { display: grid; grid-template-columns: 1fr 330px; gap: 14px; align-items: start; }
+@media (max-width: 1100px) { .triage-grid, .cockpit-grid { grid-template-columns: 1fr !important; } }
+.filterbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 10px 14px; border-bottom: 1px solid var(--line-soft); }
+.fchip { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; padding: 3px 10px; border-radius: 999px; border: 1px solid var(--line); color: var(--ink2); background: var(--surface2); cursor: pointer; font-family: ui-monospace, Menlo, monospace; }
+.fchip i { width: 8px; height: 8px; border-radius: 2px; background: var(--fc); }
+.fchip.on { border-color: var(--fc); color: var(--ink); font-weight: 600; }
+.fchip.off { opacity: .38; }
+.fsearch { flex: 1; min-width: 140px; display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12.5px; border: 1px solid var(--line); border-radius: 7px; padding: 4px 10px; background: var(--surface2); }
+.bulkhint { font-size: 11.5px; color: var(--muted); }
+.ptable { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.ptable th { text-align: left; font-family: ui-monospace, Menlo, monospace; font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); padding: 8px 10px; border-bottom: 1px solid var(--line); font-weight: 600; }
+.ptable td { padding: 6px 10px; border-bottom: 1px solid var(--line-soft); vertical-align: baseline; }
+.ptable tbody tr { cursor: pointer; }
+.ptable tbody tr:hover { background: var(--surface2); }
+.ptable tbody tr.sel { background: var(--accent-soft); }
+.ptable tbody tr td:first-child { border-left: 3px solid var(--rowsev); padding-left: 9px; }
+.ptable .mono2 { font-family: ui-monospace, Menlo, monospace; font-size: 11.5px; white-space: nowrap; }
+.ptable .ptxt { min-width: 220px; }
+.ptable .dim { color: var(--muted); }
+.tagpill { display: inline-block; font-family: ui-monospace, Menlo, monospace; font-size: 10px; color: var(--ink2); background: var(--surface3); border-radius: 4px; padding: 0 6px; margin-right: 4px; white-space: nowrap; }
+.ackdot { font-family: ui-monospace, Menlo, monospace; font-size: 11px; white-space: nowrap; }
+.ackdot.yes { color: var(--sev-ok); } .ackdot.no { color: var(--muted); }
+.detail-block { padding: 12px 14px; border-bottom: 1px solid var(--line-soft); }
+.detail-block:last-child { border-bottom: none; }
+.detail-k { font-family: ui-monospace, Menlo, monospace; font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin-bottom: 4px; }
+.detail-v { font-size: 12.5px; }
+.detail-v.mono3 { font-family: ui-monospace, Menlo, monospace; font-size: 11.5px; word-break: break-all; color: var(--ink2); }
+.tl { display: flex; flex-direction: column; gap: 7px; }
+.tl .tle { display: flex; gap: 9px; font-size: 12px; align-items: baseline; }
+.tl .tlt { font-family: ui-monospace, Menlo, monospace; font-size: 10.5px; color: var(--muted); white-space: nowrap; }
+.actrow { display: flex; flex-wrap: wrap; gap: 7px; }
+.abtn { font-size: 12px; border: 1px solid var(--line); border-radius: 6px; padding: 4px 11px; color: var(--ink2); background: var(--surface2); }
+.abtn.pri { background: var(--accent-soft); color: var(--accent); border-color: color-mix(in oklab, var(--accent) 40%, transparent); font-weight: 600; }
+
+/* B — Severity lanes */
+.lane { margin-bottom: 18px; }
+.lane-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 8px; }
+.lane-head .lcount { font-family: ui-monospace, Menlo, monospace; font-size: 11px; color: var(--muted); }
+.lane-head .lbar { flex: 1; height: 1px; background: var(--line-soft); }
+.lanegrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 10px; }
+.lanegrid.dense { grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); }
+.pcard { background: var(--surface); border: 1px solid var(--line); border-left: 3px solid var(--lc); border-radius: 8px; padding: 10px 12px; text-align: left; display: flex; flex-direction: column; gap: 5px; }
+.pcard:hover { border-color: var(--accent); border-left-color: var(--lc); }
+.pcard.psel { border-color: var(--accent); border-left-color: var(--lc); background: var(--accent-soft); }
+.lanetoggle { font-family: ui-monospace, Menlo, monospace; font-size: 11px; color: var(--muted); width: 18px; }
+.pcard .ph2 { display: flex; justify-content: space-between; gap: 8px; font-family: ui-monospace, Menlo, monospace; font-size: 11.5px; }
+.pcard .ph2 .hn { font-weight: 700; }
+.pcard .ph2 .ag { color: var(--muted); font-size: 10.5px; white-space: nowrap; }
+.pcard .pt2 { font-size: 12.5px; line-height: 1.35; }
+.pcard .pf2 { display: flex; justify-content: space-between; align-items: center; margin-top: 2px; }
+
+/* C — Cockpit */
+.kpirow { display: grid; grid-template-columns: repeat(4, minmax(100px, 1fr)) 2.2fr; gap: 10px; margin-bottom: 14px; }
+@media (max-width: 1100px) { .kpirow { grid-template-columns: repeat(2, 1fr); } }
+.kpi { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 10px 13px; position: relative; overflow: hidden; }
+.kpi::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 3px; background: var(--kc, transparent); }
+.kpi .kl { font-family: ui-monospace, Menlo, monospace; font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+.kpi .kv { font-family: ui-monospace, Menlo, monospace; font-size: 22px; font-weight: 700; margin-top: 2px; }
+.kpi .kd { font-family: ui-monospace, Menlo, monospace; font-size: 10.5px; color: var(--muted); margin-top: 1px; }
+.kpi .kd b { font-weight: 700; }
+.cockpit-grid { display: grid; grid-template-columns: 1.5fr 1fr; gap: 14px; align-items: start; }
+.plist-row { display: flex; gap: 9px; padding: 7px 14px; border-bottom: 1px solid var(--line-soft); align-items: baseline; border-left: 3px solid var(--rowsev); cursor: pointer; }
+.plist-row:hover { background: var(--surface2); }
+.plist-row .pt { font-size: 12.5px; flex: 1; min-width: 0; }
+.plist-row .ph3 { font-family: ui-monospace, Menlo, monospace; font-size: 10.5px; color: var(--muted); }
+.gbar-row { display: flex; align-items: center; gap: 9px; padding: 5px 14px; font-size: 12px; }
+.gbar-row .gn { width: 118px; flex: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--ink2); }
+.gbar-row .gb { flex: 1; height: 10px; border-radius: 3px; background: var(--surface3); overflow: hidden; display: flex; }
+.gbar-row .gb i { height: 100%; }
+.gbar-row .gc { font-family: ui-monospace, Menlo, monospace; font-size: 10.5px; color: var(--muted); width: 20px; text-align: right; }
+.heat7 { display: grid; grid-template-columns: 26px repeat(24, 1fr); gap: 2px; padding: 10px 14px 4px; }
+.heat7 .hl { font-family: ui-monospace, Menlo, monospace; font-size: 9px; color: var(--muted); align-self: center; }
+.hcell { aspect-ratio: 1; border-radius: 2px; background: color-mix(in oklab, var(--sev-avg) calc(var(--hv) * 1%), var(--surface3)); }
+.heatx { display: grid; grid-template-columns: 26px repeat(24, 1fr); gap: 2px; padding: 0 14px 10px; }
+.heatx span { font-family: ui-monospace, Menlo, monospace; font-size: 8.5px; color: var(--muted); text-align: center; }
+.ackfeed-row { display: flex; gap: 9px; padding: 6px 14px; border-bottom: 1px solid var(--line-soft); font-size: 12px; align-items: baseline; }
+.ackfeed-row:last-child { border-bottom: none; }
+.ackfeed-row .at { font-family: ui-monospace, Menlo, monospace; font-size: 10.5px; color: var(--muted); white-space: nowrap; }
+
+/* tooltip */
+.tt { position: fixed; z-index: 120; pointer-events: none; background: var(--surface3); border: 1px solid var(--line); color: var(--ink); font-family: ui-monospace, Menlo, monospace; font-size: 11px; padding: 5px 9px; border-radius: 6px; box-shadow: var(--shadow); display: none; white-space: pre; }
+</style>
+
+<div class="appbar">
+  <div>
+    <span class="logo">au<em>z</em>ui</span>
+    <span class="logo-sub">a usable zabbix ui</span>
+  </div>
+  <nav class="switcher" role="tablist" aria-label="Entwürfe">
+    <button role="tab" aria-selected="true" data-view="problems"><span class="k">1</span>Problems</button>
+    <button role="tab" aria-selected="false" data-view="explorer"><span class="k">2</span>Infrastructure Explorer</button>
+    <button role="tab" aria-selected="false" data-view="topo"><span class="k">3</span>Auto-Topologie</button>
+    <button role="tab" aria-selected="false" data-view="deepdive"><span class="k">4</span>Host Deep-Dive</button>
+    <button role="tab" aria-selected="false" data-view="browser"><span class="k">5</span>Metrik-Browser</button>
+  </nav>
+  <div class="spacer"></div>
+  <button class="cmdk-pill" id="cmdkOpen">Suchen &amp; Aktionen… <kbd>⌘K</kbd></button>
+  <span class="envtag">zabbix-api.example.com · 201 Hosts · 103k Items</span>
+  <button class="iconbtn" id="themeToggle" title="Theme umschalten" aria-label="Theme umschalten">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.9 4.9l1.4 1.4m11.4 11.4 1.4 1.4M2 12h2m16 0h2M4.9 19.1l1.4-1.4m11.4-11.4 1.4-1.4"/></svg>
+  </button>
+</div>
+
+<!-- ============ VIEW 0: Problems (Mainpage) ============ -->
+<section class="view active" id="view-problems">
+  <div class="page">
+    <div class="pagehead">
+      <h1>Problems</h1>
+      <span class="desc">Startseite — alle aktiven Probleme der Instanz</span>
+      <span class="genbadge">32 aktiv · 6 High · 10 Average · 9 Warning · 7 Info</span>
+      <div class="variant-switch" role="tablist" aria-label="Problems-Varianten">
+        <button data-pv="triage">A · Triage-Tabelle</button>
+        <button data-pv="lanes">B · Severity-Lanes</button>
+        <button class="on" data-pv="combo">A+B · Lanes-Triage</button>
+        <button data-pv="cockpit">C · Ops-Cockpit</button>
+      </div>
+    </div>
+    <div class="pv" id="pv-triage"></div>
+    <div class="pv" id="pv-lanes"></div>
+    <div class="pv active" id="pv-combo"></div>
+    <div class="pv" id="pv-cockpit"></div>
+  </div>
+</section>
+
+<!-- ============ VIEW 1: Explorer ============ -->
+<section class="view" id="view-explorer">
+  <div class="page">
+    <div class="pagehead">
+      <h1>Infrastructure Explorer</h1>
+      <span class="desc">Wo brennt es, wo ist es voll? — Drilldown Gruppen → Hosts → Komponenten</span>
+      <span class="genbadge" id="exp-badge">generiert aus 201 Hosts · 0 Konfiguration</span>
+    </div>
+    <div class="explorer-grid">
+      <div>
+        <div class="crumbs" id="exp-crumbs"></div>
+        <div class="card">
+          <div class="cardhead">
+            <span class="eyebrow" id="exp-level-label">Hostgruppen</span>
+            <div class="right">
+              <span>Farbe:</span>
+              <div class="toggle2" id="exp-colormode">
+                <button class="on" data-mode="status">Status</button>
+                <button data-mode="util">Auslastung</button>
+              </div>
+            </div>
+          </div>
+          <div id="exp-content"></div>
+        </div>
+      </div>
+      <aside class="sidepanel">
+        <div class="card">
+          <div class="cardhead"><span class="eyebrow">Top-Mover</span><span class="right" id="exp-mover-scope">alle Gruppen · vs. 7d-Baseline</span></div>
+          <div id="exp-movers"></div>
+        </div>
+        <div class="card">
+          <div class="cardhead"><span class="eyebrow">Aktive Probleme</span><span class="right mono">32</span></div>
+          <div id="exp-problems"></div>
+        </div>
+      </aside>
+    </div>
+  </div>
+</section>
+
+<!-- ============ VIEW 2: Topologie ============ -->
+<section class="view" id="view-topo">
+  <div class="page">
+    <div class="pagehead">
+      <h1>Auto-Topologie</h1>
+      <span class="desc">Kanten aus Evidenz — LLDP, L3-Subnetze, Ereignis-Korrelation. Keine gepflegte Map.</span>
+      <span class="genbadge">generiert aus LLDP + Interfaces + 30d Events · 0 Konfiguration</span>
+    </div>
+    <div class="topo-wrap">
+      <div class="card topo-canvas" id="topo-canvas"></div>
+      <aside class="sidepanel">
+        <div class="card">
+          <div class="cardhead"><span class="eyebrow">Evidenz-Ebenen</span></div>
+          <div class="layerbox" id="topo-layers">
+            <label class="layerrow"><input type="checkbox" checked data-layer="lldp"><span class="lsample"></span>LLDP / CDP<span class="lconf">hoch</span></label>
+            <label class="layerrow"><input type="checkbox" checked data-layer="subnet"><span class="lsample dashed"></span>gemeinsames Subnetz<span class="lconf">mittel</span></label>
+            <label class="layerrow"><input type="checkbox" checked data-layer="corr"><span class="lsample dotted"></span>Ereignis-korreliert<span class="lconf">niedrig</span></label>
+          </div>
+        </div>
+        <div class="card">
+          <div class="cardhead"><span class="eyebrow">Inferierte Kante</span></div>
+          <div style="padding: 10px 14px; font-size: 12.5px; color: var(--ink2);">
+            <div class="mono" style="color: var(--ink); font-size: 12px;">core-sw01 ⇢ ups-keller-01</div>
+            <div style="margin: 6px 0 10px;">7 gemeinsame Problem-Ereignisse in 30 d (Zeitfenster ± 90 s). Konfidenz wächst mit Evidenz.</div>
+            <div style="display: flex; gap: 8px;">
+              <button style="font-size: 12px; border: 1px solid var(--line); border-radius: 6px; padding: 4px 12px; background: var(--accent-soft); color: var(--accent); font-weight: 600;">Bestätigen</button>
+              <button style="font-size: 12px; border: 1px solid var(--line); border-radius: 6px; padding: 4px 12px; color: var(--ink2);">Verwerfen</button>
+            </div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="cardhead"><span class="eyebrow">Legende</span></div>
+          <div class="topo-legend">
+            <div class="nodechip"><i></i>Knoten-Ring = schwerstes aktives Problem</div>
+            <div class="nodechip"><i style="border-color: var(--sev-high);"></i>Problem-Ausbreitung entlang Kanten</div>
+            <div style="color: var(--muted); font-size: 11.5px;">Positionen persistiert — Layout springt nie. Geomap-Modus über Inventar-Koordinaten.</div>
+          </div>
+        </div>
+      </aside>
+    </div>
+  </div>
+</section>
+
+<!-- ============ VIEW 3: Deep-Dive ============ -->
+<section class="view" id="view-deepdive">
+  <div class="page">
+    <div class="dd-head">
+      <h1>acc-sw-b04</h1>
+      <span class="sev avg"><i></i>AVERAGE</span>
+      <span class="genbadge">Dashboard generiert aus 412 Items · 0 Konfiguration</span>
+    </div>
+    <div class="dd-meta">
+      <span>Rolle <b>Brocade ICX7250-48 (SNMP)</b></span>
+      <span>Gruppe <b>Access Switches</b></span>
+      <span>Uptime <b class="mono">147 d 6 h</b></span>
+      <span>Proxy <b>proxy-bonn-01</b></span>
+      <span>SNMP <b class="mono" style="color: var(--sev-ok);">erreichbar · 12 ms</b></span>
+      <span style="margin-left:auto; color: var(--muted);">Zeitraum <b class="mono">1 h</b> · Quelle <b class="mono">InfluxDB (effluence)</b> · <span class="mono">Brush-to-Zoom synct alle Panels + Logs</span></span>
+    </div>
+    <div class="dd-grid">
+      <div class="card span8">
+        <div class="cardhead"><span class="eyebrow">component:network</span><span class="title">Interfaces — 48 Ports</span>
+          <span class="right">aus <span class="mono">interface</span>-Tag / LLD</span></div>
+        <div class="portmatrix" id="dd-ports"></div>
+        <div class="portfoot">
+          <span class="pk"><i style="background: color-mix(in oklab, var(--sev-ok) 55%, var(--surface3));"></i>up</span>
+          <span class="pk"><i style="background: color-mix(in oklab, var(--chart-1) 80%, var(--surface3));"></i>up · &gt;60 % Auslastung</span>
+          <span class="pk"><i style="background: var(--sev-warn);"></i>Errors/Discards</span>
+          <span class="pk"><i style="background: var(--sev-high);"></i>down (überwacht)</span>
+          <span class="pk"><i style="background: var(--surface3);"></i>unbenutzt</span>
+        </div>
+      </div>
+      <div class="card span4">
+        <div class="cardhead"><span class="eyebrow">component:health</span><span class="title">System</span></div>
+        <div class="gauge-row" id="dd-gauges"></div>
+        <div class="statgrid">
+          <div class="stat"><div class="sk">PSU 1 / PSU 2</div><div class="sv ok">OK / OK</div></div>
+          <div class="stat"><div class="sk">Fans</div><div class="sv ok">4 / 4 OK</div></div>
+          <div class="stat"><div class="sk">MAC-Tabelle</div><div class="sv">1.284</div></div>
+          <div class="stat"><div class="sk">STP-Topologie-Changes 24h</div><div class="sv warn">3</div></div>
+        </div>
+      </div>
+      <div class="card span6">
+        <div class="cardhead"><span class="eyebrow">component:network</span><span class="title">Uplink 1/1/48 → core-sw01 — Traffic</span>
+          <span class="right"><span class="mono" style="color: var(--ghost);">╌ vor 7 Tagen</span></span></div>
+        <div class="chartbox" id="dd-chart-traffic"></div>
+      </div>
+      <div class="card span6">
+        <div class="cardhead"><span class="eyebrow">component:temperature</span><span class="title">Temperatur</span>
+          <span class="right">Schwellwerte aus Triggern: <span class="mono">&gt;55 warn · &gt;65 crit</span></span></div>
+        <div class="chartbox" id="dd-chart-temp"></div>
+      </div>
+      <div class="card span12">
+        <div class="cardhead"><span class="eyebrow">logs · graylog</span><span class="title">Logs</span>
+          <span class="right"><span class="matched">matched: <b>acc-sw-b04</b>, <b>192.0.2.14</b></span> · <span class="mono">gleicher Zeitraum wie Charts</span> · <a href="#" style="color: var(--accent); text-decoration: none;">in Graylog öffnen ↗</a></span></div>
+        <div class="loglines" id="dd-logs"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ VIEW 4: Metric browser ============ -->
+<section class="view" id="view-browser">
+  <div class="page">
+    <div class="pagehead">
+      <h1>Metrik-Browser</h1>
+      <span class="desc">Facettensuche über alle 103.252 Items — sortiert nach Abweichung von der Baseline</span>
+      <span class="genbadge">Klassifikation: component-Tag → Unit → Key · 0 Konfiguration</span>
+    </div>
+    <div class="mb-wrap">
+      <aside class="card facet" id="mb-facets"></aside>
+      <div>
+        <div class="mb-toolbar">
+          <div class="searchbox">⌕ Items filtern… <span class="mono" style="margin-left:auto;">component:temperature</span></div>
+          <div class="selectpill">Sortierung: <b>Abweichung vs. Baseline</b> ▾</div>
+          <div class="selectpill">Zeitraum: <b>1 h</b> ▾</div>
+          <button class="selectpill" style="color: var(--accent); border-color: color-mix(in oklab, var(--accent) 40%, transparent);">3 ausgewählt → Overlay-Vergleich</button>
+        </div>
+        <div class="mbgrid" id="mb-grid"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ Command palette ============ -->
+<div class="cmdk-backdrop" id="cmdkBackdrop"></div>
+<div class="cmdk" id="cmdk" role="dialog" aria-label="Command Palette">
+  <input placeholder="Host, Item, Trigger, Aktion…" id="cmdkInput" value="acc-sw" />
+  <div class="grouplabel">Hosts</div>
+  <div class="item sel">⌦ <b>acc-sw-b04</b> <span class="tag2">Brocade ICX7250 · Access Switches</span><span class="kbd">↵ öffnen</span></div>
+  <div class="item">⌦ acc-sw-b07 <span class="tag2">Brocade ICX7250 · Access Switches</span></div>
+  <div class="grouplabel">Aktionen</div>
+  <div class="item">✓ Problem bestätigen: „Temperature high on acc-sw-b04“ <span class="kbd">⌘↵</span></div>
+  <div class="item">☰ Logs: acc-sw-b04 (±15 min) <span class="tag2">graylog</span></div>
+  <div class="item">↗ acc-sw-b04 im alten UI öffnen <span class="tag2">escape hatch</span></div>
+  <div class="cmdk-foot"><span>↑↓ navigieren</span><span>↵ öffnen</span><span>esc schließen</span></div>
+</div>
+
+<div class="tt" id="tt"></div>
+
+<script>
+/* ---------- utilities ---------- */
+function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;var t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+const R = mulberry32(20260729);
+function series(n, base, amp, drift=0, spike=-1){
+  const out=[]; let v=base;
+  for(let i=0;i<n;i++){ v += (R()-0.5)*amp + drift; if(spike>=0 && i>=spike) v += amp*2.2*Math.min(1,(i-spike)/6); out.push(Math.max(0,v)); }
+  return out;
+}
+function pathFrom(vals,w,h,pad,min,max){
+  const rng = (max-min)||1;
+  return vals.map((v,i)=>`${i? 'L':'M'}${(pad+i*(w-2*pad)/(vals.length-1)).toFixed(1)},${(h-pad-((v-min)/rng)*(h-2*pad)).toFixed(1)}`).join('');
+}
+function spark(vals,w=180,h=34,color='var(--chart-1)',fill=true){
+  const min=Math.min(...vals), max=Math.max(...vals);
+  const p=pathFrom(vals,w,h,2,min,max);
+  const lastX=(2+(vals.length-1)*(w-4)/(vals.length-1)).toFixed(1);
+  const lastY=(h-2-((vals[vals.length-1]-min)/((max-min)||1))*(h-4)).toFixed(1);
+  return `<svg viewBox="0 0 ${w} ${h}" width="100%" height="${h}" preserveAspectRatio="none" aria-hidden="true">
+    ${fill?`<path d="${p} L${w-2},${h-1} L2,${h-1} Z" fill="${color}" opacity="0.13"/>`:''}
+    <path d="${p}" fill="none" stroke="${color}" stroke-width="1.6" vector-effect="non-scaling-stroke"/>
+    <circle cx="${lastX}" cy="${lastY}" r="2.4" fill="${color}"/>
+  </svg>`;
+}
+const fmt = {
+  bps(v){ if(v>=1e9) return (v/1e9).toFixed(1)+' Gbps'; if(v>=1e6) return (v/1e6).toFixed(0)+' Mbps'; if(v>=1e3) return (v/1e3).toFixed(0)+' kbps'; return v.toFixed(0)+' bps'; },
+  pct(v){ return v.toFixed(1)+' %'; },
+  temp(v){ return v.toFixed(1)+' °C'; },
+};
+
+/* ---------- theme toggle ---------- */
+document.getElementById('themeToggle').addEventListener('click', ()=>{
+  const r=document.documentElement;
+  const dark = r.dataset.theme ? r.dataset.theme==='dark' : matchMedia('(prefers-color-scheme: dark)').matches;
+  r.dataset.theme = dark ? 'light' : 'dark';
+});
+
+/* ---------- view switcher ---------- */
+const tabs=[...document.querySelectorAll('.switcher button')];
+function showView(name){
+  tabs.forEach(b=>b.setAttribute('aria-selected', String(b.dataset.view===name)));
+  document.querySelectorAll('.view').forEach(v=>v.classList.toggle('active', v.id==='view-'+name));
+}
+tabs.forEach(b=>b.addEventListener('click',()=>showView(b.dataset.view)));
+addEventListener('keydown',e=>{
+  if(e.target.tagName==='INPUT') return;
+  const m={'1':'problems','2':'explorer','3':'topo','4':'deepdive','5':'browser'}[e.key];
+  if(m) showView(m);
+});
+
+/* ---------- command palette ---------- */
+const cmdk=document.getElementById('cmdk'), backdrop=document.getElementById('cmdkBackdrop');
+function openK(v){ cmdk.classList.toggle('open',v); backdrop.classList.toggle('open',v); if(v) document.getElementById('cmdkInput').focus(); }
+document.getElementById('cmdkOpen').addEventListener('click',()=>openK(true));
+backdrop.addEventListener('click',()=>openK(false));
+addEventListener('keydown',e=>{
+  if((e.metaKey||e.ctrlKey)&&e.key==='k'){ e.preventDefault(); openK(!cmdk.classList.contains('open')); }
+  if(e.key==='Escape') openK(false);
+});
+
+/* ---------- tooltip ---------- */
+const tt=document.getElementById('tt');
+function showTT(e,text){ tt.textContent=text; tt.style.display='block'; tt.style.left=(e.clientX+14)+'px'; tt.style.top=(e.clientY+10)+'px'; }
+function hideTT(){ tt.style.display='none'; }
+
+/* ============ DATA ============ */
+const SEV=['high','avg','warn','info','ok'];
+const SEVLABEL={high:'High',avg:'Average',warn:'Warning',info:'Info',ok:'OK'};
+const groups=[
+  {name:'Core Network', hosts: 8,  sev:{high:1,avg:1,warn:1,info:0}, roles:['Brocade/Foundry Stackable']},
+  {name:'Access Switches', hosts: 42, sev:{high:1,avg:3,warn:2,info:1}, roles:['Brocade/Foundry Stackable']},
+  {name:'Linux Server', hosts: 84, sev:{high:2,avg:3,warn:3,info:3}, roles:['Cygnus Linux by Zabbix agent']},
+  {name:'Docker Hosts', hosts: 16, sev:{high:1,avg:2,warn:1,info:1}, roles:['Docker agent2']},
+  {name:'USV & Umwelt', hosts: 14, sev:{high:1,avg:1,warn:1,info:1}, roles:['APC UPS by SNMP','Umweltsensorik']},
+  {name:'Storage & RAID', hosts: 20, sev:{high:0,avg:0,warn:1,info:0}, roles:['SMART agent2','MD RAID','Synology']},
+  {name:'Zertifikate', hosts: 17, sev:{high:0,avg:0,warn:0,info:1}, roles:['Website certificate']},
+];
+function mkHosts(group){
+  const defs={
+    'Core Network': i=>({name:['core-rtr01','core-rtr02','core-sw01','core-sw02','dist-sw01','dist-sw02','fw-bonn-01','fw-bonn-02'][i], role:'Brocade ICX7450'}),
+    'Access Switches': i=>({name:`acc-sw-b${String(i+1).padStart(2,'0')}`, role:'Brocade ICX7250'}),
+    'Linux Server': i=>({name:['lnx-web01','lnx-web02','lnx-db01','lnx-db02','lnx-mail01','lnx-dns01','lnx-dns02','lnx-backup01','lnx-mon01','lnx-app01','lnx-app02','lnx-file01'][i]||`lnx-node${i+1}`, role:'Cygnus Linux'}),
+    'Docker Hosts': i=>({name:`docker-virt${i+1}`, role:'Docker agent2'}),
+    'USV & Umwelt': i=>({name:['ups-keller-01','ups-keller-02','ups-r19-01','env-serverraum','env-keller','env-buero','pdu-r19-a','pdu-r19-b'][i]||`env-node${i+1}`, role: i<3?'APC Smart-UPS':'Umweltsensorik'}),
+    'Storage & RAID': i=>({name:['nas-syn01','nas-syn02','san-01'][i]||`smart-h${i+1}`, role: i<2?'Synology DSM':'SMART agent2'}),
+    'Zertifikate': i=>({name:['www.cygnusnetworks.de','tiqora.cygnusnetworks.de','wetterrekord.de'][i]||`cert-${i+1}.example.de`, role:'Website certificate'}),
+  };
+  const g=groups.find(g=>g.name===group);
+  const n=Math.min(g.hosts, 24);
+  const sevpool=[];
+  Object.entries(g.sev).forEach(([s,c])=>{for(let k=0;k<c;k++)sevpool.push(s);});
+  // Severities gestreut statt vorn geklumpt; deterministisch
+  const assign=Array(n).fill('ok');
+  sevpool.forEach((s,k)=>{ let p=(k*7+5)%n; while(assign[p]!=='ok')p=(p+1)%n; assign[p]=s; });
+  if(group==='Access Switches'){ assign.fill('ok'); assign[3]='avg'; assign[16]='high'; assign[8]='info'; assign[1]='warn'; assign[13]='warn'; assign[6]='avg'; assign[20]='avg'; }
+  const hosts=[];
+  for(let i=0;i<n;i++){
+    const d=defs[group](i);
+    hosts.push({...d, sev: assign[i], util: Math.round(8+R()*84), items: 180+Math.round(R()*420)});
+  }
+  return hosts;
+}
+const problems=[
+  {sev:'high', text:'Temperature critical on core-sw01 (67.2 °C > 65)', host:'core-sw01', age:'23 m'},
+  {sev:'high', text:'ICMP unreachable: acc-sw-b17', host:'acc-sw-b17', age:'41 m'},
+  {sev:'high', text:'/var: disk space < 5 % (lnx-db01)', host:'lnx-db01', age:'1 h 12 m'},
+  {sev:'high', text:'MD RAID: degraded array /dev/md0', host:'lnx-file01', age:'2 h'},
+  {sev:'high', text:'UPS on battery: ups-keller-01', host:'ups-keller-01', age:'6 m'},
+  {sev:'high', text:'Container unhealthy: tiqora-api', host:'docker-virt6', age:'18 m'},
+  {sev:'avg', text:'High error rate on 1/1/24 (acc-sw-b04)', host:'acc-sw-b04', age:'56 m'},
+  {sev:'avg', text:'Load average > 8 on lnx-web02', host:'lnx-web02', age:'1 h 4 m'},
+  {sev:'avg', text:'CO₂ > 1500 ppm im Serverraum', host:'env-serverraum', age:'34 m'},
+  {sev:'avg', text:'MySQL slow queries increasing', host:'lnx-db02', age:'2 h 20 m'},
+  {sev:'warn', text:'Cert expires in 13 d: wetterrekord.de', host:'wetterrekord.de', age:'3 d'},
+  {sev:'warn', text:'NTP offset > 100 ms (lnx-dns02)', host:'lnx-dns02', age:'5 h'},
+  {sev:'warn', text:'SMART reallocated sectors: smart-h7', host:'smart-h7', age:'1 d'},
+  {sev:'info', text:'Uptime < 1 h: acc-sw-b09 (rebooted)', host:'acc-sw-b09', age:'44 m'},
+];
+const movers=[
+  {name:'net.if.out[1/1/48]', host:'acc-sw-b04', dev:'+312 %', bad:true, vals:series(40, 20, 6, 0, 26)},
+  {name:'sensor.temp[chassis]', host:'core-sw01', dev:'+38 %', bad:true, vals:series(40, 48, 2, 0.35)},
+  {name:'system.cpu.util', host:'lnx-web02', dev:'+184 %', bad:true, vals:series(40, 18, 8, 0, 22)},
+  {name:'co2.ppm', host:'env-serverraum', dev:'+64 %', bad:true, vals:series(40, 900, 60, 8)},
+  {name:'mysql.slow_queries', host:'lnx-db02', dev:'+91 %', bad:true, vals:series(40, 4, 2, 0.14)},
+  {name:'vfs.fs.size[/var,pused]', host:'lnx-backup01', dev:'−22 %', bad:false, vals:series(40, 71, 1.5, -0.28)},
+];
+
+/* ============ VIEW 1: Explorer ============ */
+const exp={ level:'groups', group:null, host:null, mode:'status' };
+const expContent=document.getElementById('exp-content');
+const sevColor=s=>({high:'var(--sev-high)',avg:'var(--sev-avg)',warn:'var(--sev-warn)',info:'var(--sev-info)',ok:'var(--sev-ok)'}[s]);
+function utilColor(u){ return `color-mix(in oklab, var(--chart-1) ${Math.round(12+u*0.75)}%, var(--surface3))`; }
+function renderCrumbs(){
+  const c=document.getElementById('exp-crumbs');
+  let html=`<button data-nav="groups">Alle Gruppen</button>`;
+  if(exp.group) html+=`<span class="sep">›</span>`+(exp.level==='hosts'?`<span class="cur">${exp.group}</span>`:`<button data-nav="hosts">${exp.group}</button>`);
+  if(exp.host) html+=`<span class="sep">›</span><span class="cur mono">${exp.host.name}</span>`;
+  c.innerHTML=html;
+  c.querySelectorAll('button').forEach(b=>b.addEventListener('click',()=>{ exp.level=b.dataset.nav; if(b.dataset.nav==='groups'){exp.group=null;} exp.host=null; renderExplorer(); }));
+}
+function renderExplorer(){
+  renderCrumbs();
+  const label=document.getElementById('exp-level-label');
+  const badge=document.getElementById('exp-badge');
+  if(exp.level==='groups'){
+    label.textContent='Hostgruppen';
+    badge.textContent='generiert aus 201 Hosts · 0 Konfiguration';
+    expContent.innerHTML=`<div class="groupgrid">${groups.map(g=>{
+      const total=Object.values(g.sev).reduce((a,b)=>a+b,0);
+      const segs=Object.entries(g.sev).filter(([,c])=>c>0).map(([s,c])=>`<i style="width:${(c/g.hosts*100).toFixed(1)}%;background:${sevColor(s)}" title="${SEVLABEL[s]}: ${c}"></i>`).join('');
+      const okw=Math.max(0,(1-total/g.hosts)*100);
+      return `<button class="groupcard" data-group="${g.name}">
+        <span class="gname">${g.name}</span>
+        <span class="gmeta">${g.hosts} Hosts · ${g.roles.join(' · ')}</span>
+        <span class="sevbar">${segs}<i style="width:${okw.toFixed(1)}%;background:color-mix(in oklab, var(--sev-ok) 40%, var(--surface3))"></i></span>
+        <span class="gmeta">${total?total+' Probleme':'keine Probleme'}</span>
+      </button>`;}).join('')}</div>`;
+    expContent.querySelectorAll('.groupcard').forEach(b=>b.addEventListener('click',()=>{ exp.group=b.dataset.group; exp.level='hosts'; renderExplorer(); }));
+  } else if(exp.level==='hosts'){
+    const hosts=mkHosts(exp.group);
+    label.textContent=exp.group;
+    badge.textContent=`generiert aus ${hosts.length} Hosts · 0 Konfiguration`;
+    expContent.innerHTML=`<div class="hostgrid">${hosts.map((h,i)=>{
+      const cls=exp.mode==='util'?'tile util':'tile';
+      const sty=exp.mode==='util'?`--utilbg:${utilColor(h.util)}`:`--tilecolor:${sevColor(h.sev)}`;
+      const val=exp.mode==='util'?`${h.util} %`:SEVLABEL[h.sev];
+      return `<button class="${cls}" style="${sty}" data-i="${i}">
+        <span class="tname">${h.name}</span><span class="trole">${h.role}</span>
+        <span class="tval">${val}</span></button>`;}).join('')}</div>`;
+    expContent.querySelectorAll('.tile').forEach(b=>b.addEventListener('click',()=>{ exp.host=hosts[+b.dataset.i]; exp.level='components'; renderExplorer(); }));
+  } else {
+    const comps=[
+      {icon:'⇄', name:'Interfaces', count:'48 Items', spark:series(30,140,40), foot:['Σ 2.1 Gbps','2 down'], unit:'bps'},
+      {icon:'▣', name:'CPU', count:'4 Items', spark:series(30,22,8), foot:['31 %','peak 74 %'], unit:'%'},
+      {icon:'▤', name:'Memory', count:'6 Items', spark:series(30,58,3), foot:['58 %','stabil'], unit:'%'},
+      {icon:'♨', name:'Temperature', count:'6 Items', spark:series(30,47,2,0.2), foot:['52.1 °C','↗ steigend'], unit:'°C', warn:true},
+      {icon:'⚡', name:'Power / PSU', count:'8 Items', spark:series(30,142,6), foot:['142 W','2/2 OK'], unit:'W'},
+      {icon:'✻', name:'Fans', count:'8 Items', spark:series(30,4100,120), foot:['4.100 rpm','4/4 OK'], unit:'rpm'},
+    ];
+    label.textContent=exp.host.name+' — Komponenten';
+    badge.textContent=`generiert aus ${exp.host.items} Items · 0 Konfiguration`;
+    expContent.innerHTML=`<div class="compgrid">${comps.map(c=>`
+      <button class="compcard">
+        <span class="cname">${c.icon} ${c.name}<span class="ccount">${c.count}</span></span>
+        <span class="cspark">${spark(c.spark,200,30,c.warn?'var(--sev-warn)':'var(--chart-1)')}</span>
+        <span class="cfoot"><span style="color:${c.warn?'var(--sev-warn)':'var(--ink)'};font-weight:600;">${c.foot[0]}</span><span>${c.foot[1]}</span></span>
+      </button>`).join('')}
+      <div style="grid-column: 1 / -1; padding: 4px 2px; color: var(--muted); font-size: 11.5px;">Komponenten aus <span class="mono">component</span>-Tags + LLD-Key-Parametern abgeleitet — Klick öffnet den Host Deep-Dive (Entwurf 3).</div>
+    </div>`;
+    expContent.querySelectorAll('.compcard').forEach(b=>b.addEventListener('click',()=>showView('deepdive')));
+  }
+}
+document.querySelectorAll('#exp-colormode button').forEach(b=>b.addEventListener('click',()=>{
+  document.querySelectorAll('#exp-colormode button').forEach(x=>x.classList.toggle('on',x===b));
+  exp.mode=b.dataset.mode; renderExplorer();
+}));
+document.getElementById('exp-movers').innerHTML=movers.map(m=>`
+  <div class="moverrow">
+    <div style="width:64px;flex:none;">${spark(m.vals,64,24,m.bad?'var(--sev-avg)':'var(--sev-ok)',false)}</div>
+    <div class="mi"><div class="mname">${m.name}</div><div class="mhost">${m.host}</div></div>
+    <div class="mdev ${m.bad?'upbad':'upok'}">${m.dev}</div>
+  </div>`).join('');
+document.getElementById('exp-problems').innerHTML=problems.slice(0,9).map(p=>`
+  <div class="problemrow"><span class="sev ${p.sev}"><i></i></span>
+    <span class="pt">${p.text}<div class="ph">${p.host}</div></span>
+    <span class="page2">${p.age}</span></div>`).join('')+
+  `<div style="padding:8px 14px;font-size:12px;"><a href="#" style="color:var(--accent);text-decoration:none;">alle 32 Probleme → Triage-Board</a></div>`;
+renderExplorer();
+
+/* ============ VIEW 2: Topology ============ */
+const nodes=[
+  {id:'fw-bonn-01', x:480, y:52,  sev:'ok', kind:'fw'},
+  {id:'core-rtr01', x:360, y:130, sev:'ok'}, {id:'core-rtr02', x:600, y:130, sev:'ok'},
+  {id:'core-sw01',  x:360, y:236, sev:'high'}, {id:'core-sw02', x:600, y:236, sev:'ok'},
+  {id:'dist-sw01',  x:200, y:330, sev:'ok'}, {id:'dist-sw02', x:480, y:340, sev:'ok'},
+  {id:'acc-sw-b04', x:110, y:432, sev:'avg'}, {id:'acc-sw-b07', x:250, y:445, sev:'ok'}, {id:'acc-sw-b17', x:370, y:452, sev:'high'},
+  {id:'docker-virt5',x:560, y:445, sev:'ok'}, {id:'docker-virt6',x:680, y:430, sev:'high'},
+  {id:'lnx-db01',   x:780, y:330, sev:'high'}, {id:'lnx-web02', x:820, y:220, sev:'avg'},
+  {id:'ups-keller-01', x:230, y:236, sev:'high', kind:'ups'},
+  {id:'env-serverraum', x:120, y:320, sev:'avg', kind:'env'},
+];
+const edges=[
+  ['fw-bonn-01','core-rtr01','lldp'],['fw-bonn-01','core-rtr02','lldp'],
+  ['core-rtr01','core-sw01','lldp'],['core-rtr02','core-sw02','lldp'],['core-rtr01','core-rtr02','lldp'],
+  ['core-sw01','core-sw02','lldp'],['core-sw01','dist-sw01','lldp'],['core-sw02','dist-sw02','lldp'],
+  ['dist-sw01','acc-sw-b04','lldp'],['dist-sw01','acc-sw-b07','lldp'],['dist-sw02','acc-sw-b17','lldp'],
+  ['core-sw02','docker-virt5','subnet'],['core-sw02','docker-virt6','subnet'],
+  ['core-sw02','lnx-db01','subnet'],['core-rtr02','lnx-web02','subnet'],
+  ['dist-sw02','docker-virt5','lldp'],
+  ['core-sw01','ups-keller-01','corr'],['env-serverraum','core-sw01','corr'],['docker-virt6','lnx-db01','corr'],
+];
+function renderTopo(){
+  const on=Object.fromEntries([...document.querySelectorAll('#topo-layers input')].map(i=>[i.dataset.layer,i.checked]));
+  const nm=Object.fromEntries(nodes.map(n=>[n.id,n]));
+  const dash={lldp:'', subnet:'6 5', corr:'2 5'};
+  const eHtml=edges.filter(([,,t])=>on[t]).map(([a,b,t])=>{
+    const A=nm[a],B=nm[b];
+    const hot=(A.sev==='high'&&B.sev==='high')||(t==='corr'&&(A.sev!=='ok'&&B.sev!=='ok'));
+    return `<line x1="${A.x}" y1="${A.y}" x2="${B.x}" y2="${B.y}" stroke="${hot?'var(--sev-high)':'var(--muted)'}" stroke-opacity="${hot?0.8:0.55}" stroke-width="${t==='lldp'?2:1.5}" ${dash[t]?`stroke-dasharray="${dash[t]}"`:''}/>`;
+  }).join('');
+  const nHtml=nodes.map(n=>{
+    const shape = n.kind==='ups'?`<rect x="${n.x-9}" y="${n.y-9}" width="18" height="18" rx="4"`:n.kind==='env'?`<rect x="${n.x-8}" y="${n.y-8}" width="16" height="16" rx="8" transform="rotate(45 ${n.x} ${n.y})"`:n.kind==='fw'?`<rect x="${n.x-10}" y="${n.y-8}" width="20" height="16" rx="3"`:`<circle cx="${n.x}" cy="${n.y}" r="9"`;
+    return `<g class="tnode" data-id="${n.id}" style="cursor:pointer;">
+      ${shape} fill="var(--surface2)" stroke="${sevColor(n.sev)}" stroke-width="2.5"/>
+      <text x="${n.x}" y="${n.y+24}" text-anchor="middle" font-size="10" fill="var(--ink2)">${n.id}</text>
+    </g>`;
+  }).join('');
+  document.getElementById('topo-canvas').innerHTML=
+    `<svg viewBox="0 0 900 510" role="img" aria-label="Automatisch abgeleitete Netzwerk-Topologie">${eHtml}${nHtml}</svg>
+     <div style="position:absolute;top:10px;left:12px;" class="toggle2"><button class="on">Netz</button><button>Geomap</button></div>`;
+  document.querySelectorAll('.tnode').forEach(g=>{
+    g.addEventListener('mousemove',e=>{const n=nm[g.dataset.id];showTT(e,`${n.id}\nStatus: ${SEVLABEL[n.sev]}\nKlick → Host Deep-Dive`);});
+    g.addEventListener('mouseleave',hideTT);
+    g.addEventListener('click',()=>showView('deepdive'));
+  });
+}
+document.querySelectorAll('#topo-layers input').forEach(i=>i.addEventListener('change',renderTopo));
+renderTopo();
+
+/* ============ VIEW 3: Deep-dive ============ */
+(function(){
+  // port matrix
+  const pm=document.getElementById('dd-ports');
+  const states=[];
+  for(let i=0;i<48;i++){
+    let s='up';
+    if([2,9,13,21,30,33,38,41].includes(i)) s='down';
+    if([5,11,19].includes(i)) s='hot';
+    if(i===23) s='warn';
+    if([44,45].includes(i)) s='down';
+    if(i===46||i===47) s='hot';
+    states.push(s);
+  }
+  pm.innerHTML=states.map((s,i)=>`<span class="port ${s}" tabindex="0" data-p="${i+1}" data-s="${s}"></span>`).join('');
+  pm.querySelectorAll('.port').forEach(p=>{
+    const label={up:'up',hot:'up · hohe Auslastung',warn:'Errors/Discards steigen',down:'down',crit:'down (Trigger aktiv)'}[p.dataset.s];
+    p.addEventListener('mousemove',e=>showTT(e,`Port 1/1/${p.dataset.p}\n${label}`));
+    p.addEventListener('mouseleave',hideTT);
+  });
+
+  // gauges
+  function gauge(val,label,color){
+    const a=Math.PI*(1-val/100);
+    const x=60+52*Math.cos(a), y=64-52*Math.sin(a);
+    return `<div class="gauge"><svg viewBox="0 0 120 70" width="100%" aria-label="${label}: ${val} %">
+      <path d="M8,64 A52,52 0 0 1 112,64" fill="none" stroke="var(--surface3)" stroke-width="9" stroke-linecap="round"/>
+      <path d="M8,64 A52,52 0 0 1 ${x.toFixed(1)},${y.toFixed(1)}" fill="none" stroke="${color}" stroke-width="9" stroke-linecap="round"/>
+      </svg><div class="gval">${val} %</div><div class="glabel">${label}</div></div>`;
+  }
+  document.getElementById('dd-gauges').innerHTML=
+    gauge(31,'CPU','var(--chart-1)')+gauge(58,'Memory','var(--chart-1)')+gauge(74,'Uplink-Auslastung','var(--sev-warn)');
+
+  // charts with axes + ghost + thresholds
+  function bigChart(el, opts){
+    const w=560,h=190,padL=62,padR=52,padT=12,padB=24;
+    const {seriesList, ghostVals, thresholds=[], unit, yMax} = opts;
+    const allVals=seriesList.flatMap(s=>s.vals).concat(ghostVals||[]);
+    const min=0, max=yMax||Math.max(...allVals, ...(thresholds.map(t=>t.v)))*1.12;
+    const X=i=>padL+i*(w-padL-padR)/(seriesList[0].vals.length-1);
+    const Y=v=>padT+(1-(v-min)/(max-min))*(h-padT-padB);
+    const gridLines=[0,.25,.5,.75,1].map(f=>{
+      const v=min+f*(max-min);
+      return `<line x1="${padL}" y1="${Y(v)}" x2="${w-padR}" y2="${Y(v)}" stroke="var(--line-soft)" stroke-width="1"/>
+        <text x="${padL-6}" y="${Y(v)+3}" text-anchor="end" font-size="9" fill="var(--muted)">${opts.fmt(v)}</text>`;
+    }).join('');
+    const times=['13:10','13:20','13:30','13:40','13:50','14:00'];
+    const xlabels=times.map((t,k)=>`<text x="${padL+k*(w-padL-padR)/5}" y="${h-8}" text-anchor="middle" font-size="9" fill="var(--muted)">${t}</text>`).join('');
+    const zones=thresholds.map(t=>t.zone?`<rect x="${padL}" y="${Y(max)}" width="${w-padL-padR}" height="${Math.max(0,Y(t.v)-Y(max))}" fill="${t.color}" opacity="0.08"/>`:'').join('');
+    const tlines=thresholds.map(t=>`<line x1="${padL}" y1="${Y(t.v)}" x2="${w-padR}" y2="${Y(t.v)}" stroke="${t.color}" stroke-width="1" stroke-dasharray="5 4" opacity="0.85"/>
+      <text x="${w-padR-2}" y="${Y(t.v)-4}" text-anchor="end" font-size="9" fill="${t.color}">${t.label}</text>`).join('');
+    const ghost=ghostVals?`<path d="${ghostVals.map((v,i)=>`${i?'L':'M'}${X(i).toFixed(1)},${Y(v).toFixed(1)}`).join('')}" fill="none" stroke="var(--ghost)" stroke-width="1.4" stroke-dasharray="3 4"/>`:'';
+    const paths=seriesList.map(s=>{
+      const d=s.vals.map((v,i)=>`${i?'L':'M'}${X(i).toFixed(1)},${Y(v).toFixed(1)}`).join('');
+      return `${s.fill?`<path d="${d} L${X(s.vals.length-1)},${Y(0)} L${X(0)},${Y(0)} Z" fill="${s.color}" opacity="0.10"/>`:''}
+        <path d="${d}" fill="none" stroke="${s.color}" stroke-width="1.8"/>`;
+    }).join('');
+    const legend=seriesList.map(s=>`<span style="display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--ink2);"><i style="width:10px;height:2.5px;background:${s.color};display:inline-block;border-radius:2px;"></i>${s.name}</span>`).join('');
+    el.innerHTML=`<svg viewBox="0 0 ${w} ${h}" width="100%" role="img">${zones}${gridLines}${xlabels}${ghost}${tlines}${paths}</svg>
+      <div style="display:flex;gap:14px;padding:2px 6px 8px;">${legend}${ghostVals?'<span style="font-size:11px;color:var(--ghost);">╌ gleicher Zeitraum vor 7 d</span>':''}</div>`;
+  }
+  const tin=series(60, 320, 60, 1.2).map(v=>v*1e6);
+  const tout=series(60, 180, 40, 3.4, 40).map(v=>v*1e6);
+  bigChart(document.getElementById('dd-chart-traffic'),{
+    seriesList:[{name:'Bits received',vals:tin,color:'var(--chart-1)',fill:true},{name:'Bits sent',vals:tout,color:'var(--chart-2)',fill:true}],
+    ghostVals:series(60, 300, 50, 1).map(v=>v*1e6),
+    fmt:fmt.bps,
+  });
+  bigChart(document.getElementById('dd-chart-temp'),{
+    seriesList:[{name:'Chassis',vals:series(60,48,1.2,0.14),color:'var(--chart-3)',fill:true},{name:'PSU',vals:series(60,41,0.9,0.05),color:'var(--chart-4)',fill:false}],
+    ghostVals:series(60,45,1,0.02),
+    thresholds:[{v:55,label:'warn 55 °C',color:'var(--sev-warn)',zone:true},{v:65,label:'crit 65 °C',color:'var(--sev-high)',zone:true}],
+    yMax:72, fmt:fmt.temp,
+  });
+
+  // logs
+  const logs=[
+    ['13:58:41','warning','Port 1/1/24: excessive collisions, 312 errors in 60 s'],
+    ['13:57:02','notice','STP: topology change detected on VLAN 40, port 1/1/48'],
+    ['13:54:19','info2','LLDP: neighbor core-sw01 (1/2/3) refreshed on 1/1/48'],
+    ['13:51:47','warning','Port 1/1/24: CRC errors increasing (rate 5.2/s)'],
+    ['13:48:03','notice','SNMP: authentication success from 10.0.0.10 (zabbix-proxy)'],
+    ['13:44:56','err','Port 1/1/33: link down'],
+    ['13:44:51','info2','DHCP snooping: binding added 192.0.2.117 on port 1/1/12'],
+    ['13:40:22','notice','NTP: clock synchronized to 10.0.0.1, offset 4 ms'],
+  ];
+  document.getElementById('dd-logs').innerHTML=logs.map(([t,l,m])=>
+    `<div class="logline"><span class="lt">${t}</span><span class="ll ${l}">${l==='info2'?'info':l}</span><span class="lm">${m}</span></div>`).join('');
+})();
+
+/* ============ VIEW 4: Metric browser ============ */
+(function(){
+  const facets=[
+    ['component', [['temperature',412,'on'],['network',31208,''],['cpu',3821,''],['memory',2904,''],['power',1120,''],['fan',896,''],['storage',8412,''],['health',1520,'']]],
+    ['unit', [['°C',412,'on'],['%',18240,''],['bps',24110,''],['B',9310,''],['s',2110,''],['uptime',201,'']]],
+    ['template', [['Brocade/Foundry Stackable',50,''],['Cygnus Linux',84,''],['Chassis by IPMI',24,''],['APC UPS by SNMP',3,''],['Umweltsensorik',11,'']]],
+  ];
+  document.getElementById('mb-facets').innerHTML=facets.map(([h,rows])=>
+    `<h3>${h}</h3>`+rows.map(([n,c,on])=>`<button class="facetrow ${on}">${n}<span class="fc">${c.toLocaleString('de-DE')}</span></button>`).join('')).join('');
+  const items=[
+    {n:'sensor.temp[chassis]', h:'core-sw01', v:'67.2 °C', dev:'+38 %', bad:2, vals:series(40,52,1.4,0.5)},
+    {n:'sensor.temp[chassis]', h:'acc-sw-b04', v:'52.1 °C', dev:'+12 %', bad:1, vals:series(40,47,1.2,0.18)},
+    {n:'co2.ppm', h:'env-serverraum', v:'1.643 ppm', dev:'+64 %', bad:2, vals:series(40,1000,70,14)},
+    {n:'sensor.temp[psu1]', h:'core-sw02', v:'44.8 °C', dev:'+6 %', bad:0, vals:series(40,43,0.8,0.04)},
+    {n:'humidity.rel', h:'env-serverraum', v:'31 %', dev:'−18 %', bad:1, vals:series(40,38,1.4,-0.16)},
+    {n:'sensor.temp[ambient]', h:'ups-keller-01', v:'26.4 °C', dev:'+9 %', bad:0, vals:series(40,24,0.5,0.05)},
+    {n:'ipmi.temp[CPU1]', h:'lnx-db01', v:'61.0 °C', dev:'+22 %', bad:1, vals:series(40,52,1.8,0.3)},
+    {n:'ipmi.temp[CPU1]', h:'lnx-web02', v:'58.2 °C', dev:'+19 %', bad:1, vals:series(40,50,1.6,0.24)},
+    {n:'sensor.temp[chassis]', h:'nas-syn01', v:'39.5 °C', dev:'+2 %', bad:0, vals:series(40,39,0.6)},
+    {n:'hdd.temp[sda]', h:'smart-h7', v:'46 °C', dev:'+11 %', bad:1, vals:series(40,42,0.8,0.12)},
+    {n:'sensor.temp[intake]', h:'dist-sw01', v:'31.2 °C', dev:'+1 %', bad:0, vals:series(40,31,0.5)},
+    {n:'ipmi.temp[System]', h:'lnx-mon01', v:'41.7 °C', dev:'−3 %', bad:0, vals:series(40,42,0.7,-0.02)},
+  ];
+  const devColor=b=>b===2?'var(--sev-high)':b===1?'var(--sev-avg)':'var(--sev-ok)';
+  document.getElementById('mb-grid').innerHTML=items.map(it=>`
+    <button class="metcard">
+      <div class="mmname">${it.n}</div><div class="mmhost">${it.h}</div>
+      ${spark(it.vals,220,36,devColor(it.bad))}
+      <div class="mmrow"><span class="mmval">${it.v}</span><span class="mmdev" style="color:${devColor(it.bad)};">${it.dev} vs. Baseline</span></div>
+    </button>`).join('');
+})();
+
+/* ============ VIEW 0: Problems mainpage (3 Varianten) ============ */
+(function(){
+  // 32 aktive Probleme: 6 high, 10 avg, 9 warn, 7 info — Stil der echten Umgebung
+  const PROB=[
+    {s:'high',t:'Temperature critical on chassis (67.2 °C > 65)',h:'core-sw01',g:'Core Network',m:23,ack:1,by:'valerius',tags:['component:temperature','scope:chassis']},
+    {s:'high',t:'ICMP unreachable for 5 minutes',h:'acc-sw-b17',g:'Access Switches',m:41,ack:0,tags:['component:health']},
+    {s:'high',t:'/var: disk space is critically low (< 5 %)',h:'lnx-db01',g:'Linux Server',m:72,ack:1,by:'padam',tags:['component:storage','fs:/var']},
+    {s:'high',t:'MD RAID: array /dev/md0 degraded (1 of 2 devices)',h:'lnx-file01',g:'Storage & RAID',m:120,ack:0,tags:['component:storage','raid:md0']},
+    {s:'high',t:'UPS discharging: on battery power',h:'ups-keller-01',g:'USV & Umwelt',m:6,ack:0,tags:['component:power']},
+    {s:'high',t:'Container unhealthy: tiqora-api',h:'docker-virt6',g:'Docker Hosts',m:18,ack:1,by:'valerius',tags:['component:container','app:tiqora']},
+    {s:'avg',t:'High error rate on interface 1/1/24 (5.2 err/s)',h:'acc-sw-b04',g:'Access Switches',m:56,ack:0,tags:['component:network','interface:1/1/24']},
+    {s:'avg',t:'Load average > 8 for 15 minutes',h:'lnx-web02',g:'Linux Server',m:64,ack:0,tags:['component:cpu']},
+    {s:'avg',t:'CO₂ above 1500 ppm im Serverraum',h:'env-serverraum',g:'USV & Umwelt',m:34,ack:1,by:'padam',tags:['component:environment']},
+    {s:'avg',t:'MySQL slow queries increasing (> 20/min)',h:'lnx-db02',g:'Linux Server',m:140,ack:0,tags:['component:db','app:mysql']},
+    {s:'avg',t:'Container restart loop: wetterrekord-ingest (4× in 1 h)',h:'docker-virt5',g:'Docker Hosts',m:47,ack:0,tags:['component:container']},
+    {s:'avg',t:'Volume /volume1 above 85 % capacity',h:'nas-syn01',g:'Storage & RAID',m:380,ack:1,by:'valerius',tags:['component:storage']},
+    {s:'avg',t:'BGP prefix count dropped by 12 % on peer AS8422',h:'core-rtr02',g:'Core Network',m:29,ack:0,tags:['component:network','proto:bgp']},
+    {s:'avg',t:'Mail queue growing: 240 deferred messages',h:'lnx-mail01',g:'Linux Server',m:88,ack:0,tags:['component:mail']},
+    {s:'avg',t:'STP: port 1/1/12 flapping (3 topology changes/h)',h:'acc-sw-b09',g:'Access Switches',m:52,ack:0,tags:['component:network','proto:stp']},
+    {s:'avg',t:'PDU load imbalance: phase L1 at 78 %',h:'pdu-r19-a',g:'USV & Umwelt',m:210,ack:1,by:'padam',tags:['component:power']},
+    {s:'warn',t:'Certificate expires in 13 days',h:'wetterrekord.de',g:'Zertifikate',m:4320,ack:0,tags:['component:cert']},
+    {s:'warn',t:'NTP offset above 100 ms',h:'lnx-dns02',g:'Linux Server',m:300,ack:0,tags:['component:time']},
+    {s:'warn',t:'SMART: reallocated sectors increased (+3)',h:'smart-h7',g:'Storage & RAID',m:1440,ack:1,by:'valerius',tags:['component:storage','smart']},
+    {s:'warn',t:'Certificate expires in 21 days',h:'tiqora.cygnusnetworks.de',g:'Zertifikate',m:6100,ack:0,tags:['component:cert']},
+    {s:'warn',t:'Backup runtime above 4 h (borgmatic)',h:'lnx-backup01',g:'Linux Server',m:510,ack:0,tags:['component:backup']},
+    {s:'warn',t:'Humidity below 30 % im Keller',h:'env-keller',g:'USV & Umwelt',m:95,ack:0,tags:['component:environment']},
+    {s:'warn',t:'Interface 1/1/7 negotiated half-duplex',h:'acc-sw-b21',g:'Access Switches',m:2880,ack:1,by:'padam',tags:['component:network']},
+    {s:'warn',t:'Zabbix server: queue over 100 items for 10 m',h:'lnx-mon01',g:'Linux Server',m:12,ack:0,tags:['component:internal-process']},
+    {s:'warn',t:'SMART temperature 52 °C on slot 4',h:'san-01',g:'Storage & RAID',m:75,ack:0,tags:['component:temperature','smart']},
+    {s:'info',t:'Uptime below 1 h (device rebooted)',h:'acc-sw-b11',g:'Access Switches',m:44,ack:0,tags:['component:system']},
+    {s:'info',t:'Watchtower updated image ghcr.io/cygnusb/wetterrekord',h:'docker-virt6',g:'Docker Hosts',m:130,ack:0,tags:['component:container']},
+    {s:'info',t:'/etc/ssh/sshd_config checksum changed',h:'lnx-app02',g:'Linux Server',m:66,ack:1,by:'valerius',tags:['component:security']},
+    {s:'info',t:'LLD discovered 4 new items (sensor.*)',h:'env-buero',g:'USV & Umwelt',m:200,ack:0,tags:['component:discovery']},
+    {s:'info',t:'Zabbix agent restarted',h:'lnx-web01',g:'Linux Server',m:15,ack:0,tags:['component:system']},
+    {s:'info',t:'New host discovered via network discovery: 192.0.2.31',h:'zabbix-server',g:'Core Network',m:340,ack:0,tags:['component:discovery']},
+    {s:'info',t:'DVB stream bitrate variance above baseline',h:'dvb-gw01',g:'Linux Server',m:28,ack:0,tags:['component:media']},
+  ];
+  const SEVORDER={high:0,avg:1,warn:2,info:3};
+  PROB.sort((a,b)=>SEVORDER[a.s]-SEVORDER[b.s]||a.m-b.m);
+  const fm=m=>m<60?`${m} m`:m<1440?`${Math.floor(m/60)} h ${m%60?String(m%60)+' m':''}`.trim():`${Math.floor(m/1440)} d`;
+  const SEVL={high:'High',avg:'Average',warn:'Warning',info:'Info'};
+  const sevVar=s=>({high:'var(--sev-high)',avg:'var(--sev-avg)',warn:'var(--sev-warn)',info:'var(--sev-info)'}[s]);
+  const counts=PROB.reduce((a,p)=>(a[p.s]=(a[p.s]||0)+1,a),{});
+
+  // Varianten-Umschalter
+  document.querySelectorAll('.variant-switch button').forEach(b=>b.addEventListener('click',()=>{
+    document.querySelectorAll('.variant-switch button').forEach(x=>x.classList.toggle('on',x===b));
+    document.querySelectorAll('.pv').forEach(v=>v.classList.toggle('active',v.id==='pv-'+b.dataset.pv));
+  }));
+
+  /* ---- gemeinsames Detail-Panel (A und A+B) ---- */
+  function detailHTML(sel){
+    if(!sel) return '<div class="detail-block detail-v">Kein Problem ausgewählt.</div>';
+    return `
+      <div class="detail-block">
+        <div style="display:flex;gap:8px;align-items:center;margin-bottom:4px;">
+          <span class="sev ${sel.s}"><i></i>${SEVL[sel.s].toUpperCase()}</span>
+          <span class="mono" style="font-size:12px;font-weight:700;">${sel.h}</span>
+        </div>
+        <div class="detail-v" style="font-weight:600;">${sel.t}</div>
+        <div class="detail-v" style="color:var(--muted);font-size:11.5px;margin-top:3px;">seit ${fm(sel.m)} · ${sel.g} · Event #10${(sel.m*7)%9000}</div>
+      </div>
+      <div class="detail-block"><div class="detail-k">Trigger</div>
+        <div class="detail-v mono3">${sel.s==='high'&&sel.h==='core-sw01'?'max(/core-sw01/sensor.temp[chassis],10m)>65':'last(/'+sel.h+'/…)>threshold'}</div></div>
+      <div class="detail-block"><div class="detail-k">Timeline</div>
+        <div class="tl">
+          <div class="tle"><span class="tlt">−${fm(sel.m)}</span><span>PROBLEM erkannt</span></div>
+          ${sel.ack?`<div class="tle"><span class="tlt">−${fm(Math.max(1,Math.floor(sel.m*0.6)))}</span><span>✓ bestätigt von <b>${sel.by}</b> — „schaue ich mir an“</span></div>`:''}
+          <div class="tle"><span class="tlt">−${fm(Math.max(1,Math.floor(sel.m*0.3)))}</span><span>Wert weiterhin über Schwellwert</span></div>
+        </div></div>
+      <div class="detail-block"><div class="detail-k">Aktionen</div>
+        <div class="actrow">
+          ${sel.ack?'<button class="abtn">Un-Ack</button>':'<button class="abtn pri">✓ Bestätigen</button>'}
+          <button class="abtn">Kommentar…</button><button class="abtn">Schließen</button>
+        </div></div>
+      <div class="detail-block"><div class="detail-k">Kontext</div>
+        <div class="actrow">
+          <button class="abtn">Host Deep-Dive →</button>
+          <button class="abtn">Logs ±15 min</button>
+          <button class="abtn">im alten UI ↗</button>
+        </div></div>`;
+  }
+
+  /* ---- A: Triage-Tabelle ---- */
+  const tri={sel:0, sevOn:{high:true,avg:true,warn:true,info:true}, unackOnly:false};
+  function renderTriage(){
+    const rows=PROB.filter(p=>tri.sevOn[p.s]&&(!tri.unackOnly||!p.ack));
+    const chips=['high','avg','warn','info'].map(s=>
+      `<button class="fchip ${tri.sevOn[s]?'on':'off'}" data-sev="${s}" style="--fc:${sevVar(s)}"><i></i>${SEVL[s]} ${counts[s]}</button>`).join('');
+    const sel=rows[Math.min(tri.sel,Math.max(0,rows.length-1))];
+    const tbody=rows.map((p,i)=>`
+      <tr class="${p===sel?'sel':''}" data-i="${i}" style="--rowsev:${sevVar(p.s)}">
+        <td class="mono2 dim">−${fm(p.m)}</td>
+        <td class="mono2"><b>${p.h}</b><div class="dim" style="font-size:10px;">${p.g}</div></td>
+        <td class="ptxt">${p.t}</td>
+        <td>${(p.tags||[]).slice(0,2).map(t=>`<span class="tagpill">${t}</span>`).join('')}</td>
+        <td class="ackdot ${p.ack?'yes':'no'}">${p.ack?'✓ '+(p.by||'ack'):'— ack'}</td>
+      </tr>`).join('');
+    const detail=detailHTML(sel);
+    document.getElementById('pv-triage').innerHTML=`
+      <div class="triage-grid">
+        <div class="card">
+          <div class="filterbar">
+            ${chips}
+            <button class="fchip ${tri.unackOnly?'on':''}" data-unack style="--fc:var(--accent)">nur unbestätigte</button>
+            <div class="fsearch">⌕ Filter: Host, Text, tag:component=…</div>
+            <span class="bulkhint">⇧-Klick: Mehrfachauswahl → Bulk-Ack</span>
+          </div>
+          <div style="overflow-x:auto;"><table class="ptable">
+            <thead><tr><th>Alter</th><th>Host</th><th>Problem</th><th>Tags</th><th>Ack</th></tr></thead>
+            <tbody>${tbody}</tbody>
+          </table></div>
+          <div style="padding:8px 14px;font-size:11.5px;color:var(--muted);">${rows.length} von 32 Problemen · sortiert nach Severity, dann Alter · URL trägt alle Filter (teilbar)</div>
+        </div>
+        <aside class="card" id="tri-detail">${detail}</aside>
+      </div>`;
+    const el=document.getElementById('pv-triage');
+    el.querySelectorAll('.fchip[data-sev]').forEach(c=>c.addEventListener('click',()=>{ tri.sevOn[c.dataset.sev]=!tri.sevOn[c.dataset.sev]; renderTriage(); }));
+    const un=el.querySelector('[data-unack]'); if(un) un.addEventListener('click',()=>{ tri.unackOnly=!tri.unackOnly; renderTriage(); });
+    el.querySelectorAll('tbody tr').forEach(r=>r.addEventListener('click',()=>{ tri.sel=+r.dataset.i; renderTriage(); }));
+  }
+  renderTriage();
+
+  /* ---- A+B: Lanes-Triage (Kombination) ---- */
+  const combo={sel:PROB[0], open:{high:true,avg:true,warn:true,info:false}, mode:'rows'};
+  function renderCombo(){
+    const laneSections=['high','avg','warn','info'].map(s=>{
+      const items=PROB.filter(p=>p.s===s);
+      const acked=items.filter(p=>p.ack).length;
+      const head=`<div class="lane-head" style="padding:12px 14px 0;">
+        <button class="lanetoggle" data-lane="${s}" aria-expanded="${combo.open[s]}">${combo.open[s]?'▾':'▸'}</button>
+        <span class="sev ${s}"><i></i>${SEVL[s].toUpperCase()}</span>
+        <span class="lcount">${items.length} · ${acked} ack</span><span class="lbar"></span></div>`;
+      if(!combo.open[s]) return head;
+      if(combo.mode==='cards'){
+        const cards=items.map(p=>`
+          <button class="pcard ${p===combo.sel?'psel':''}" data-e="${PROB.indexOf(p)}" style="--lc:${sevVar(p.s)}">
+            <span class="ph2"><span class="hn">${p.h}</span><span class="ag">−${fm(p.m)}</span></span>
+            <span class="pt2">${p.t}</span>
+            <span style="margin:2px -2px 0;">${spark(series(30,50,10,p.m%3-1),220,26,sevVar(p.s),true)}</span>
+            <span class="pf2"><span class="tagpill">${(p.tags||[''])[0]||''}</span>
+              <span class="ackdot ${p.ack?'yes':'no'}">${p.ack?'✓ '+(p.by||''):'ack'}</span></span>
+          </button>`).join('');
+        return head+`<div class="lanegrid ${s==='high'?'':'dense'}" style="padding:10px 14px 4px;">${cards}</div>`;
+      }
+      const rows=items.map(p=>`
+        <tr class="${p===combo.sel?'sel':''}" data-e="${PROB.indexOf(p)}" style="--rowsev:${sevVar(p.s)}">
+          <td class="mono2 dim" style="width:70px;">−${fm(p.m)}</td>
+          <td class="mono2" style="width:170px;"><b>${p.h}</b></td>
+          <td class="ptxt">${p.t}</td>
+          <td style="width:170px;">${(p.tags||[]).slice(0,1).map(t=>`<span class="tagpill">${t}</span>`).join('')}</td>
+          <td class="ackdot ${p.ack?'yes':'no'}" style="width:90px;">${p.ack?'✓ '+(p.by||'ack'):'— ack'}</td>
+        </tr>`).join('');
+      return head+`<div style="overflow-x:auto;padding:6px 0 2px;"><table class="ptable"><tbody>${rows}</tbody></table></div>`;
+    }).join('');
+    document.getElementById('pv-combo').innerHTML=`
+      <div class="triage-grid">
+        <div class="card">
+          <div class="filterbar">
+            <span style="font-size:12px;color:var(--muted);">Ansicht:</span>
+            <div class="toggle2" id="combo-mode">
+              <button class="${combo.mode==='cards'?'on':''}" data-mode="cards">Karten + Sparkline</button>
+              <button class="${combo.mode==='rows'?'on':''}" data-mode="rows">Zeilen</button>
+            </div>
+            <div class="fsearch">⌕ Filter: Host, Text, tag:component=…</div>
+            <span class="bulkhint">Severity-Chips wie Variante A</span>
+          </div>
+          ${laneSections}
+          <div style="padding:10px 14px;font-size:11.5px;color:var(--muted);">Lanes einklappbar (Info startet zu) · Umschalter stellt ALLE Lanes um: Karten mit Trigger-Item-Sparkline oder dichte Zeilen · Klick wählt fürs Detail-Panel · Modus wird pro Nutzer gemerkt</div>
+        </div>
+        <aside class="card">${detailHTML(combo.sel)}</aside>
+      </div>`;
+    const el=document.getElementById('pv-combo');
+    el.querySelectorAll('#combo-mode button').forEach(b=>b.addEventListener('click',()=>{ combo.mode=b.dataset.mode; renderCombo(); }));
+    el.querySelectorAll('.lanetoggle').forEach(b=>b.addEventListener('click',e=>{ e.stopPropagation(); combo.open[b.dataset.lane]=!combo.open[b.dataset.lane]; renderCombo(); }));
+    el.querySelectorAll('[data-e]').forEach(n=>n.addEventListener('click',()=>{ combo.sel=PROB[+n.dataset.e]; renderCombo(); }));
+  }
+  renderCombo();
+
+  /* ---- B: Severity-Lanes ---- */
+  (function(){
+    const lanes=['high','avg','warn','info'].map(s=>{
+      const items=PROB.filter(p=>p.s===s);
+      const cards=items.map(p=>`
+        <button class="pcard" style="--lc:${sevVar(p.s)}">
+          <span class="ph2"><span class="hn">${p.h}</span><span class="ag">−${fm(p.m)}</span></span>
+          <span class="pt2">${p.t}</span>
+          ${s==='high'?`<span style="margin:2px -2px 0;">${spark(series(30,50,10,p.m%3-1),220,26,sevVar(p.s),true)}</span>`:''}
+          <span class="pf2"><span class="tagpill">${(p.tags||[''])[0]||''}</span>
+            <span class="ackdot ${p.ack?'yes':'no'}">${p.ack?'✓ '+(p.by||''):'ack'}</span></span>
+        </button>`).join('');
+      return `<div class="lane">
+        <div class="lane-head"><span class="sev ${s}"><i></i>${SEVL[s].toUpperCase()}</span>
+          <span class="lcount">${items.length} ${items.length===1?'Problem':'Probleme'}</span><span class="lbar"></span>
+          ${s==='high'?'<span class="lcount">Karten mit Live-Sparkline des Trigger-Items</span>':''}</div>
+        <div class="lanegrid ${s==='high'?'':'dense'}">${cards}</div>
+      </div>`;
+    }).join('');
+    document.getElementById('pv-lanes').innerHTML=lanes+
+      `<div style="font-size:11.5px;color:var(--muted);padding:2px 2px 8px;">Gedacht als NOC-/Wall-Ansicht: High immer oben und groß, Lanes einklappbar, Karten-Klick → Detail-Panel wie in Variante A.</div>`;
+  })();
+
+  /* ---- C: Ops-Cockpit ---- */
+  (function(){
+    const kpis=['high','avg','warn','info'].map(s=>`
+      <div class="kpi" style="--kc:${sevVar(s)}">
+        <div class="kl">${SEVL[s]}</div><div class="kv" style="color:${sevVar(s)}">${counts[s]}</div>
+        <div class="kd">${s==='high'?'<b>+2</b> vs. gestern':s==='avg'?'<b>−1</b> vs. gestern':'±0'}</div>
+      </div>`).join('');
+    const hourly=Array.from({length:24},(_,h)=>Math.round(1+3*Math.abs(Math.sin(h/3.2))+(h===9||h===14?4:0)));
+    const hmax=Math.max(...hourly);
+    const bars=hourly.map((v,h)=>`<div title="${String(h).padStart(2,'0')}:00 — ${v} neu" style="flex:1;display:flex;flex-direction:column;justify-content:flex-end;"><div style="height:${(v/hmax*46).toFixed(0)}px;background:${h>=13&&h<=14?'var(--sev-avg)':'var(--chart-1)'};border-radius:2px 2px 0 0;min-height:2px;"></div></div>`).join('');
+    const groups={}; PROB.forEach(p=>{ (groups[p.g]=groups[p.g]||{high:0,avg:0,warn:0,info:0})[p.s]++; });
+    const gmax=Math.max(...Object.values(groups).map(g=>g.high+g.avg+g.warn+g.info));
+    const gbars=Object.entries(groups).sort((a,b)=>(b[1].high*10+b[1].avg)-(a[1].high*10+a[1].avg)).map(([g,c])=>{
+      const total=c.high+c.avg+c.warn+c.info;
+      const seg=s=>c[s]?`<i style="width:${(c[s]/gmax*100).toFixed(1)}%;background:${sevVar(s)}"></i>`:'';
+      return `<div class="gbar-row"><span class="gn">${g}</span><span class="gb">${seg('high')}${seg('avg')}${seg('warn')}${seg('info')}</span><span class="gc">${total}</span></div>`;
+    }).join('');
+    const R2=mulberry32(7);
+    const days=['Mo','Di','Mi','Do','Fr','Sa','So'];
+    const heat=days.map((d,di)=>`<span class="hl">${d}</span>`+Array.from({length:24},(_,h)=>{
+      const base=(h>7&&h<19?38:12)+(di===2&&h===14?55:0)+(di===4&&h===9?40:0)+R2()*22;
+      return `<div class="hcell" style="--hv:${Math.min(92,base).toFixed(0)}" title="${d} ${String(h).padStart(2,'0')}:00"></div>`;
+    }).join('')).join('');
+    const feed=PROB.filter(p=>p.ack).slice(0,5).map(p=>`
+      <div class="ackfeed-row"><span class="at">−${fm(Math.max(1,Math.floor(p.m*0.6)))}</span>
+        <span class="sev ${p.s}"><i></i></span>
+        <span style="flex:1;min-width:0;"><b>${p.by}</b> bestätigte „${p.t.length>44?p.t.slice(0,44)+'…':p.t}“<span class="ph3" style="display:block;">${p.h}</span></span>
+      </div>`).join('');
+    const list=PROB.filter(p=>p.s==='high'||p.s==='avg').map(p=>`
+      <div class="plist-row" style="--rowsev:${sevVar(p.s)}">
+        <span class="pt">${p.t}<span class="ph3" style="display:block;">${p.h} · ${p.g}${p.ack?' · ✓ '+p.by:''}</span></span>
+        <span class="ph3">−${fm(p.m)}</span>
+      </div>`).join('');
+    document.getElementById('pv-cockpit').innerHTML=`
+      <div class="kpirow">
+        ${kpis}
+        <div class="kpi"><div class="kl">Neue Probleme / Stunde · 24 h</div>
+          <div style="display:flex;gap:2px;align-items:flex-end;height:50px;margin-top:8px;">${bars}</div>
+          <div class="kd" style="display:flex;justify-content:space-between;"><span>00:00</span><span>MTTA <b>11 m</b> · Ack-Quote <b>31 %</b></span><span>23:00</span></div></div>
+      </div>
+      <div class="cockpit-grid">
+        <div class="card">
+          <div class="cardhead"><span class="eyebrow">Aktiv · High + Average</span><span class="right">Klick → Detail-Panel · alle 32 in Variante A</span></div>
+          ${list}
+        </div>
+        <div style="display:flex;flex-direction:column;gap:14px;">
+          <div class="card"><div class="cardhead"><span class="eyebrow">Betroffene Gruppen</span></div><div style="padding:6px 0;">${gbars}</div></div>
+          <div class="card"><div class="cardhead"><span class="eyebrow">Problem-Aufkommen · 7 Tage</span><span class="right">Zelle = Stunde</span></div>
+            <div class="heat7">${heat}</div>
+            <div class="heatx"><span></span>${Array.from({length:24},(_,h)=>`<span>${h%6===0?String(h).padStart(2,'0'):''}</span>`).join('')}</div></div>
+          <div class="card"><div class="cardhead"><span class="eyebrow">Zuletzt bestätigt</span></div>${feed}</div>
+        </div>
+      </div>`;
+  })();
+})();
+</script>

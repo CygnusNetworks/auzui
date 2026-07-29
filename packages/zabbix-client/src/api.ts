@@ -79,6 +79,7 @@ export class ZabbixApi {
       suppressed?: boolean;
       recent?: boolean;
       eventid_from?: ZabbixId;
+      selectTags?: "extend";
     } = {},
   ): Promise<ZabbixProblem[]> {
     return this.client.call("problem.get", params);
@@ -91,6 +92,7 @@ export class ZabbixApi {
       time_from?: number;
       time_till?: number;
       selectHosts?: "extend" | string[];
+      select_acknowledges?: "extend" | string[];
       value?: number[];
     } = {},
   ): Promise<ZabbixEvent[]> {
@@ -136,6 +138,7 @@ export class ZabbixApi {
     params: GetParamsBase & {
       hostids?: ZabbixId[];
       itemids?: ZabbixId[];
+      triggerids?: ZabbixId[];
       expandExpression?: boolean;
       selectItems?: "extend" | string[];
       selectHosts?: "extend" | string[];

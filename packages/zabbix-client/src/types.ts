@@ -81,6 +81,16 @@ export interface ZabbixProblem {
   tags?: ZabbixItemTag[];
 }
 
+export interface ZabbixEventAcknowledge {
+  acknowledgeid: ZabbixId;
+  userid: ZabbixId;
+  eventid: ZabbixId;
+  clock: string;
+  message: string;
+  /** action bitmask: 1 close, 2 ack, 4 message, 8 change severity, 16 unack */
+  action: string;
+}
+
 export interface ZabbixEvent {
   eventid: ZabbixId;
   source: string;
@@ -91,6 +101,7 @@ export interface ZabbixEvent {
   severity?: ZabbixSeverity;
   name?: string;
   hosts?: Pick<ZabbixHost, "hostid" | "host" | "name">[];
+  acknowledges?: ZabbixEventAcknowledge[];
 }
 
 export interface ZabbixTrigger {
@@ -101,7 +112,7 @@ export interface ZabbixTrigger {
   value?: "0" | "1";
   status?: "0" | "1";
   hosts?: Pick<ZabbixHost, "hostid" | "host">[];
-  items?: Pick<ZabbixItem, "itemid" | "key_" | "name">[];
+  items?: Pick<ZabbixItem, "itemid" | "key_" | "name" | "value_type">[];
 }
 
 export interface ZabbixHistoryPoint {

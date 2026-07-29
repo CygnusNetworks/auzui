@@ -1,10 +1,20 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { App } from "./App";
+import { QueryCache, QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { RouterProvider } from "@tanstack/react-router";
+import { router } from "./router";
+import { useAuthStore } from "./lib/auth/store";
+import { isSessionError } from "./lib/auth/session-errors";
 import "./index.css";
 
+function handleQueryError(error: unknown) {
+  if (isSessionError(error)) {
+    useAuthStore.getState().handleSessionExpired();
+  }
+}
+
 const queryClient = new QueryClient({
+  queryCache: new QueryCache({ onError: handleQueryError }),
   defaultOptions: {
     queries: {
       // Monitoring data: fresh-ish, refetch on focus, no aggressive retries
@@ -26,7 +36,7 @@ if (storedTheme === "dark" || (storedTheme === null && !prefersLight)) {
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
-      <App />
+      <RouterProvider router={router} />
     </QueryClientProvider>
   </StrictMode>,
 );
