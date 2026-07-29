@@ -5,12 +5,16 @@ import { formatAge, type EnrichedProblem } from "../../lib/problems";
 import { useAcknowledge } from "./use-acknowledge";
 import { useEventTimeline } from "./use-event-timeline";
 import { useAppConfig } from "../../lib/use-app-config";
+import { useLogsEnabled } from "../../lib/use-logs";
+
+const LOGS_CONTEXT_WINDOW_SECONDS = 15 * 60;
 
 export function DetailPanel({ problem }: { problem: EnrichedProblem | undefined }) {
   const [comment, setComment] = useState("");
   const acknowledge = useAcknowledge();
   const timeline = useEventTimeline(problem?.eventid);
   const { data: config } = useAppConfig();
+  const { data: logsEnabled } = useLogsEnabled();
 
   if (!problem) {
     return (
@@ -135,6 +139,19 @@ export function DetailPanel({ problem }: { problem: EnrichedProblem | undefined 
               className="rounded-md border border-line bg-surface-2 px-2.5 py-1 text-xs text-ink-2"
             >
               Host Deep-Dive →
+            </Link>
+          )}
+          {problem.hostId && logsEnabled && (
+            <Link
+              to="/hosts/$hostId"
+              params={{ hostId: problem.hostId }}
+              search={{
+                from: problem.clock - LOGS_CONTEXT_WINDOW_SECONDS,
+                to: problem.clock + LOGS_CONTEXT_WINDOW_SECONDS,
+              }}
+              className="rounded-md border border-line bg-surface-2 px-2.5 py-1 text-xs text-ink-2"
+            >
+              Logs ±15 min
             </Link>
           )}
           {oldUiUrl && (

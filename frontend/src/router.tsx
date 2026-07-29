@@ -7,13 +7,14 @@ import {
 } from "@tanstack/react-router";
 import { AppShell } from "./components/AppShell";
 import { LoginPage } from "./routes/LoginPage";
-import { ComingSoon } from "./routes/ComingSoon";
 import { ProblemsPage } from "./features/problems/ProblemsPage";
 import { validateProblemsSearch } from "./features/problems/search-params";
 import { MaintenancePage } from "./features/maintenance/MaintenancePage";
 import { HostsPage } from "./features/hosts/HostsPage";
 import { LatestDataPage } from "./features/latest-data/LatestDataPage";
 import { validateLatestDataSearch } from "./features/latest-data/search-params";
+import { HostDetailPage } from "./features/host-detail/HostDetailPage";
+import { validateHostDetailSearch } from "./features/host-detail/search-params";
 import { useAuthStore } from "./lib/auth/store";
 
 const rootRoute = createRootRoute({
@@ -76,7 +77,8 @@ const maintenanceRoute = createRoute({
 const hostDetailRoute = createRoute({
   getParentRoute: () => appLayoutRoute,
   path: "/hosts/$hostId",
-  component: () => <ComingSoon title="Host Deep-Dive" />,
+  component: HostDetailPage,
+  validateSearch: validateHostDetailSearch,
 });
 
 const routeTree = rootRoute.addChildren([
