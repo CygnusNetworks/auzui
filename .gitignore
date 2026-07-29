@@ -1,0 +1,30 @@
+# Node / pnpm
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+.pnpm-store/
+
+# Python / uv
+.venv/
+__pycache__/
+*.pyc
+.ruff_cache/
+.pytest_cache/
+.coverage
+coverage.json
+
+# Env & secrets
+.env
+.env.local
+*.local.yml
+
+# Editor / OS
+.DS_Store
+.idea/
+*.swp
+
+# Test / tooling artifacts
+.playwright-mcp/
+playwright-report/
+test-results/

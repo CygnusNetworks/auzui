@@ -1,0 +1,54 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  frontend:
+    name: Frontend (lint, build, test)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # pnpm version comes from the "packageManager" field in package.json
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+      - name: Install
+        run: pnpm install --frozen-lockfile
+      - name: Lint (all workspace packages)
+        run: pnpm -r lint
+      - name: Build (all workspace packages)
+        run: pnpm -r build
+      - name: Test (all workspace packages)
+        run: pnpm -r test
+
+  gateway:
+    name: Gateway (ruff, pytest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies (uv workspace, repo root)
+        run: uv sync --package auzui-gateway --extra dev
+      - name: Ruff check
+        run: uv run ruff check services/gateway/src services/gateway/tests
+      - name: Ruff format
+        run: uv run ruff format --check services/gateway
+      - name: Pytest
+        run: uv run pytest services/gateway/tests

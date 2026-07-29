@@ -1,0 +1,65 @@
+@import "tailwindcss";
+
+/*
+ * auzui design tokens — dark-first (see the approved design mock).
+ * Cool steel ground, phosphor-teal accent, reserved severity semantics.
+ * Theme switching: `dark` class on <html>.
+ */
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --font-mono: ui-monospace, "SF Mono", "Cascadia Code", Menlo, monospace;
+
+  /* light theme (default tokens) */
+  --color-bg: #f2f5f6;
+  --color-surface: #ffffff;
+  --color-surface-2: #f7fafb;
+  --color-surface-3: #edf1f3;
+  --color-line: #d8e0e4;
+  --color-ink: #1b262e;
+  --color-ink-2: #52646f;
+  --color-ink-muted: #7e909b;
+  --color-accent: #12808c;
+
+  --color-sev-high: #ce2c31;
+  --color-sev-avg: #d9660b;
+  --color-sev-warn: #b48a0a;
+  --color-sev-info: #2e6fd0;
+  --color-sev-ok: #35784b;
+
+  --color-chart-1: #0795a6;
+  --color-chart-2: #7050e0;
+  --color-chart-3: #b96a0a;
+  --color-chart-4: #3d7db8;
+}
+
+@layer base {
+  .dark {
+    --color-bg: #0e1317;
+    --color-surface: #151c22;
+    --color-surface-2: #1b242c;
+    --color-surface-3: #212c35;
+    --color-line: #26313b;
+    --color-ink: #dee7ed;
+    --color-ink-2: #8fa1ad;
+    --color-ink-muted: #5c6e7a;
+    --color-accent: #3eb8c0;
+
+    --color-sev-high: #e5484d;
+    --color-sev-avg: #f76b15;
+    --color-sev-warn: #f5c242;
+    --color-sev-info: #6aa6f8;
+    --color-sev-ok: #52a66c;
+
+    --color-chart-1: #17a0ac;
+    --color-chart-2: #8e7aea;
+    --color-chart-3: #c8802f;
+    --color-chart-4: #4c87c8;
+  }
+
+  body {
+    background-color: var(--color-bg);
+    color: var(--color-ink);
+    font-variant-numeric: tabular-nums;
+  }
+}

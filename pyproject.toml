@@ -1,0 +1,27 @@
+[project]
+name = "auzui-workspace"
+version = "0.0.0"
+description = "auzui monorepo workspace root"
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "AGPL-3.0-only" }
+authors = [{ name = "Cygnus Networks GmbH" }]
+
+[tool.uv]
+package = false
+
+[tool.uv.workspace]
+members = ["services/gateway"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+src = ["services/gateway/src", "services/gateway/tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "ASYNC"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["services/gateway/tests"]
+pythonpath = ["services/gateway/src"]

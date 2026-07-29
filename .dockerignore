@@ -1,0 +1,53 @@
+# Node / pnpm
+node_modules/
+**/node_modules/
+dist/
+**/dist/
+coverage/
+**/coverage/
+*.tsbuildinfo
+.pnpm-store/
+
+# Python / uv
+.venv/
+**/.venv/
+__pycache__/
+**/__pycache__/
+*.pyc
+.ruff_cache/
+.pytest_cache/
+**/.pytest_cache/
+.coverage
+coverage.json
+
+# VCS / CI
+.git/
+.github/
+
+# Env & secrets (never bake into the image)
+.env
+.env.local
+*.local.yml
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Test / tooling artifacts
+.playwright-mcp/
+playwright-report/
+test-results/
+
+# Docs / project notes (not needed at build time)
+docs/
+site/
+PLAN.md
+*.md
+!services/gateway/README.md
+
+# Docker itself
+Dockerfile
+.dockerignore
+docker-compose*.yml

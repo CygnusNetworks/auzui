@@ -1,0 +1,50 @@
+# Example deployment for auzui (gateway + SPA in one image).
+# Copy to docker-compose.yml and adjust for your environment.
+#
+# Only ZABBIX_API_URL is required. InfluxDB and Graylog are optional and
+# feature-gated in services/gateway/src/auzui_gateway/config.py: leaving
+# their URL/token unset simply disables the corresponding endpoints
+# (/api/ts/*, /api/logs/*) and the SPA panels that depend on them — the
+# core monitoring UI (Problems, Hosts, Latest Data via the Zabbix API)
+# works without either.
+
+services:
+  auzui:
+    image: ghcr.io/cygnusnetworks/auzui:latest
+    restart: unless-stopped
+    ports:
+      # Bind to localhost only; put a reverse proxy (nginx/traefik) in front
+      # for TLS and external access.
+      - "127.0.0.1:8080:8000"
+    environment:
+      # Required: the Zabbix JSON-RPC endpoint the gateway talks to for
+      # permission checks (item/host visibility) and session validation.
+      ZABBIX_API_URL: "https://zabbix.example.com/api_jsonrpc.php"
+
+      # Optional: InfluxDB (effluence) time-series path. Set all three to
+      # enable /api/ts/*; otherwise the SPA falls back to the Zabbix API
+      # (history.get/trend.get) automatically.
+      # INFLUX_URL: "http://influxdb:8086"
+      # INFLUX_TOKEN: "changeme"
+      # INFLUX_ORG: "example.com"
+      # INFLUX_BUCKET: "zabbix"
+
+      # Optional: Graylog log search, surfaced on the host-detail page. Set
+      # both to enable /api/logs/*; otherwise the log panels are hidden.
+      # GRAYLOG_URL: "https://graylog.example.com/api"
+      # GRAYLOG_TOKEN: "changeme"
+      # GRAYLOG_VERIFY_TLS: "true"
+      # GRAYLOG_DEFAULT_STREAMS: ""
+      # GRAYLOG_SOURCE_FIELD: "source"
+      # GRAYLOG_BEARER_AUTH: "false"
+
+      # Optional: allow the SPA to be served from a different origin than
+      # the gateway (CORS). Leave unset when the gateway also serves the
+      # built SPA (the default — see SERVE_FRONTEND in the image).
+      # CORS_ORIGINS: "https://auzui.example.com"
+    healthcheck:
+      test: ["CMD", "curl", "-fs", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
