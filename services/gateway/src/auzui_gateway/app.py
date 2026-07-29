@@ -198,9 +198,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             [LogFilter(f.field, f.value) for f in req.exclude],
             settings.graylog_source_field,
         )
-        return await graylog.search(
-            query, req.from_, req.to, req.limit, req.offset, req.stream_ids
-        )
+        return await graylog.search(query, req.from_, req.to, req.limit, req.offset, req.stream_ids)
 
     @app.post("/api/logs/host/{hostid}")
     async def logs_host(
