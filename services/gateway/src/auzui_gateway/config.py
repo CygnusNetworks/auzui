@@ -11,6 +11,14 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     zabbix_api_url: str = "https://zabbix-api.example.com/api_jsonrpc.php"
+    # Base URL of the Zabbix web frontend for the HTTP-auth SSO exchange
+    # (index_http.php). Empty = derive from zabbix_api_url.
+    zabbix_web_url: str = ""
+
+    # Kerberos SSO (SPNEGO): validate Negotiate tokens against the keytab,
+    # then exchange the principal for a Zabbix session via index_http.php.
+    spnego_enabled: bool = False
+    krb5_ktname: str = ""
 
     influx_url: str = ""
     influx_token: str = ""
@@ -42,6 +50,12 @@ class Settings(BaseSettings):
     frontend_dir: str = "/app/static"
 
     cors_origins: str = ""  # CSV; empty = CORS middleware disabled
+
+    @property
+    def effective_zabbix_web_url(self) -> str:
+        if self.zabbix_web_url:
+            return self.zabbix_web_url.rstrip("/")
+        return self.zabbix_api_url.rsplit("/", 1)[0].rstrip("/")
 
     @property
     def influx_enabled(self) -> bool:

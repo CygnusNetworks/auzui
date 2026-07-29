@@ -50,6 +50,44 @@ class ZabbixClient:
             raise HTTPException(502, f"Zabbix API error: {message}")
         return body.get("result")
 
+    async def http_auth_session(self, settings_web_url: str, username: str) -> str:
+        """Exchange a (Kerberos-verified) username for a Zabbix session via the
+        frontend's HTTP-auth entry point. Zabbix trusts the webserver-provided
+        user, so the Basic password is irrelevant — the caller MUST have
+        authenticated the user beforehand (SPNEGO)."""
+        import base64
+        import binascii
+        import json
+        from urllib.parse import unquote
+
+        basic = base64.b64encode(f"{username}:x".encode()).decode()
+        try:
+            async with httpx.AsyncClient(timeout=self._timeout, follow_redirects=False) as client:
+                res = await client.get(
+                    f"{settings_web_url}/index_http.php",
+                    headers={"Authorization": f"Basic {basic}"},
+                )
+        except httpx.TimeoutException as e:
+            raise HTTPException(504, "Zabbix web frontend timeout") from e
+        except httpx.HTTPError as e:
+            raise HTTPException(
+                502, f"Zabbix web frontend unreachable: {e.__class__.__name__}"
+            ) from e
+
+        cookie = res.cookies.get("zbx_session")
+        if not cookie:
+            # HTTP auth disabled, unknown user, or frontend misconfigured.
+            raise HTTPException(502, "Zabbix HTTP auth did not yield a session")
+        try:
+            session = json.loads(base64.b64decode(unquote(cookie)))
+            sessionid = session["sessionid"]
+        except (ValueError, KeyError, binascii.Error) as e:
+            raise HTTPException(502, "unexpected zbx_session cookie format") from e
+
+        # Round-trip: the sessionid must work as an API bearer for this user.
+        await self._call(sessionid, "user.get", {"output": ["userid"], "limit": 1})
+        return str(sessionid)
+
     async def validate_session(self, token: str) -> None:
         """401 unless the token belongs to a live Zabbix session. Cached."""
         if self._perm_cache.get(f"session:{token}") is True:

@@ -37,13 +37,17 @@ ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \
     PIP_DISABLE_PIP_VERSION_CHECK=1
 
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends gcc libkrb5-dev \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
 COPY pyproject.toml uv.lock ./
 COPY services/gateway/pyproject.toml services/gateway/README.md services/gateway/
 COPY services/gateway/src services/gateway/src
 
-RUN uv sync --package auzui-gateway --no-dev --frozen
+RUN uv sync --package auzui-gateway --no-dev --frozen --extra kerberos
 
 # ---------- Runtime ----------
 FROM python:${PYTHON_VERSION}-slim AS runtime
@@ -54,6 +58,7 @@ RUN useradd --create-home --uid 1000 auzui \
     && apt-get install -y --no-install-recommends \
         ca-certificates \
         curl \
+        libgssapi-krb5-2 \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=python-deps /app/.venv /app/.venv

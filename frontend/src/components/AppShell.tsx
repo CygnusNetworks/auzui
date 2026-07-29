@@ -3,6 +3,7 @@ import { Link, useNavigate } from "@tanstack/react-router";
 import { ThemeToggle } from "./ThemeToggle";
 import { CommandPalette } from "../features/command-palette/CommandPalette";
 import { useAuthStore } from "../lib/auth/store";
+import { markSsoSuppressed } from "../lib/auth/sso";
 
 const navLinkClass =
   "rounded-md px-3 py-1.5 text-[12.5px] text-ink-2 [&.active]:bg-surface [&.active]:font-semibold [&.active]:text-ink [&.active]:shadow-sm";
@@ -62,7 +63,10 @@ export function AppShell({ children }: { children: ReactNode }) {
         <ThemeToggle />
         <button
           type="button"
-          onClick={logout}
+          onClick={() => {
+            markSsoSuppressed();
+            logout();
+          }}
           className="rounded-md border border-line bg-surface-2 px-2.5 py-1 text-[12.5px] text-ink-2"
         >
           Abmelden

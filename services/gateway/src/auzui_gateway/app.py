@@ -1,7 +1,9 @@
+import base64
+import binascii
 import logging
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Request
+from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -10,6 +12,7 @@ from . import __version__
 from .config import Settings, get_settings
 from .graylog import GraylogClient, build_host_query
 from .influx import VALID_FNS, InfluxClient
+from .spnego import SpnegoAuthFailed, SpnegoService, SpnegoUnavailable, principal_to_login
 from .zabbix import ZabbixClient
 
 logger = logging.getLogger(__name__)
@@ -68,6 +71,46 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             allow_methods=["*"],
             allow_headers=["*"],
         )
+
+    # ---- auth (Kerberos SSO) --------------------------------------------
+
+    spnego_service = SpnegoService(settings)
+
+    @app.get("/api/auth/methods")
+    async def auth_methods() -> dict[str, bool]:
+        return {"password": True, "spnego": settings.spnego_enabled}
+
+    @app.get("/api/auth/spnego")
+    async def auth_spnego(
+        authorization: str | None = Header(default=None),
+    ) -> Response:
+        if not settings.spnego_enabled:
+            raise HTTPException(404, "SPNEGO not configured")
+        if not authorization or not authorization.startswith("Negotiate "):
+            # First leg: challenge the browser to send its Kerberos ticket.
+            return Response(
+                status_code=401,
+                headers={"WWW-Authenticate": "Negotiate"},
+                content='{"detail": {"sso_error": "negotiate token required"}}',
+                media_type="application/json",
+            )
+        try:
+            token = base64.b64decode(authorization[len("Negotiate ") :].strip())
+        except (ValueError, binascii.Error) as e:
+            raise HTTPException(401, {"sso_error": "malformed negotiate token"}) from e
+        try:
+            principal = await spnego_service.accept(token)
+        except SpnegoAuthFailed as e:
+            # Deliberately NO second Negotiate challenge here — a 401 with the
+            # header again would loop the browser (tiqora pattern).
+            raise HTTPException(401, {"sso_error": str(e)}) from e
+        except SpnegoUnavailable as e:
+            raise HTTPException(501, {"sso_error": str(e)}) from e
+
+        username = principal_to_login(principal)
+        sessionid = await zabbix.http_auth_session(settings.effective_zabbix_web_url, username)
+        logger.info("SPNEGO login: %s (%s)", username, principal)
+        return JSONResponse({"token": sessionid, "username": username})
 
     @app.get("/health")
     async def health() -> dict[str, object]:
