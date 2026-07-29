@@ -1,4 +1,6 @@
 export type {
+  LogFilter,
+  LogFilterField,
   LogMessage,
   LogSearchParams,
   LogSearchResult,

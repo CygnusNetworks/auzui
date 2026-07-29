@@ -186,6 +186,12 @@ export interface ZabbixTimeperiod {
   day?: string;
 }
 
+/** Zabbix ≥7.0 renamed the proxy "host" field to "name" (proxy.get). */
+export interface ZabbixProxy {
+  proxyid: ZabbixId;
+  name: string;
+}
+
 export interface ZabbixMaintenance {
   maintenanceid: ZabbixId;
   name: string;
@@ -208,4 +214,10 @@ export interface GetParamsBase {
   filter?: Record<string, unknown>;
   search?: Record<string, string>;
   searchWildcardsEnabled?: boolean;
+  /**
+   * Zabbix defaults to AND-ing every field in `search` — with searchByAny:
+   * true it becomes OR, so e.g. `search:{name,key_}` actually matches either
+   * field instead of requiring both to contain the term.
+   */
+  searchByAny?: boolean;
 }

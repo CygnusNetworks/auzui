@@ -47,6 +47,23 @@ export function aggregateHostProblems(
   return result;
 }
 
+/** A list of names truncated to `limit`, with the remainder counted and the full text kept for a tooltip. */
+export interface NameListSummary {
+  visible: string[];
+  extraCount: number;
+  fullText: string;
+}
+
+/** Summarizes a list of names (e.g. host groups) for compact display with a "+N" indicator. */
+export function summarizeNames(names: string[], limit: number): NameListSummary {
+  const visible = names.slice(0, limit);
+  return {
+    visible,
+    extraCount: names.length - visible.length,
+    fullText: names.join(", "),
+  };
+}
+
 /** Client-side search across host.name / host.host / interface IPs+DNS. */
 export function matchesHostSearch(host: ZabbixHost, query: string): boolean {
   const q = query.trim().toLowerCase();

@@ -1,4 +1,5 @@
 import type {
+  LogFilter,
   LogMessage,
   LogSearchParams,
   LogSearchResult,
@@ -23,19 +24,30 @@ interface GatewayStream {
 }
 
 interface GatewayMessage {
+  id?: string;
   timestamp: number;
   source: string;
   message: string;
   level?: number;
   facility?: string;
+  facility_num?: number;
   stream_ids?: string[];
   fields?: Record<string, unknown>;
+}
+
+interface GatewayLogFilter {
+  field: string;
+  value: string;
 }
 
 interface GatewaySearchResult {
   messages: GatewayMessage[];
   total: number;
   matched_sources?: string[];
+}
+
+function toGatewayFilters(filters: LogFilter[] | undefined): GatewayLogFilter[] | undefined {
+  return filters && filters.length > 0 ? filters.map((f) => ({ field: f.field, value: f.value })) : undefined;
 }
 
 /**
@@ -93,6 +105,8 @@ export class GraylogSource implements LogSource {
         to: params.to,
         limit: params.limit ?? 100,
         offset: params.offset ?? 0,
+        include: toGatewayFilters(params.include),
+        exclude: toGatewayFilters(params.exclude),
       },
       params.signal,
     );
@@ -110,8 +124,11 @@ export class GraylogSource implements LogSource {
         from: params.from,
         to: params.to,
         limit: params.limit ?? 100,
+        offset: params.offset ?? 0,
         extra_query: params.extraQuery,
         stream_ids: params.streamIds,
+        include: toGatewayFilters(params.include),
+        exclude: toGatewayFilters(params.exclude),
       },
       params.signal,
     );
@@ -152,11 +169,13 @@ export class GraylogSource implements LogSource {
 
   private toResult(raw: GatewaySearchResult): LogSearchResult {
     const messages: LogMessage[] = raw.messages.map((m) => ({
+      id: m.id,
       timestamp: m.timestamp,
       source: m.source,
       message: m.message,
       level: m.level,
       facility: m.facility,
+      facilityNum: m.facility_num,
       streamIds: m.stream_ids,
       fields: m.fields ?? {},
     }));

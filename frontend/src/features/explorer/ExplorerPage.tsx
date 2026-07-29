@@ -8,6 +8,7 @@ import { SEVERITY_TOKEN } from "../../lib/severity";
 import { aggregateGroupProblems, utilColorMix } from "../../lib/explorer";
 import { validateExplorerSearch } from "./search-params";
 import { useHostCpuUtil } from "./use-explorer";
+import { useLocale, useT } from "../../lib/i18n";
 
 type ColorMode = "status" | "util";
 
@@ -22,6 +23,8 @@ function sevBgClass(severity: number): string {
  * das übernimmt bereits die Host-Detailseite.
  */
 export function ExplorerPage() {
+  const t = useT();
+  const { locale } = useLocale();
   const rawSearch = useSearch({ strict: false }) as Record<string, unknown>;
   const search = validateExplorerSearch(rawSearch);
   const navigate = useNavigate();
@@ -71,12 +74,10 @@ export function ExplorerPage() {
   return (
     <div className="mx-auto max-w-[1400px] px-3 min-[700px]:px-5 pb-16 pt-4.5">
       <div className="mb-4 mt-1.5 flex flex-wrap items-baseline gap-3">
-        <h1 className="text-[19px] font-bold tracking-tight">Infrastructure Explorer</h1>
-        <span className="text-[13px] text-ink-2">
-          Wo brennt es, wo ist es voll? — Drilldown Gruppen → Hosts
-        </span>
+        <h1 className="text-[19px] font-bold tracking-tight">{t("explorer.title")}</h1>
+        <span className="text-[13px] text-ink-2">{t("explorer.subtitle")}</span>
         <span className="font-mono text-[10.5px] text-ink-muted">
-          generiert aus {hosts.length} Hosts · 0 Konfiguration
+          {t("explorer.generatedFrom", hosts.length)}
         </span>
       </div>
 
@@ -84,7 +85,7 @@ export function ExplorerPage() {
         <div>
           <div className="mb-2 flex items-center gap-1.5 text-[12.5px] text-ink-2">
             <Link to="/explorer" search={{}} className={selectedGroup ? "text-accent" : "font-semibold text-ink"}>
-              Alle Gruppen
+              {t("explorer.allGroups")}
             </Link>
             {selectedGroup && (
               <>
@@ -97,11 +98,11 @@ export function ExplorerPage() {
           <div className="rounded-lg border border-line bg-surface">
             <div className="flex flex-wrap items-center gap-2 border-b border-line-soft px-3.5 py-2.5">
               <span className="font-mono text-[10px] uppercase tracking-wider text-ink-muted">
-                {selectedGroup ? selectedGroup.name : "Hostgruppen"}
+                {selectedGroup ? selectedGroup.name : t("explorer.hostgroups")}
               </span>
               {selectedGroup && (
                 <div className="ml-auto flex items-center gap-1.5 text-[11.5px] text-ink-2">
-                  <span>Farbe:</span>
+                  <span>{t("explorer.colorLabel")}</span>
                   <div className="inline-flex gap-0.5 rounded-md bg-surface-3 p-0.5">
                     {(["status", "util"] as const).map((mode) => (
                       <button
@@ -112,7 +113,7 @@ export function ExplorerPage() {
                           colorMode === mode ? "bg-surface font-semibold text-ink" : "text-ink-2"
                         }`}
                       >
-                        {mode === "status" ? "Status" : "Auslastung"}
+                        {mode === "status" ? t("explorer.colorStatus") : t("explorer.colorUtil")}
                       </button>
                     ))}
                   </div>
@@ -121,7 +122,7 @@ export function ExplorerPage() {
             </div>
 
             {hostsQuery.isLoading || groupsQuery.isLoading ? (
-              <div className="p-6 text-sm text-ink-2">Lade…</div>
+              <div className="p-6 text-sm text-ink-2">{t("explorer.loading")}</div>
             ) : !selectedGroup ? (
               <div className="grid grid-cols-3 gap-2.5 p-3.5 max-[700px]:grid-cols-1">
                 {groups.map((g) => {
@@ -136,10 +137,14 @@ export function ExplorerPage() {
                       className="flex flex-col items-start gap-1.5 rounded-md border border-line bg-surface-2 p-3 text-left hover:bg-surface-3"
                     >
                       <span className="truncate text-[13px] font-semibold text-ink">{g.name}</span>
-                      <span className="font-mono text-[11px] text-ink-muted">{hostCount} Hosts</span>
+                      <span className="font-mono text-[11px] text-ink-muted">
+                        {t("explorer.hostCount", hostCount)}
+                      </span>
                       <span className={`h-1.5 w-full rounded-full ${sevBgClass(maxSeverity)}`} />
                       <span className="font-mono text-[10.5px] text-ink-muted">
-                        {summary && summary.problemCount > 0 ? `${summary.problemCount} Probleme` : "keine Probleme"}
+                        {summary && summary.problemCount > 0
+                          ? t("explorer.problemCount", summary.problemCount)
+                          : t("explorer.noProblems")}
                       </span>
                     </button>
                   );
@@ -158,7 +163,7 @@ export function ExplorerPage() {
                 ))}
                 {hostsInGroup.length === 0 && (
                   <div className="col-span-full p-6 text-center text-sm text-ink-2">
-                    Keine Hosts in dieser Gruppe.
+                    {t("explorer.noHostsInGroup")}
                   </div>
                 )}
               </div>
@@ -170,12 +175,12 @@ export function ExplorerPage() {
           <div className="rounded-lg border border-line bg-surface">
             <div className="flex items-center gap-2 border-b border-line-soft px-3.5 py-2.5">
               <span className="font-mono text-[10px] uppercase tracking-wider text-ink-muted">
-                Aktive Probleme
+                {t("explorer.activeProblems")}
               </span>
               <span className="ml-auto font-mono text-[10.5px] text-ink-muted">{sortedProblems.length}</span>
             </div>
             {sortedProblems.length === 0 ? (
-              <div className="p-4 text-sm text-ink-2">Keine aktiven Probleme in dieser Ansicht.</div>
+              <div className="p-4 text-sm text-ink-2">{t("explorer.noActiveProblemsInView")}</div>
             ) : (
               <div>
                 {sortedProblems.slice(0, 12).map((p) => (
@@ -191,7 +196,7 @@ export function ExplorerPage() {
                       <div className="truncate font-mono text-[10.5px] text-ink-muted">{p.hostName}</div>
                     </span>
                     <span className="flex-none font-mono text-[10.5px] text-ink-muted">
-                      {formatAge(p.clock)}
+                      {formatAge(p.clock, undefined, locale)}
                     </span>
                   </Link>
                 ))}
@@ -215,6 +220,7 @@ function HostTile({
   problem: { count: number; maxSeverity: number } | undefined;
   utilPct: number | undefined;
 }) {
+  const t = useT();
   const role = host.parentTemplates?.[0]?.name;
   const style =
     colorMode === "util" && utilPct !== undefined ? { backgroundColor: utilColorMix(utilPct) } : undefined;
@@ -233,17 +239,17 @@ function HostTile({
           <span className="h-2 w-2 flex-none rounded-sm" style={style} />
         )}
         <span className="truncate text-[12.5px] font-semibold text-ink">{host.name || host.host}</span>
-        {host.maintenance_status === "1" && <span title="Maintenance">🔧</span>}
+        {host.maintenance_status === "1" && <span title={t("explorer.maintenanceTitle")}>🔧</span>}
       </span>
       {role && <span className="truncate font-mono text-[10.5px] text-ink-muted">{role}</span>}
       <span className="font-mono text-[11px] text-ink-2">
         {colorMode === "util"
           ? utilPct !== undefined
             ? `${utilPct.toFixed(0)} %`
-            : "–"
+            : t("explorer.utilNoValue")
           : problem && problem.count > 0
-            ? `${problem.count} Probleme`
-            : "OK"}
+            ? t("explorer.problemCount", problem.count)
+            : t("explorer.ok")}
       </span>
     </Link>
   );

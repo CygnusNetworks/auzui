@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { ThemeToggle } from "./ThemeToggle";
+import { UserMenu } from "./UserMenu";
 import { CommandPalette } from "../features/command-palette/CommandPalette";
 import { useAuthStore } from "../lib/auth/store";
-import { markSsoSuppressed } from "../lib/auth/sso";
 import { useLogsEnabled } from "../lib/use-logs";
 import { BUNDLE_VERSION, useAppConfig } from "../lib/use-app-config";
+import { useT } from "../lib/i18n";
 
 const navLinkClass =
   "rounded-md px-3 py-1.5 text-[12.5px] text-ink-2 [&.active]:bg-surface [&.active]:font-semibold [&.active]:text-ink [&.active]:shadow-sm";
@@ -20,9 +20,9 @@ interface NavLinkDef {
 }
 
 export function AppShell({ children }: { children: ReactNode }) {
+  const t = useT();
   const [cmdkOpen, setCmdkOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
-  const logout = useAuthStore((s) => s.logout);
   const token = useAuthStore((s) => s.token);
   const navigate = useNavigate();
   const { data: config } = useAppConfig();
@@ -66,14 +66,14 @@ export function AppShell({ children }: { children: ReactNode }) {
   }, [menuOpen]);
 
   const navLinks: NavLinkDef[] = [
-    { to: "/", label: "Problems" },
-    { to: "/hosts", label: "Hosts" },
-    { to: "/explorer", label: "Explorer" },
-    { to: "/topology", label: "Topologie" },
-    { to: "/metrics", label: "Metrics" },
-    { to: "/latest-data", label: "Latest Data" },
-    { to: "/logs", label: "Logs", show: logsEnabled },
-    { to: "/maintenance", label: "Maintenance" },
+    { to: "/", label: t("appShell.nav.problems") },
+    { to: "/hosts", label: t("appShell.nav.hosts") },
+    { to: "/explorer", label: t("appShell.nav.explorer") },
+    { to: "/topology", label: t("appShell.nav.topology") },
+    { to: "/metrics", label: t("appShell.nav.metrics") },
+    { to: "/latest-data", label: t("appShell.nav.latestData") },
+    { to: "/logs", label: t("appShell.nav.logs"), show: logsEnabled },
+    { to: "/maintenance", label: t("appShell.nav.maintenance") },
   ];
 
   return (
@@ -100,7 +100,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           onClick={() => setMenuOpen((v) => !v)}
           className="ml-2 flex items-center gap-1.5 rounded-md border border-line bg-surface-2 px-2.5 py-1 text-[12.5px] text-ink-2 min-[900px]:hidden"
         >
-          ☰ Menü
+          {t("appShell.menuButton")}
         </button>
         <div className="flex-1" />
         <span
@@ -114,7 +114,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           onClick={() => setCmdkOpen(true)}
           className="hidden items-center gap-2 rounded-md border border-line bg-surface-2 px-2.5 py-1 text-[12.5px] text-ink-muted min-[900px]:flex"
         >
-          Suchen &amp; Aktionen…{" "}
+          {t("appShell.searchAndActions")}{" "}
           <kbd className="rounded border border-line bg-surface-3 px-1.5 font-mono text-[11px] text-ink-2">
             ⌘K
           </kbd>
@@ -122,22 +122,14 @@ export function AppShell({ children }: { children: ReactNode }) {
         <button
           type="button"
           onClick={() => setCmdkOpen(true)}
-          aria-label="Suchen & Aktionen"
+          aria-label={t("appShell.searchAndActionsAria")}
           className="flex items-center rounded-md border border-line bg-surface-2 px-2.5 py-1 text-[13px] text-ink-muted min-[900px]:hidden"
         >
           🔍
         </button>
-        <ThemeToggle />
-        <button
-          type="button"
-          onClick={() => {
-            markSsoSuppressed();
-            logout();
-          }}
-          className="hidden rounded-md border border-line bg-surface-2 px-2.5 py-1 text-[12.5px] text-ink-2 min-[900px]:block"
-        >
-          Abmelden
-        </button>
+        <div className="hidden min-[900px]:block">
+          <UserMenu />
+        </div>
 
         {menuOpen && (
           <div className="absolute left-0 right-0 top-full z-40 border-b border-line bg-surface px-4 py-2 shadow-lg min-[900px]:hidden">
@@ -161,17 +153,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               >
                 {version}
               </span>
-              <button
-                type="button"
-                onClick={() => {
-                  setMenuOpen(false);
-                  markSsoSuppressed();
-                  logout();
-                }}
-                className="rounded-md border border-line bg-surface-2 px-2.5 py-1 text-[12.5px] text-ink-2"
-              >
-                Abmelden
-              </button>
+              <UserMenu variant="mobile" />
             </div>
           </div>
         )}

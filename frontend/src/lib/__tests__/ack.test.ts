@@ -33,4 +33,34 @@ describe("buildAckAction", () => {
   it("returns 0 for no input", () => {
     expect(buildAckAction({})).toBe(0);
   });
+
+  it("returns 32 for suppress", () => {
+    expect(buildAckAction({ suppress: true })).toBe(ACK_ACTION.SUPPRESS);
+  });
+
+  it("returns 64 for unsuppress", () => {
+    expect(buildAckAction({ unsuppress: true })).toBe(ACK_ACTION.UNSUPPRESS);
+  });
+
+  it("prefers suppress over unsuppress if both are set", () => {
+    expect(buildAckAction({ suppress: true, unsuppress: true })).toBe(ACK_ACTION.SUPPRESS);
+  });
+
+  it("returns 8 for a severity change", () => {
+    expect(buildAckAction({ severity: 3 })).toBe(ACK_ACTION.CHANGE_SEVERITY);
+  });
+
+  it("treats severity 0 as a requested change (not absent)", () => {
+    expect(buildAckAction({ severity: 0 })).toBe(ACK_ACTION.CHANGE_SEVERITY);
+  });
+
+  it("combines ack + suppress + message + severity change (2 | 32 | 4 | 8 = 46)", () => {
+    expect(
+      buildAckAction({ ack: true, suppress: true, message: "escalated", severity: 4 }),
+    ).toBe(46);
+  });
+
+  it("combines unack + unsuppress (16 | 64 = 80)", () => {
+    expect(buildAckAction({ unack: true, unsuppress: true })).toBe(80);
+  });
 });

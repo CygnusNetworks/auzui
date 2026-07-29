@@ -72,13 +72,17 @@ function drawThresholds(thresholds: TimeChartThreshold[]) {
 }
 
 /**
- * uPlot wrapper for one or more time series. Rebuilds the chart when data,
- * options, or the dark/light theme change (theme flips are rare — a full
- * rebuild reading fresh CSS variables is simpler and correct, more important
- * than micro-optimizing chart churn here).
+ * uPlot wrapper for one or more time series. Only rebuilds the uPlot
+ * instance when the chart's *structure* changes (series labels/colors, unit,
+ * height, thresholds, presence of onBrush, or the dark/light theme) — a pure
+ * data update (e.g. the 30s live-refresh tick) instead calls uPlot's
+ * `setData` in place so the chart never unmounts/flashes a placeholder.
  */
 export function TimeChart({ series, unit, height = 220, thresholds = [], onBrush }: TimeChartProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const plotRef = useRef<uPlot | null>(null);
+  const onBrushRef = useRef(onBrush);
+  onBrushRef.current = onBrush;
   const [, forceRerender] = useState(0);
 
   // Re-render on .dark class toggles (ThemeToggle flips this on <html>) so the effect below re-reads CSS vars.
@@ -87,6 +91,18 @@ export function TimeChart({ series, unit, height = 220, thresholds = [], onBrush
     observer.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
     return () => observer.disconnect();
   }, []);
+
+  // Structural signature — only changes here should trigger a full uPlot
+  // rebuild. New/changed data points alone (same labels/colors/etc.) must
+  // NOT appear here, so a live refetch goes through the setData effect below.
+  const structuralKey = JSON.stringify({
+    labels: series.map((s) => s.label),
+    colors: series.map((s) => s.color),
+    unit,
+    height,
+    thresholds,
+    hasOnBrush: !!onBrush,
+  });
 
   useEffect(() => {
     const container = containerRef.current;
@@ -120,7 +136,7 @@ export function TimeChart({ series, unit, height = 220, thresholds = [], onBrush
                 if (u.select.width < 2) return;
                 const from = u.posToVal(u.select.left, "x");
                 const to = u.posToVal(u.select.left + u.select.width, "x");
-                onBrush(Math.round(from), Math.round(to));
+                onBrushRef.current?.(Math.round(from), Math.round(to));
                 u.setSelect({ left: 0, width: 0, top: 0, height: 0 }, false);
               },
             ]
@@ -139,6 +155,7 @@ export function TimeChart({ series, unit, height = 220, thresholds = [], onBrush
     };
 
     const plot = new uPlot(opts, toUplotData(series), container);
+    plotRef.current = plot;
 
     // Debounce via rAF — a container resize (e.g. sidebar toggle, window drag)
     // can fire many ResizeObserver callbacks per frame; coalesce to one setSize.
@@ -154,9 +171,17 @@ export function TimeChart({ series, unit, height = 220, thresholds = [], onBrush
     return () => {
       if (rafId !== undefined) cancelAnimationFrame(rafId);
       resizeObserver.disconnect();
+      plotRef.current = null;
       plot.destroy();
     };
-  }, [series, unit, height, thresholds, onBrush]);
+    // Deps intentionally just [structuralKey] — rebuild only on structural changes, see comment above.
+  }, [structuralKey]);
+
+  // Pure data update: same chart structure, new/changed points (e.g. a live
+  // refetch) — update the existing uPlot instance in place.
+  useEffect(() => {
+    plotRef.current?.setData(toUplotData(series));
+  }, [series]);
 
   return <div ref={containerRef} className="w-full" />;
 }

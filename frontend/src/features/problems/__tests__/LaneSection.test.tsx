@@ -1,7 +1,19 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render as rtlRender, screen } from "@testing-library/react";
+import type { ReactElement } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { LaneSection } from "../LaneSection";
 import type { EnrichedProblem } from "../../../lib/problems";
+import { I18nProvider } from "../../../lib/i18n";
+
+/**
+ * LaneSection uses useT()/useLocale(), which require an I18nProvider
+ * ancestor. Pin the locale to "de" explicitly — these assertions check the
+ * German strings, and the provider's auto-detection would otherwise depend
+ * on the test environment's navigator.language.
+ */
+function render(ui: ReactElement) {
+  return rtlRender(<I18nProvider initialLocale="de">{ui}</I18nProvider>);
+}
 
 function mkProblem(overrides: Partial<EnrichedProblem> = {}): EnrichedProblem {
   return {
@@ -14,6 +26,16 @@ function mkProblem(overrides: Partial<EnrichedProblem> = {}): EnrichedProblem {
     tags: [{ tag: "component", value: "temperature" }],
     hostId: "10",
     hostName: "core-sw01",
+    ...overrides,
+  };
+}
+
+/** Bulk-selection props every LaneSection render needs — no-op defaults. */
+function bulkProps(overrides: Partial<Parameters<typeof LaneSection>[0]> = {}) {
+  return {
+    selectedIds: new Set<string>(),
+    onToggleSelect: vi.fn(),
+    onToggleSelectAll: vi.fn(),
     ...overrides,
   };
 }
@@ -35,6 +57,7 @@ describe("LaneSection (rows mode)", () => {
         selectedEventId={undefined}
         onSelect={vi.fn()}
         sparklines={new Map()}
+        {...bulkProps()}
       />,
     );
 
@@ -62,6 +85,7 @@ describe("LaneSection (rows mode)", () => {
         selectedEventId={undefined}
         onSelect={onSelect}
         sparklines={new Map()}
+        {...bulkProps()}
       />,
     );
 
@@ -80,6 +104,7 @@ describe("LaneSection (rows mode)", () => {
         selectedEventId={undefined}
         onSelect={vi.fn()}
         sparklines={new Map()}
+        {...bulkProps()}
       />,
     );
     expect(screen.queryByText("Temperature critical on chassis")).not.toBeInTheDocument();
@@ -97,9 +122,76 @@ describe("LaneSection (rows mode)", () => {
         selectedEventId={undefined}
         onSelect={vi.fn()}
         sparklines={new Map()}
+        {...bulkProps()}
       />,
     );
     fireEvent.click(screen.getByRole("button", { name: "▾" }));
     expect(onToggleOpen).toHaveBeenCalled();
+  });
+
+  it("calls onToggleSelect when a row checkbox is toggled, without triggering onSelect", () => {
+    const onToggleSelect = vi.fn();
+    const onSelect = vi.fn();
+    const problems = [mkProblem({ eventid: "7", hostName: "acc-sw-b04" })];
+
+    render(
+      <LaneSection
+        severity={4}
+        problems={problems}
+        mode="rows"
+        open={true}
+        onToggleOpen={vi.fn()}
+        selectedEventId={undefined}
+        onSelect={onSelect}
+        sparklines={new Map()}
+        {...bulkProps({ onToggleSelect })}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("checkbox", { name: "Temperature critical on chassis auswählen" }));
+    expect(onToggleSelect).toHaveBeenCalledWith("7");
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it("selects all problems in the lane via the header checkbox", () => {
+    const onToggleSelectAll = vi.fn();
+    const problems = [mkProblem({ eventid: "1" }), mkProblem({ eventid: "2" })];
+
+    render(
+      <LaneSection
+        severity={4}
+        problems={problems}
+        mode="rows"
+        open={true}
+        onToggleOpen={vi.fn()}
+        selectedEventId={undefined}
+        onSelect={vi.fn()}
+        sparklines={new Map()}
+        {...bulkProps({ onToggleSelectAll })}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("checkbox", { name: "Alle in High auswählen" }));
+    expect(onToggleSelectAll).toHaveBeenCalledWith(["1", "2"], true);
+  });
+
+  it("checks the header checkbox when every problem in the lane is selected", () => {
+    const problems = [mkProblem({ eventid: "1" }), mkProblem({ eventid: "2" })];
+
+    render(
+      <LaneSection
+        severity={4}
+        problems={problems}
+        mode="rows"
+        open={true}
+        onToggleOpen={vi.fn()}
+        selectedEventId={undefined}
+        onSelect={vi.fn()}
+        sparklines={new Map()}
+        {...bulkProps({ selectedIds: new Set(["1", "2"]) })}
+      />,
+    );
+
+    expect(screen.getByRole("checkbox", { name: "Alle in High auswählen" })).toBeChecked();
   });
 });

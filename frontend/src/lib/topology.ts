@@ -91,6 +91,7 @@ export function buildTopology(
   hosts: ZabbixHost[],
   maps: ZabbixMap[],
   problemsByHost: Map<string, HostProblemSummary>,
+  proxyNameById: Map<string, string> = new Map(),
 ): TopologyGraph {
   const nodes = new Map<string, TopologyNode>();
   const edges = new Map<string, TopologyEdge>();
@@ -157,7 +158,7 @@ export function buildTopology(
   for (const [proxyid, hostidList] of hostsByProxy) {
     if (hostidList.length < 2) continue;
     const proxyNodeId = `proxy:${proxyid}`;
-    nodes.set(proxyNodeId, { id: proxyNodeId, label: `Proxy ${proxyid}`, kind: "proxy" });
+    nodes.set(proxyNodeId, { id: proxyNodeId, label: proxyNameById.get(proxyid) ?? `Proxy ${proxyid}`, kind: "proxy" });
     for (const hostid of hostidList) {
       const a = hostNodeId(hostid);
       const key = edgeKey(a, proxyNodeId, "logical");
@@ -168,4 +169,161 @@ export function buildTopology(
   }
 
   return { nodes: [...nodes.values()], edges: [...edges.values()] };
+}
+
+/**
+ * Redesign "Entwurf 3 — Cluster + Fokus" (siehe PLAN.md-Umsetzung): statt
+ * einer gemischten Kraftlayout-Ansicht drei getrennte Tabs (Zabbix-Maps /
+ * L3-Subnetze / Proxies), links eine sortierte Cluster-Liste, rechts ein
+ * deterministisches Radial-Layout des gewählten Clusters (siehe
+ * lib/radial-layout.ts). Alles unten ist reine Ableitung, kein
+ * Netzwerkzugriff — Tests in lib/__tests__/topology.test.ts.
+ */
+
+export type ClusterKind = "subnet" | "proxy" | "map";
+
+export interface ClusterHostRef {
+  hostid: string;
+  label: string;
+  severity: Severity | undefined;
+  /** Active problem count (for the stage tooltip: "N aktive Probleme"). */
+  problemCount: number;
+  /** First interface IP, if any (stage tooltip). */
+  ip: string | undefined;
+}
+
+export interface ClusterSummary {
+  id: string;
+  kind: ClusterKind;
+  /** Hub label — subnet CIDR, proxy name, or map name. */
+  name: string;
+  hosts: ClusterHostRef[];
+  /** Worst severity among the cluster's hosts, undefined if all OK/none active. */
+  severity: Severity | undefined;
+}
+
+function worstSeverityOf(severities: (Severity | undefined)[]): Severity | undefined {
+  let worst: Severity | undefined;
+  for (const s of severities) if (s !== undefined && (worst === undefined || s > worst)) worst = s;
+  return worst;
+}
+
+function hostRef(host: ZabbixHost, problemsByHost: Map<string, HostProblemSummary>): ClusterHostRef {
+  const summary = problemsByHost.get(host.hostid);
+  return {
+    hostid: host.hostid,
+    label: host.name || host.host,
+    severity: summary?.maxSeverity,
+    problemCount: summary?.count ?? 0,
+    ip: host.interfaces?.[0]?.ip,
+  };
+}
+
+/** L3-Subnetze-Tab: eine /24-Heuristik-Gruppe je gemeinsamem Subnetz (auch Einzelhosts — anders als das Graph-Hub-Node, das >=2 Hosts verlangt, ist die Cluster-Liste eine vollständige Übersicht). */
+export function deriveSubnetClusters(
+  hosts: ZabbixHost[],
+  problemsByHost: Map<string, HostProblemSummary>,
+): ClusterSummary[] {
+  const bySubnet = new Map<string, ZabbixHost[]>();
+  for (const host of hosts) {
+    const key = primarySubnetKey(host);
+    if (!key) continue;
+    const list = bySubnet.get(key);
+    if (list) list.push(host);
+    else bySubnet.set(key, [host]);
+  }
+  const clusters: ClusterSummary[] = [];
+  for (const [subnetKey, members] of bySubnet) {
+    const hostRefs = members.map((h) => hostRef(h, problemsByHost));
+    clusters.push({
+      id: `subnet:${subnetKey}`,
+      kind: "subnet",
+      name: subnetKey,
+      hosts: hostRefs,
+      severity: worstSeverityOf(hostRefs.map((h) => h.severity)),
+    });
+  }
+  return clusters;
+}
+
+/** Proxies-Tab: eine Gruppe je Proxy, Klarname aus `proxyNameById` (proxy.get, siehe use-topology.ts), Fallback "Proxy <id>". */
+export function deriveProxyClusters(
+  hosts: ZabbixHost[],
+  problemsByHost: Map<string, HostProblemSummary>,
+  proxyNameById: Map<string, string>,
+): ClusterSummary[] {
+  const byProxy = new Map<string, ZabbixHost[]>();
+  for (const host of hosts) {
+    if (!host.proxyid) continue;
+    const list = byProxy.get(host.proxyid);
+    if (list) list.push(host);
+    else byProxy.set(host.proxyid, [host]);
+  }
+  const clusters: ClusterSummary[] = [];
+  for (const [proxyid, members] of byProxy) {
+    const hostRefs = members.map((h) => hostRef(h, problemsByHost));
+    clusters.push({
+      id: `proxy:${proxyid}`,
+      kind: "proxy",
+      name: proxyNameById.get(proxyid) ?? `Proxy ${proxyid}`,
+      hosts: hostRefs,
+      severity: worstSeverityOf(hostRefs.map((h) => h.severity)),
+    });
+  }
+  return clusters;
+}
+
+/** Zabbix-Maps-Tab: eine Gruppe je vorhandener Map (map.get), Hosts aus den host-Selements aufgelöst. */
+export function deriveMapClusters(
+  maps: ZabbixMap[],
+  hostByHostId: Map<string, ZabbixHost>,
+  problemsByHost: Map<string, HostProblemSummary>,
+): ClusterSummary[] {
+  const clusters: ClusterSummary[] = [];
+  for (const map of maps) {
+    const seen = new Set<string>();
+    const hostRefs: ClusterHostRef[] = [];
+    for (const el of map.selements ?? []) {
+      if (el.elementtype !== "0") continue;
+      const hostid = el.elements?.[0]?.hostid;
+      if (!hostid || seen.has(hostid)) continue;
+      const host = hostByHostId.get(hostid);
+      if (!host) continue;
+      seen.add(hostid);
+      hostRefs.push(hostRef(host, problemsByHost));
+    }
+    clusters.push({
+      id: `map:${map.sysmapid}`,
+      kind: "map",
+      name: map.name,
+      hosts: hostRefs,
+      severity: worstSeverityOf(hostRefs.map((h) => h.severity)),
+    });
+  }
+  return clusters;
+}
+
+/** Sortierung der Cluster-Liste: schlimmste Severity zuerst (undefined = kein Problem, sortiert ans Ende), dann Name (locale-aware). */
+export function sortClustersBySeverity(clusters: ClusterSummary[]): ClusterSummary[] {
+  return [...clusters].sort((a, b) => {
+    const sa = a.severity ?? -1;
+    const sb = b.severity ?? -1;
+    if (sa !== sb) return sb - sa;
+    return a.name.localeCompare(b.name);
+  });
+}
+
+/** Case-insensitive Substring-Suche über Cluster-Namen UND ihre Host-Namen (für "Suchfeld filtert Cluster UND springt bei Host-Treffern zum Cluster des Hosts", PLAN.md). */
+export function clusterMatchesQuery(cluster: ClusterSummary, query: string): boolean {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  if (cluster.name.toLowerCase().includes(q)) return true;
+  return cluster.hosts.some((h) => h.label.toLowerCase().includes(q));
+}
+
+/** First cluster (by list order) whose hosts include a name match — used to jump the focus stage to a host found via free-text search. */
+export function findClusterForHostQuery(clusters: ClusterSummary[], query: string): ClusterSummary | undefined {
+  const q = query.trim().toLowerCase();
+  if (!q) return undefined;
+  return clusters.find((c) => c.hosts.some((h) => h.label.toLowerCase().includes(q)));
 }

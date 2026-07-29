@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import {
   InfluxSource,
   ZabbixApiSource,
@@ -90,6 +90,11 @@ export function useTimeseries(
     enabled: enabled && items.length > 0,
     staleTime: 30_000,
     retry: false,
+    // Live-Modus bumpt range.from/to alle 30s, was sonst einen neuen
+    // queryKey erzeugt und den Chart kurz auf isLoading/undefined zurückwirft
+    // ("Reload"-Sprung) — keepPreviousData hält den alten Graphen sichtbar,
+    // bis die neuen Punkte da sind.
+    placeholderData: keepPreviousData,
   });
 
   // "Influx disabled" == running on ZabbixApiSource — the only path with the
@@ -104,11 +109,22 @@ export function useTimeseries(
     return {
       seriesByItem: map,
       isLoading: query.isLoading,
+      /** True while a background refetch (e.g. the 30s live tick) is in flight and previous data is still shown. */
+      isFetching: query.isFetching,
       isError: query.isError,
       error: query.error,
       slow,
       refetch: query.refetch,
       source: source.kind,
     };
-  }, [query.data, query.isLoading, query.isError, query.error, slow, query.refetch, source.kind]);
+  }, [
+    query.data,
+    query.isLoading,
+    query.isFetching,
+    query.isError,
+    query.error,
+    slow,
+    query.refetch,
+    source.kind,
+  ]);
 }

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { nowSeconds, presetSeconds, rangeFromPreset, type RangePreset } from "@auzui/timeseries";
+import { useT } from "../lib/i18n";
 
 const PRESETS: RangePreset[] = ["15m", "1h", "6h", "24h", "7d", "30d"];
 const AUTOREFRESH_MS = 30_000;
@@ -26,6 +27,7 @@ export function RangePicker({
   live: boolean;
   onLiveChange: (live: boolean) => void;
 }) {
+  const t = useT();
   const [activePreset, setActivePreset] = useState<RangePreset | "custom">("1h");
   const [customOpen, setCustomOpen] = useState(false);
 
@@ -82,7 +84,7 @@ export function RangePicker({
             activePreset === "custom" ? "bg-surface font-semibold text-ink" : "text-ink-2"
           }`}
         >
-          Custom
+          {t("rangePicker.custom")}
         </button>
       </div>
 
@@ -107,7 +109,7 @@ export function RangePicker({
       <button
         type="button"
         onClick={() => onLiveChange(!live)}
-        title="Live-Refresh alle 30s"
+        title={t("rangePicker.liveRefresh")}
         className={`rounded-full border px-2.5 py-1 font-mono text-[10.5px] ${
           live
             ? "border-accent/40 bg-accent-soft text-accent"

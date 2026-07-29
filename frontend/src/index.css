@@ -77,4 +77,33 @@
     color: var(--color-ink);
     font-variant-numeric: tabular-nums;
   }
+
+  /*
+   * Log-Zeile beim (erstmaligen) Mounten sanft einblenden (LogRows.tsx) —
+   * spielt nur beim initialen Mount eines DOM-Knotens, nicht bei jedem
+   * Re-Render, solange die Liste stabile Keys benutzt (msg.id). Das ist der
+   * Trick gegen Flackern im Live-Modus: bereits sichtbare Zeilen behalten
+   * ihren DOM-Knoten und re-triggern die Animation nicht, nur echte
+   * Neuzugänge blenden ein.
+   */
+  @keyframes log-row-in {
+    from {
+      opacity: 0;
+      transform: translateY(-4px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .animate-log-row-in {
+    animation: log-row-in 220ms ease-out;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .animate-log-row-in {
+      animation: none;
+    }
+  }
 }

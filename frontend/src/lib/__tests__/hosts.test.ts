@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { aggregateHostProblems, matchesHostSearch, sortHosts } from "../hosts";
+import { aggregateHostProblems, matchesHostSearch, sortHosts, summarizeNames } from "../hosts";
 import type { ZabbixHost } from "@auzui/zabbix-client";
 
 describe("aggregateHostProblems", () => {
@@ -55,6 +55,24 @@ describe("matchesHostSearch", () => {
 
   it("matches everything for an empty query", () => {
     expect(matchesHostSearch(mkHost(), "  ")).toBe(true);
+  });
+});
+
+describe("summarizeNames", () => {
+  it("returns everything visible with no extra count when under the limit", () => {
+    const result = summarizeNames(["a", "b"], 4);
+    expect(result).toEqual({ visible: ["a", "b"], extraCount: 0, fullText: "a, b" });
+  });
+
+  it("truncates and counts the remainder when over the limit", () => {
+    const result = summarizeNames(["a", "b", "c", "d", "e", "f"], 4);
+    expect(result.visible).toEqual(["a", "b", "c", "d"]);
+    expect(result.extraCount).toBe(2);
+    expect(result.fullText).toBe("a, b, c, d, e, f");
+  });
+
+  it("handles an empty list", () => {
+    expect(summarizeNames([], 4)).toEqual({ visible: [], extraCount: 0, fullText: "" });
   });
 });
 

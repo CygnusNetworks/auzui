@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { ZabbixApi, ZabbixClient } from "@auzui/zabbix-client";
+import { tSync } from "../i18n";
 
 const SESSION_STORAGE_KEY = "auzui-session-token";
 const USERNAME_STORAGE_KEY = "auzui-session-username";
@@ -46,7 +47,7 @@ export const useAuthStore = create<AuthState>((set) => ({
     } catch (err) {
       set({
         loggingIn: false,
-        loginError: err instanceof Error ? err.message : "Login fehlgeschlagen",
+        loginError: err instanceof Error ? err.message : tSync("auth.loginFailed"),
       });
       throw err;
     }
@@ -69,6 +70,6 @@ export const useAuthStore = create<AuthState>((set) => ({
     sessionStorage.removeItem(SESSION_STORAGE_KEY);
     sessionStorage.removeItem(USERNAME_STORAGE_KEY);
     zabbixClient.setToken(undefined);
-    set({ token: null, username: null, loginError: "Sitzung abgelaufen — bitte erneut anmelden." });
+    set({ token: null, username: null, loginError: tSync("auth.sessionExpired") });
   },
 }));

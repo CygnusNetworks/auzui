@@ -8,10 +8,13 @@ import { useLogsEnabled, useLogSource } from "../../lib/use-logs";
 import { buildDashboard } from "../../lib/auto-dashboard";
 import { validateHostDetailSearch } from "./search-params";
 import { useHostDetail } from "./use-host-detail";
+import { useHostLogs } from "./use-host-logs";
 import { DashboardSection } from "./DashboardSection";
 import { LogsPanel } from "./LogsPanel";
+import { useT } from "../../lib/i18n";
 
 export function HostDetailPage() {
+  const t = useT();
   const { hostId } = useParams({ strict: false }) as { hostId?: string };
   const rawSearch = useSearch({ strict: false }) as Record<string, unknown>;
   const search = validateHostDetailSearch(rawSearch);
@@ -31,6 +34,10 @@ export function HostDetailPage() {
 
   const { data: logsEnabled } = useLogsEnabled();
   const logSource = useLogSource();
+  // Nur zur Platzierungsentscheidung (prominent oben vs. unten) — teilt sich
+  // den React-Query-Cache mit LogsPanels eigenem (unfiltered) Query.
+  const { data: logsPreview } = useHostLogs(logSource, hostId, range, "");
+  const hasLogEntries = (logsPreview?.pages[0]?.messages.length ?? 0) > 0;
 
   function onBrush(fromSec: number, toSec: number) {
     setLive(false);
@@ -40,7 +47,11 @@ export function HostDetailPage() {
   if (!hostId) return null;
 
   if (isLoading || !host) {
-    return <div className="mx-auto max-w-[1400px] px-3 min-[700px]:px-5 pt-4.5 text-sm text-ink-2">Lade Host…</div>;
+    return (
+      <div className="mx-auto max-w-[1400px] px-3 min-[700px]:px-5 pt-4.5 text-sm text-ink-2">
+        {t("hostDetail.loading")}
+      </div>
+    );
   }
 
   const groups = host.hostgroups ?? [];
@@ -56,7 +67,7 @@ export function HostDetailPage() {
         <span className="font-mono text-[13px] text-ink-muted">{host.host}</span>
         {inMaintenance && (
           <span className="rounded-full border border-line bg-surface-2 px-2 py-0.5 font-mono text-[10.5px] text-ink-muted">
-            🔧 Maintenance aktiv
+            {t("hostDetail.maintenanceActive")}
           </span>
         )}
       </div>
@@ -70,12 +81,12 @@ export function HostDetailPage() {
             {g.name}
           </span>
         ))}
-        {templates.map((t) => (
+        {templates.map((template) => (
           <span
-            key={t.templateid}
+            key={template.templateid}
             className="whitespace-nowrap rounded border border-line px-1.5 py-0.5 font-mono text-[10.5px] text-ink-muted"
           >
-            {t.name}
+            {template.name}
           </span>
         ))}
         {inventoryBits.length > 0 && (
@@ -99,9 +110,15 @@ export function HostDetailPage() {
         </div>
       )}
 
+      {logsEnabled && hasLogEntries && (
+        <div className="mb-4">
+          <LogsPanel source={logSource} hostId={hostId} range={range} />
+        </div>
+      )}
+
       <div className="mb-4 flex flex-wrap items-center gap-2.5">
         <span className="font-mono text-[10.5px] text-ink-muted">
-          generiert aus {dashboard.generatedFromItemCount} Items · 0 Konfiguration
+          {t("hostDetail.generatedFrom", dashboard.generatedFromItemCount)}
         </span>
         <div className="ml-auto">
           <RangePicker value={range} onChange={setRange} live={live} onLiveChange={setLive} />
@@ -116,7 +133,7 @@ export function HostDetailPage() {
         {dashboard.textItems.length > 0 && (
           <div className="rounded-lg border border-line bg-surface">
             <div className="border-b border-line-soft px-3.5 py-2.5">
-              <span className="text-sm font-semibold text-ink">Status</span>
+              <span className="text-sm font-semibold text-ink">{t("hostDetail.status")}</span>
             </div>
             <div className="grid grid-cols-2 gap-x-4 gap-y-1 p-3.5 max-[700px]:grid-cols-1">
               {dashboard.textItems.map((item) => (
@@ -129,7 +146,9 @@ export function HostDetailPage() {
           </div>
         )}
 
-        {logsEnabled && <LogsPanel source={logSource} hostId={hostId} range={range} />}
+        {logsEnabled && !hasLogEntries && (
+          <LogsPanel source={logSource} hostId={hostId} range={range} />
+        )}
       </div>
     </div>
   );

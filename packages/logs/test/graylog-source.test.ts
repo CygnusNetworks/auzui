@@ -40,6 +40,76 @@ describe("GraylogSource", () => {
     expect(result.total).toBe(0);
   });
 
+  it("sends offset for pagination and include/exclude filter chips", async () => {
+    const fetchFn = vi.fn(async (_url: RequestInfo | URL, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body));
+      expect(body.offset).toBe(50);
+      expect(body.include).toEqual([{ field: "facility", value: "local0" }]);
+      expect(body.exclude).toEqual([{ field: "application_name", value: "sshd" }]);
+      return jsonResponse({ messages: [], total: 0 });
+    }) as unknown as typeof fetch;
+
+    const src = new GraylogSource({ getToken: () => "tok", fetchFn });
+    await src.search({
+      from: 0,
+      to: 100,
+      offset: 50,
+      include: [{ field: "facility", value: "local0" }],
+      exclude: [{ field: "application_name", value: "sshd" }],
+    });
+  });
+
+  it("omits include/exclude keys entirely when no filters are set", async () => {
+    const fetchFn = vi.fn(async (_url: RequestInfo | URL, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body));
+      expect(body.include).toBeUndefined();
+      expect(body.exclude).toBeUndefined();
+      return jsonResponse({ messages: [], total: 0 });
+    }) as unknown as typeof fetch;
+
+    const src = new GraylogSource({ getToken: () => "tok", fetchFn });
+    await src.search({ from: 0, to: 100 });
+  });
+
+  it("maps gateway message id and facility_num through to LogMessage", async () => {
+    const fetchFn = vi.fn(async () =>
+      jsonResponse({
+        messages: [
+          {
+            id: "msg-1",
+            timestamp: 100,
+            source: "web01",
+            message: "hi",
+            facility: "local0",
+            facility_num: 16,
+          },
+        ],
+        total: 1,
+      }),
+    ) as unknown as typeof fetch;
+
+    const src = new GraylogSource({ getToken: () => "tok", fetchFn });
+    const result = await src.search({ from: 0, to: 100 });
+    expect(result.messages[0]).toMatchObject({ id: "msg-1", facilityNum: 16 });
+  });
+
+  it("hostLogs sends offset and exclude filters (e.g. host exclude chips)", async () => {
+    const fetchFn = vi.fn(async (_url: RequestInfo | URL, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body));
+      expect(body.offset).toBe(20);
+      expect(body.exclude).toEqual([{ field: "source", value: "noisy-host" }]);
+      return jsonResponse({ messages: [], total: 0 });
+    }) as unknown as typeof fetch;
+
+    const src = new GraylogSource({ getToken: () => "tok", fetchFn });
+    await src.hostLogs("42", {
+      from: 0,
+      to: 100,
+      offset: 20,
+      exclude: [{ field: "source", value: "noisy-host" }],
+    });
+  });
+
   it("throws on gateway error status", async () => {
     const fetchFn = vi.fn(async () => new Response("nope", { status: 403 })) as unknown as typeof fetch;
     const src = new GraylogSource({ getToken: () => "tok", fetchFn });

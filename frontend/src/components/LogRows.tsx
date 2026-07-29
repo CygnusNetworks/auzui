@@ -1,14 +1,9 @@
 import { useState } from "react";
-import type { LogMessage } from "@auzui/logs";
-import { logLevelBadgeClass } from "../lib/log-level";
-
-const timeFmt = new Intl.DateTimeFormat("de-DE", {
-  day: "2-digit",
-  month: "2-digit",
-  hour: "2-digit",
-  minute: "2-digit",
-  second: "2-digit",
-});
+import type { LogFilterField, LogMessage } from "@auzui/logs";
+import { resolveFacilityName } from "../lib/log-facility";
+import { logLevelBadgeClass, logLevelLabel } from "../lib/log-level";
+import { formatLogTimestamp } from "../lib/log-timestamp";
+import { useT } from "../lib/i18n";
 
 function applicationName(fields: Record<string, unknown>): string | undefined {
   const v = fields.application_name;
@@ -18,6 +13,68 @@ function applicationName(fields: Record<string, unknown>): string | undefined {
 function fullMessage(msg: LogMessage): string | undefined {
   const v = msg.fields.full_message;
   return typeof v === "string" && v.length > 0 && v !== msg.message ? v : undefined;
+}
+
+/** Stable identity for React's list key — falls back to a content-derived key for rows the gateway didn't tag (older cached data). */
+function rowKey(msg: LogMessage, index: number): string {
+  return msg.id ?? `${msg.timestamp}-${msg.source}-${index}`;
+}
+
+type FilterMode = "include" | "exclude";
+type OnFilter = (field: LogFilterField, value: string, mode: FilterMode) => void;
+
+/**
+ * Hostname/Facility/application_name sind auf Hover mit ＋/－-Buttons
+ * versehen, die einen Include- bzw. Exclude-Filter setzen (PLAN.md Abschnitt
+ * H, Nutzerwunsch "Filter direkt aus der Logzeile"). `onFilter` ist optional
+ * — ohne ihn (z.B. im schlankeren Host-Detail-Panel) werden keine Buttons
+ * gerendert.
+ */
+function FilterableField({
+  value,
+  field,
+  onFilter,
+  className,
+}: {
+  value: string;
+  field: LogFilterField;
+  onFilter: OnFilter | undefined;
+  className: string;
+}) {
+  const t = useT();
+  return (
+    <span className="group/f inline-flex items-center gap-0.5">
+      <span className={className}>{value}</span>
+      {onFilter && (
+        <span className="hidden items-center gap-0.5 group-hover/f:inline-flex">
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onFilter(field, value, "include");
+            }}
+            title={t("logs.include", value)}
+            aria-label={t("logs.include", value)}
+            className="rounded px-0.5 text-[11px] leading-none text-ink-muted hover:text-accent"
+          >
+            ＋
+          </button>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onFilter(field, value, "exclude");
+            }}
+            title={t("logs.exclude", value)}
+            aria-label={t("logs.exclude", value)}
+            className="rounded px-0.5 text-[11px] leading-none text-ink-muted hover:text-sev-high"
+          >
+            －
+          </button>
+        </span>
+      )}
+    </span>
+  );
 }
 
 /**
@@ -31,38 +88,81 @@ function fullMessage(msg: LogMessage): string | undefined {
  * "Logzeile wird nicht komplett dargestellt") — im Ruhezustand ein
  * `line-clamp-2`-Vorschau-Block, expandiert der volle Text plus ggf.
  * `fields.full_message` in einem eigenen Block.
+ *
+ * Der Zeilen-Wrapper ist bewusst ein `<div role="button">` statt ein
+ * `<button>`: die Include/Exclude-Icons sind echte, eigenständig klickbare
+ * `<button>`s (stopPropagation gegen das Expand/Collapse) — verschachtelte
+ * `<button>`-Elemente sind ungültiges HTML und lassen Klicks unvorhersehbar
+ * bubblen.
+ *
+ * Jede Zeile trägt `animate-log-row-in` (siehe index.css): eine reine
+ * CSS-Mount-Animation, die nur beim ersten Rendern eines DOM-Knotens
+ * abspielt — solange die Keys stabil sind (msg.id statt Array-Index), bleibt
+ * eine bereits angezeigte Zeile beim Live-Nachladen unangetastet und nur
+ * echte Neuzugänge blenden sanft ein, kein Flackern der ganzen Liste.
  */
-export function LogRows({ messages }: { messages: LogMessage[] }) {
-  const [expanded, setExpanded] = useState<number | undefined>(undefined);
+export function LogRows({
+  messages,
+  onFilter,
+}: {
+  messages: LogMessage[];
+  onFilter?: OnFilter;
+}) {
+  const [expanded, setExpanded] = useState<string | undefined>(undefined);
 
   return (
     <div className="divide-y divide-line-soft">
       {messages.map((msg, i) => {
-        const isOpen = expanded === i;
+        const key = rowKey(msg, i);
+        const isOpen = expanded === key;
         const appName = applicationName(msg.fields);
+        const facilityName = resolveFacilityName(msg.facilityNum, msg.facility);
         const full = fullMessage(msg);
         return (
-          <div key={`${msg.timestamp}-${i}`}>
-            <button
-              type="button"
-              onClick={() => setExpanded(isOpen ? undefined : i)}
-              className="grid w-full grid-cols-[130px_60px_1fr] items-start gap-2 px-3.5 py-1.5 text-left text-[12px] hover:bg-surface-2"
+          <div key={key} className="animate-log-row-in">
+            <div
+              role="button"
+              tabIndex={0}
+              onClick={() => setExpanded(isOpen ? undefined : key)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  setExpanded(isOpen ? undefined : key);
+                }
+              }}
+              className="grid w-full cursor-pointer grid-cols-[130px_64px_1fr] items-start gap-2 px-3.5 py-1.5 text-left text-[12px] hover:bg-surface-2"
             >
               <span className="pt-0.5 font-mono text-[11px] text-ink-muted">
-                {timeFmt.format(new Date(msg.timestamp * 1000))}
+                {formatLogTimestamp(msg.timestamp)}
               </span>
               <span
-                className={`inline-flex h-fit items-center justify-center rounded border px-1 py-px font-mono text-[10px] font-semibold ${logLevelBadgeClass(msg.level)}`}
+                className={`inline-flex h-fit items-center justify-center rounded border px-1 py-px font-mono text-[9.5px] font-semibold uppercase ${logLevelBadgeClass(msg.level)}`}
               >
-                {msg.level ?? "?"}
+                {logLevelLabel(msg.level)}
               </span>
               <span className="min-w-0">
                 <span className="mb-0.5 flex flex-wrap items-center gap-1.5">
-                  <span className="truncate font-mono text-[11px] text-ink-2">{msg.source}</span>
+                  <FilterableField
+                    value={msg.source}
+                    field="source"
+                    onFilter={onFilter}
+                    className="truncate font-mono text-[11px] text-ink-2"
+                  />
+                  {facilityName && (
+                    <FilterableField
+                      value={facilityName}
+                      field="facility"
+                      onFilter={onFilter}
+                      className="rounded bg-surface-3 px-1.5 py-0.5 font-mono text-[10px] text-ink-muted"
+                    />
+                  )}
                   {appName && (
-                    <span className="rounded bg-surface-3 px-1.5 py-0.5 font-mono text-[10px] text-ink-muted">
-                      {appName}
-                    </span>
+                    <FilterableField
+                      value={appName}
+                      field="application_name"
+                      onFilter={onFilter}
+                      className="rounded bg-surface-3 px-1.5 py-0.5 font-mono text-[10px] text-ink-muted"
+                    />
                   )}
                 </span>
                 <span
@@ -73,7 +173,7 @@ export function LogRows({ messages }: { messages: LogMessage[] }) {
                   {msg.message}
                 </span>
               </span>
-            </button>
+            </div>
             {isOpen && (
               <div className="border-t border-line-soft bg-surface-2 px-3.5 py-2.5 text-[12px]">
                 <div className="mb-2 whitespace-pre-wrap break-words font-mono text-[11.5px]">

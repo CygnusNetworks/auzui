@@ -8,7 +8,17 @@ export function useLatestItems(hostId: string | undefined) {
     queryFn: () =>
       zabbixApi.itemGet({
         hostids: [hostId!],
-        output: ["itemid", "hostid", "name", "key_", "units", "value_type", "lastvalue", "lastclock"],
+        output: [
+          "itemid",
+          "hostid",
+          "name",
+          "key_",
+          "units",
+          "value_type",
+          "lastvalue",
+          "lastclock",
+          "prevvalue",
+        ],
         selectTags: "extend",
         monitored: true,
         webitems: false,
@@ -18,6 +28,26 @@ export function useLatestItems(hostId: string | undefined) {
     staleTime: 30_000,
     refetchInterval: 30_000,
     refetchIntervalInBackground: false,
+  });
+}
+
+/**
+ * Just the parent-template names for the selected host — used by the
+ * display-template engine (lib/display-templates) to pick the right
+ * bundle/family definitions for the Latest-Data "Komponenten-Navigator".
+ */
+export function useHostTemplates(hostId: string | undefined) {
+  return useQuery({
+    queryKey: ["latest-items-host-templates", hostId],
+    queryFn: () =>
+      zabbixApi.hostGet({
+        hostids: [hostId!],
+        output: ["hostid"],
+        selectParentTemplates: ["templateid", "name"],
+      }),
+    enabled: Boolean(hostId),
+    staleTime: 5 * 60_000,
+    select: (hosts) => hosts[0],
   });
 }
 

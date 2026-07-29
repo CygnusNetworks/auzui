@@ -2,6 +2,7 @@ import base64
 import binascii
 import logging
 from pathlib import Path
+from typing import Literal
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response
 from fastapi.responses import FileResponse, JSONResponse
@@ -10,7 +11,7 @@ from pydantic import BaseModel, Field
 
 from . import __version__
 from .config import Settings, get_settings
-from .graylog import GraylogClient, build_host_query
+from .graylog import GraylogClient, LogFilter, apply_filters, build_host_query
 from .influx import VALID_FNS, InfluxClient
 from .spnego import SpnegoAuthFailed, SpnegoService, SpnegoUnavailable, principal_to_login
 from .zabbix import ZabbixClient
@@ -33,6 +34,13 @@ class TsQueryRequest(BaseModel):
     fn: str = "last"
 
 
+class LogFilterModel(BaseModel):
+    """One include/exclude filter clicked from a log row."""
+
+    field: Literal["source", "facility", "application_name"]
+    value: str
+
+
 class LogsSearchRequest(BaseModel):
     query: str = "*"
     stream_ids: list[str] | None = None
@@ -40,6 +48,8 @@ class LogsSearchRequest(BaseModel):
     to: float
     limit: int = Field(default=100, ge=1, le=1000)
     offset: int = Field(default=0, ge=0)
+    include: list[LogFilterModel] = Field(default_factory=list)
+    exclude: list[LogFilterModel] = Field(default_factory=list)
 
     model_config = {"populate_by_name": True}
 
@@ -48,8 +58,11 @@ class HostLogsRequest(BaseModel):
     from_: float = Field(alias="from")
     to: float
     limit: int = Field(default=100, ge=1, le=1000)
+    offset: int = Field(default=0, ge=0)
     extra_query: str | None = None
     stream_ids: list[str] | None = None
+    include: list[LogFilterModel] = Field(default_factory=list)
+    exclude: list[LogFilterModel] = Field(default_factory=list)
 
     model_config = {"populate_by_name": True}
 
@@ -179,8 +192,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     ) -> dict[str, object]:
         require_graylog()
         await zabbix.validate_session(token)
+        query = apply_filters(
+            req.query,
+            [LogFilter(f.field, f.value) for f in req.include],
+            [LogFilter(f.field, f.value) for f in req.exclude],
+            settings.graylog_source_field,
+        )
         return await graylog.search(
-            req.query, req.from_, req.to, req.limit, req.offset, req.stream_ids
+            query, req.from_, req.to, req.limit, req.offset, req.stream_ids
         )
 
     @app.post("/api/logs/host/{hostid}")
@@ -192,7 +211,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         query, aliases = build_host_query(host, settings.graylog_source_field)
         if req.extra_query:
             query = f"({query}) AND ({req.extra_query})"
-        result = await graylog.search(query, req.from_, req.to, req.limit, 0, req.stream_ids)
+        query = apply_filters(
+            query,
+            [LogFilter(f.field, f.value) for f in req.include],
+            [LogFilter(f.field, f.value) for f in req.exclude],
+            settings.graylog_source_field,
+        )
+        result = await graylog.search(
+            query, req.from_, req.to, req.limit, req.offset, req.stream_ids
+        )
         result["matched_sources"] = aliases
         return result
 

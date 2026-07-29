@@ -33,6 +33,28 @@ export function messagesHaveLevelField(messages: Pick<LogMessage, "level">[]): b
 }
 
 /**
+ * Syslog-Severity-Namen (RFC 5424 Tabelle 2) in der kurzen, kanonischen Form
+ * (wie z.B. journalctl/syslog.h sie verwenden) statt der reinen Zahl — dicht
+ * genug für die Level-Spalte in LogRows, aber sofort lesbar.
+ */
+export const SYSLOG_LEVEL_NAMES: Record<number, string> = {
+  0: "emerg",
+  1: "alert",
+  2: "crit",
+  3: "err",
+  4: "warning",
+  5: "notice",
+  6: "info",
+  7: "debug",
+};
+
+/** Zeigt den aufgelösten Level-Namen; unbekannte/fehlende Werte als "?". */
+export function logLevelLabel(level: number | undefined): string {
+  if (level === undefined) return "?";
+  return SYSLOG_LEVEL_NAMES[level] ?? String(level);
+}
+
+/**
  * Badge-Farbe für das Level-Chip in LogRows: 0-3 (emerg..err) = sev-high,
  * 4 (warn) = sev-warn, 5 (notice) = sev-info, 6-7 (info/debug) = ink-muted.
  * Literal class strings (not string-interpolated) so Tailwind's content scan

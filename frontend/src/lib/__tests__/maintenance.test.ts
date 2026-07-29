@@ -120,6 +120,120 @@ describe("buildMaintenancePayload", () => {
       buildMaintenancePayload({ ...base, recurrence: "weekly", dayofweek: 1 }),
     ).toThrow();
   });
+
+  it("builds a daily recurring timeperiod (type 2) with a 1-year frame", () => {
+    const payload = buildMaintenancePayload({
+      ...base,
+      recurrence: "daily",
+      startTimeSeconds: 32400,
+      durationSeconds: 4320,
+    });
+    expect(payload.active_since).toBe(1000);
+    expect(payload.active_till).toBe(1000 + 365 * 86400);
+    expect(payload.timeperiods).toEqual([
+      { timeperiod_type: 2, period: 4320, every: 1, start_time: 32400 },
+    ]);
+  });
+
+  it("builds a daily recurring timeperiod with a custom every-N-days interval", () => {
+    const payload = buildMaintenancePayload({
+      ...base,
+      recurrence: "daily",
+      startTimeSeconds: 0,
+      everyDays: 3,
+    });
+    expect(payload.timeperiods[0]).toMatchObject({ timeperiod_type: 2, every: 3 });
+  });
+
+  it("throws for daily recurrence without a start time", () => {
+    expect(() => buildMaintenancePayload({ ...base, recurrence: "daily" })).toThrow();
+  });
+
+  it("builds a monthly-day-of-month timeperiod (type 4) with a 1-year frame", () => {
+    const payload = buildMaintenancePayload({
+      ...base,
+      recurrence: "monthlyDay",
+      monthDay: 15,
+      startTimeSeconds: 3600,
+      durationSeconds: 1800,
+    });
+    expect(payload.active_till).toBe(1000 + 365 * 86400);
+    expect(payload.timeperiods).toEqual([
+      { timeperiod_type: 4, period: 1800, month: 0b111111111111, day: 15, start_time: 3600 },
+    ]);
+  });
+
+  it("throws for monthlyDay recurrence without a day of month", () => {
+    expect(() =>
+      buildMaintenancePayload({ ...base, recurrence: "monthlyDay", startTimeSeconds: 0 }),
+    ).toThrow();
+  });
+
+  it("builds a monthly-weekday timeperiod (e.g. 2nd Tuesday)", () => {
+    const payload = buildMaintenancePayload({
+      ...base,
+      recurrence: "monthlyWeekday",
+      dayofweek: 2,
+      weekdayOccurrence: 2,
+      startTimeSeconds: 32400,
+      durationSeconds: 4320,
+    });
+    expect(payload.timeperiods).toEqual([
+      {
+        timeperiod_type: 4,
+        period: 4320,
+        month: 0b111111111111,
+        dayofweek: 2,
+        every: 2,
+        start_time: 32400,
+      },
+    ]);
+  });
+
+  it("throws for monthlyWeekday recurrence without a weekday", () => {
+    expect(() =>
+      buildMaintenancePayload({
+        ...base,
+        recurrence: "monthlyWeekday",
+        weekdayOccurrence: 2,
+        startTimeSeconds: 0,
+      }),
+    ).toThrow();
+  });
+
+  it("throws for monthlyWeekday recurrence without an occurrence", () => {
+    expect(() =>
+      buildMaintenancePayload({
+        ...base,
+        recurrence: "monthlyWeekday",
+        dayofweek: 2,
+        startTimeSeconds: 0,
+      }),
+    ).toThrow();
+  });
+
+  it("builds a yearly timeperiod as a monthly rule with a single-month bitmask", () => {
+    const payload = buildMaintenancePayload({
+      ...base,
+      recurrence: "yearly",
+      month: 3,
+      monthDay: 15,
+      startTimeSeconds: 3600,
+      durationSeconds: 1800,
+    });
+    expect(payload.timeperiods).toEqual([
+      { timeperiod_type: 4, period: 1800, month: 0b100, day: 15, start_time: 3600 },
+    ]);
+  });
+
+  it("throws for yearly recurrence without a month or day", () => {
+    expect(() =>
+      buildMaintenancePayload({ ...base, recurrence: "yearly", monthDay: 15, startTimeSeconds: 0 }),
+    ).toThrow();
+    expect(() =>
+      buildMaintenancePayload({ ...base, recurrence: "yearly", month: 3, startTimeSeconds: 0 }),
+    ).toThrow();
+  });
 });
 
 describe("formatWindow", () => {
@@ -237,10 +351,55 @@ describe("describeTimeperiod", () => {
     expect(result).toBe("monatlich am 15. 01:00 (30 min)");
   });
 
-  it("falls back to raw text for day-of-week monthly rules", () => {
+  it("describes a monthly window by nth weekday (2nd Tuesday)", () => {
+    const result = describeTimeperiod({
+      timeperiod_type: "4",
+      dayofweek: "2",
+      every: "2",
+      start_time: "32400",
+      period: "4320",
+    });
+    expect(result).toBe("monatlich am 2. Dienstag 09:00 (72 min)");
+  });
+
+  it("describes a monthly window by nth weekday for the first occurrence", () => {
     const result = describeTimeperiod({
       timeperiod_type: "4",
       dayofweek: "1",
+      every: "1",
+      start_time: "0",
+      period: "3600",
+    });
+    expect(result).toBe("monatlich am 1. Montag 00:00 (1 h)");
+  });
+
+  it("describes a monthly window by nth weekday using 'letzten' for the last occurrence", () => {
+    const result = describeTimeperiod({
+      timeperiod_type: "4",
+      dayofweek: "16",
+      every: "5",
+      start_time: "0",
+      period: "3600",
+    });
+    expect(result).toBe("monatlich am letzten Freitag 00:00 (1 h)");
+  });
+
+  it("describes a yearly window as a monthly rule with a single-month bitmask", () => {
+    const result = describeTimeperiod({
+      timeperiod_type: "4",
+      dayofweek: "0",
+      day: "15",
+      month: "4", // bit2 = März
+      start_time: "32400",
+      period: "3600",
+    });
+    expect(result).toBe("jährlich am 15. März 09:00 (1 h)");
+  });
+
+  it("falls back to raw text for monthly rules with an invalid multi-day bitmask", () => {
+    const result = describeTimeperiod({
+      timeperiod_type: "4",
+      dayofweek: "3", // two bits set — not a valid single weekday
       every: "2",
       start_time: "0",
       period: "3600",

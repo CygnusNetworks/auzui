@@ -3,6 +3,7 @@ import type { LogSource } from "@auzui/logs";
 import { LogRows } from "../../components/LogRows";
 import { useDebouncedValue } from "../../lib/use-debounced-value";
 import { useHostLogs } from "./use-host-logs";
+import { useT } from "../../lib/i18n";
 
 const DEBOUNCE_MS = 400;
 
@@ -21,19 +22,31 @@ export function LogsPanel({
   hostId: string;
   range: { from: number; to: number };
 }) {
+  const t = useT();
   const [query, setQuery] = useState("");
   const debouncedQuery = useDebouncedValue(query, DEBOUNCE_MS);
 
-  const { data, isLoading, isError } = useHostLogs(source, hostId, range, debouncedQuery);
+  const { data, isLoading, isError, fetchNextPage, hasNextPage, isFetchingNextPage } = useHostLogs(
+    source,
+    hostId,
+    range,
+    debouncedQuery,
+  );
+  const messages = data?.pages.flatMap((p) => p.messages) ?? [];
+  const matchedSources = data?.pages[0]?.matchedSources;
+  const total = data?.pages[0]?.total;
 
   return (
     <div className="rounded-lg border border-line bg-surface">
       <div className="flex flex-wrap items-center gap-2 border-b border-line-soft px-3.5 py-2.5">
-        <span className="font-mono text-[10px] uppercase tracking-wider text-ink-muted">logs · graylog</span>
-        <span className="text-sm font-semibold">Logs</span>
-        {data?.matchedSources && data.matchedSources.length > 0 && (
+        <span className="font-mono text-[10px] uppercase tracking-wider text-ink-muted">
+          {t("hostDetail.logs.badge")}
+        </span>
+        <span className="text-sm font-semibold">{t("hostDetail.logs.title")}</span>
+        {matchedSources && matchedSources.length > 0 && (
           <span className="text-[11.5px] text-ink-muted">
-            matched: {data.matchedSources.map((s, i) => (
+            {t("hostDetail.logs.matched")}{" "}
+            {matchedSources.map((s, i) => (
               <span key={s}>
                 {i > 0 && ", "}
                 <b className="font-mono text-ink-2">{s}</b>
@@ -45,23 +58,41 @@ export function LogsPanel({
           type="text"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Freitext filtern…"
+          placeholder={t("hostDetail.logs.filterPlaceholder")}
           className="ml-auto min-w-[180px] rounded-md border border-line bg-surface-2 px-2.5 py-1 text-[12px] text-ink"
         />
       </div>
 
       {isLoading ? (
-        <div className="p-4 text-sm text-ink-2">Lade Logs…</div>
+        <div className="p-4 text-sm text-ink-2">{t("hostDetail.logs.loading")}</div>
       ) : isError ? (
-        <div className="p-4 text-sm text-sev-warn">Logs konnten nicht geladen werden.</div>
-      ) : !data || data.messages.length === 0 ? (
+        <div className="p-4 text-sm text-sev-warn">{t("hostDetail.logs.loadError")}</div>
+      ) : messages.length === 0 ? (
         <div className="p-4 text-sm text-ink-2">
-          {data?.matchedSources && data.matchedSources.length === 0
-            ? "keine Log-Quelle gefunden"
-            : "keine Logs im Zeitraum"}
+          {matchedSources && matchedSources.length === 0
+            ? t("hostDetail.logs.noSource")
+            : t("hostDetail.logs.noResults")}
         </div>
       ) : (
-        <LogRows messages={data.messages} />
+        <>
+          <div className="max-h-96 overflow-y-auto">
+            <LogRows messages={messages} />
+          </div>
+          {hasNextPage && (
+            <div className="border-t border-line-soft p-2 text-center">
+              <button
+                type="button"
+                onClick={() => void fetchNextPage()}
+                disabled={isFetchingNextPage}
+                className="rounded-md border border-line px-3 py-1 font-mono text-[11px] text-ink-2 hover:bg-surface-2 disabled:opacity-50"
+              >
+                {isFetchingNextPage
+                  ? t("hostDetail.logs.loadingMore")
+                  : t("hostDetail.logs.loadMore", messages.length, total)}
+              </button>
+            </div>
+          )}
+        </>
       )}
     </div>
   );

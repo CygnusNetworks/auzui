@@ -1,9 +1,12 @@
-import { useMemo, useRef, useState } from "react";
-import { Link } from "@tanstack/react-router";
+import { useMemo, useRef, useState, type MouseEvent } from "react";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type { ZabbixHost } from "@auzui/zabbix-client";
-import { matchesHostSearch, sortHosts, type HostSortKey } from "../../lib/hosts";
+import { matchesHostSearch, sortHosts, summarizeNames, type HostSortKey } from "../../lib/hosts";
 import { useHostGroups, useHostProblemCounts, useHosts } from "./use-hosts";
+import { useT } from "../../lib/i18n";
+
+const GROUP_VISIBLE_LIMIT = 4;
 
 const SEV_BG: Record<number, string> = {
   5: "bg-sev-disaster",
@@ -17,6 +20,7 @@ const SEV_BG: Record<number, string> = {
 const ROW_HEIGHT = 52;
 
 export function HostsPage() {
+  const t = useT();
   const hostsQuery = useHosts();
   const groupsQuery = useHostGroups();
   const problemsByHost = useHostProblemCounts();
@@ -49,8 +53,8 @@ export function HostsPage() {
   return (
     <div className="mx-auto max-w-[1400px] px-3 pb-16 pt-4.5 min-[700px]:px-5">
       <div className="mb-4 mt-1.5 flex flex-wrap items-baseline gap-3">
-        <h1 className="text-[19px] font-bold tracking-tight">Hosts</h1>
-        <span className="text-[13px] text-ink-2">{hosts.length} überwachte Hosts</span>
+        <h1 className="text-[19px] font-bold tracking-tight">{t("hosts.title")}</h1>
+        <span className="text-[13px] text-ink-2">{t("hosts.subtitle", hosts.length)}</span>
       </div>
 
       <div className="rounded-lg border border-line bg-surface">
@@ -59,7 +63,7 @@ export function HostsPage() {
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Suchen nach Name, Host, IP…"
+            placeholder={t("hosts.searchPlaceholder")}
             className="min-w-[200px] flex-1 rounded-md border border-line bg-surface-2 px-2.5 py-1.5 text-[12.5px] text-ink max-[700px]:w-full"
           />
           <select
@@ -67,7 +71,7 @@ export function HostsPage() {
             onChange={(e) => setGroupId(e.target.value)}
             className="rounded-md border border-line bg-surface-2 px-2.5 py-1.5 text-[12.5px] text-ink"
           >
-            <option value="">Alle Gruppen</option>
+            <option value="">{t("hosts.allGroups")}</option>
             {(groupsQuery.data ?? []).map((g) => (
               <option key={g.groupid} value={g.groupid}>
                 {g.name}
@@ -80,32 +84,32 @@ export function HostsPage() {
               onClick={() => setSortKey("name")}
               className={`rounded px-2.5 py-1 ${sortKey === "name" ? "bg-surface font-semibold text-ink" : "text-ink-2"}`}
             >
-              Name
+              {t("hosts.sortName")}
             </button>
             <button
               type="button"
               onClick={() => setSortKey("severity")}
               className={`rounded px-2.5 py-1 ${sortKey === "severity" ? "bg-surface font-semibold text-ink" : "text-ink-2"}`}
             >
-              Severity
+              {t("hosts.sortSeverity")}
             </button>
           </div>
         </div>
 
         <div className="grid grid-cols-[20px_1fr_70px_24px] gap-2 border-b border-line-soft px-2.5 py-2 font-mono text-[10px] uppercase tracking-wider text-ink-muted min-[700px]:grid-cols-[24px_1.6fr_1.4fr_90px_28px] min-[700px]:px-3.5 min-[1000px]:grid-cols-[24px_1.6fr_1.4fr_1.2fr_1.2fr_90px_28px]">
           <span />
-          <span>Host</span>
-          <span className="hidden min-[700px]:block">Gruppen</span>
-          <span className="hidden min-[1000px]:block">Rolle</span>
-          <span className="hidden min-[1000px]:block">Interfaces</span>
-          <span>Probleme</span>
+          <span>{t("hosts.colHost")}</span>
+          <span className="hidden min-[700px]:block">{t("hosts.colGroups")}</span>
+          <span className="hidden min-[1000px]:block">{t("hosts.colRole")}</span>
+          <span className="hidden min-[1000px]:block">{t("hosts.colInterfaces")}</span>
+          <span>{t("hosts.colProblems")}</span>
           <span />
         </div>
 
         {hostsQuery.isLoading ? (
-          <div className="p-6 text-sm text-ink-2">Lade Hosts…</div>
+          <div className="p-6 text-sm text-ink-2">{t("hosts.loading")}</div>
         ) : filtered.length === 0 ? (
-          <div className="p-6 text-center text-sm text-ink-2">Keine Hosts gefunden.</div>
+          <div className="p-6 text-center text-sm text-ink-2">{t("hosts.empty")}</div>
         ) : (
           <div ref={scrollRef} className="max-h-[70vh] overflow-y-auto">
             <div style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
@@ -142,13 +146,28 @@ function HostRow({
   host: ZabbixHost;
   problem: { count: number; maxSeverity: number } | undefined;
 }) {
+  const t = useT();
+  const navigate = useNavigate();
   const groups = host.hostgroups ?? [];
-  const visibleGroups = groups.slice(0, 2);
-  const extraGroups = groups.length - visibleGroups.length;
-  const roles = (host.parentTemplates ?? []).slice(0, 2);
+  const groupSummary = summarizeNames(
+    groups.map((g) => g.name),
+    GROUP_VISIBLE_LIMIT,
+  );
+  const roleNames = (host.parentTemplates ?? []).map((template) => template.name);
+  const roleText = roleNames.join(", ") || t("hosts.noValue");
   const iface = host.interfaces?.[0];
-  const ifaceLabel = iface ? (iface.useip === "1" ? iface.ip : iface.dns || iface.ip) : "–";
+  const ifaceLabel = iface
+    ? iface.useip === "1"
+      ? iface.ip
+      : iface.dns || iface.ip
+    : t("hosts.noValue");
   const statusColor = problem && problem.count > 0 ? SEV_BG[problem.maxSeverity]! : "bg-sev-ok";
+
+  function goToProblems(e: MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    void navigate({ to: "/", search: { host: host.host } });
+  }
 
   return (
     <Link
@@ -162,38 +181,47 @@ function HostRow({
         <div className="truncate font-mono text-[10.5px] text-ink-muted">{host.host}</div>
       </span>
       <span className="hidden min-w-0 flex-wrap gap-1 min-[700px]:flex">
-        {visibleGroups.map((g) => (
+        {groupSummary.visible.map((name, i) => (
           <span
-            key={g.groupid}
+            key={groups[i]!.groupid}
             className="whitespace-nowrap rounded bg-surface-3 px-1.5 py-0.5 font-mono text-[10px] text-ink-2"
           >
-            {g.name}
+            {name}
           </span>
         ))}
-        {extraGroups > 0 && (
-          <span className="rounded bg-surface-3 px-1.5 py-0.5 font-mono text-[10px] text-ink-muted">
-            +{extraGroups}
+        {groupSummary.extraCount > 0 && (
+          <span
+            title={groupSummary.fullText}
+            className="rounded bg-surface-3 px-1.5 py-0.5 font-mono text-[10px] text-ink-muted"
+          >
+            +{groupSummary.extraCount}
           </span>
         )}
       </span>
-      <span className="hidden truncate text-ink-2 min-[1000px]:block">
-        {roles.map((r) => r.name).join(", ") || "–"}
+      <span
+        className="hidden truncate text-ink-2 min-[1000px]:block"
+        title={roleNames.length > 0 ? roleText : undefined}
+      >
+        {roleText}
       </span>
       <span className="hidden truncate font-mono text-[11.5px] text-ink-2 min-[1000px]:block">
         {ifaceLabel}
       </span>
       <span>
         {problem && problem.count > 0 ? (
-          <span
+          <button
+            type="button"
+            onClick={goToProblems}
+            title={t("hosts.showProblemsTitle")}
             className={`inline-flex items-center rounded-full px-2 py-0.5 font-mono text-[11px] font-semibold text-white ${SEV_BG[problem.maxSeverity]}`}
           >
             {problem.count}
-          </span>
+          </button>
         ) : (
           <span className="font-mono text-[11px] text-ink-muted">0</span>
         )}
       </span>
-      <span title="Maintenance" className="text-ink-muted">
+      <span title={t("hosts.maintenanceTitle")} className="text-ink-muted">
         {host.maintenance_status === "1" ? "🔧" : ""}
       </span>
     </Link>

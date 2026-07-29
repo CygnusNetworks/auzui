@@ -13,7 +13,7 @@ export interface PanZoomOptions {
 }
 
 /**
- * Shared pan/zoom mechanics for GraphView + MapView (PLAN.md "Gemeinsame
+ * Shared pan/zoom mechanics for FocusStage/MapStage/MapView (PLAN.md "Gemeinsame
  * Interaktion"): wheel-zoom centered on the cursor, pinch-to-zoom (2-pointer
  * distance), pan via drag, double-click zoom-in, and an animated fit() that
  * lerps the viewBox over ~250ms via requestAnimationFrame. `scale` is

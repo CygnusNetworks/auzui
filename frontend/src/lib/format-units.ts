@@ -5,6 +5,11 @@
  * % → 0-100, s/ms/uptime → duration, °C direct, anything else → plain number
  * + unit suffix.
  */
+import type { Locale } from "./i18n";
+
+function intlLocaleTag(locale: Locale): string {
+  return locale === "de" ? "de-DE" : "en-US";
+}
 
 const SI_PREFIXES = ["", "k", "M", "G", "T", "P"];
 
@@ -42,7 +47,12 @@ function formatDuration(seconds: number): string {
  * whatever the item declares — usually a bare tag like "bps", "%", "B", "s",
  * "°C", "uptime", or empty/custom (e.g. "req/s", "rpm").
  */
-export function formatUnitValue(value: number, units: string | undefined, digits = 1): string {
+export function formatUnitValue(
+  value: number,
+  units: string | undefined,
+  digits = 1,
+  locale: Locale = "de",
+): string {
   if (!Number.isFinite(value)) return "–";
   const unit = (units ?? "").trim();
 
@@ -52,7 +62,7 @@ export function formatUnitValue(value: number, units: string | undefined, digits
   if (unit === "ms") return formatDuration(value / 1000);
   if (unit === "bps" || unit === "Bps") return formatSi(value, unit, digits);
   if (unit === "B") return formatIec(value, unit, digits);
-  if (!unit) return value.toLocaleString("de-DE", { maximumFractionDigits: digits });
+  if (!unit) return value.toLocaleString(intlLocaleTag(locale), { maximumFractionDigits: digits });
 
   // Fallback: generic unit suffix, SI-scaled only for large magnitudes.
   if (Math.abs(value) >= 1000) return formatSi(value, unit, digits);
@@ -60,6 +70,6 @@ export function formatUnitValue(value: number, units: string | undefined, digits
 }
 
 /** Short axis-tick variant (no rounding tweaks for tiny/large values beyond formatUnitValue). */
-export function formatAxisTick(value: number, units: string | undefined): string {
-  return formatUnitValue(value, units, 0);
+export function formatAxisTick(value: number, units: string | undefined, locale: Locale = "de"): string {
+  return formatUnitValue(value, units, 0, locale);
 }

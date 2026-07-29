@@ -1,8 +1,8 @@
 /**
- * Pure geometry helpers shared by GraphView + MapView (PLAN.md: "Geometrie-
- * Helfer ... in lib/ mit Vitest-Tests"). No DOM/React here — GraphView and
- * MapView both build on the same viewBox model ({x,y,w,h} in "world units":
- * force-layout pixels for the graph, degrees for the map) and the same
+ * Pure geometry helpers shared by FocusStage/MapStage/MapView (PLAN.md:
+ * "Geometrie-Helfer ... in lib/ mit Vitest-Tests"). No DOM/React here — all
+ * three build on the same viewBox model ({x,y,w,h} in "world units":
+ * radial-layout/selement pixels, or degrees for the Geomap) and the same
  * zoom/fit math via use-pan-zoom.ts.
  */
 

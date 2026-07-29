@@ -6,13 +6,26 @@ export interface LogStream {
   isDefault: boolean;
 }
 
+/** The fixed set of fields a log row can be include/exclude-filtered by (PLAN.md section H). */
+export type LogFilterField = "source" | "facility" | "application_name";
+
+/** One include or exclude filter chip; `mode` says which. */
+export interface LogFilter {
+  field: LogFilterField;
+  value: string;
+}
+
 export interface LogMessage {
+  /** Stable id for React list keys — Graylog message id, or a gateway-derived fallback. */
+  id?: string;
   /** Unix seconds (fractional for sub-second precision). */
   timestamp: number;
   source: string;
   message: string;
   level?: number;
   facility?: string;
+  /** Numeric syslog facility (RFC 5424 table 7); resolved to a name in the UI. */
+  facilityNum?: number;
   streamIds?: string[];
   fields: Record<string, unknown>;
 }
@@ -27,6 +40,10 @@ export interface LogSearchParams {
   to: number;
   limit?: number;
   offset?: number;
+  /** Include filter chips (source/facility/application_name), ANDed with `query`. */
+  include?: LogFilter[];
+  /** Exclude filter chips, translated to `NOT field:"value"` by the gateway. */
+  exclude?: LogFilter[];
   signal?: AbortSignal;
 }
 

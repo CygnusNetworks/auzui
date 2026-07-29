@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildLevelQuery, logLevelBadgeClass, messagesHaveLevelField } from "../log-level";
+import { buildLevelQuery, logLevelBadgeClass, logLevelLabel, messagesHaveLevelField } from "../log-level";
 
 describe("buildLevelQuery", () => {
   it("returns the trimmed base query when no level chip is active", () => {
@@ -41,5 +41,23 @@ describe("logLevelBadgeClass", () => {
     expect(logLevelBadgeClass(6)).toContain("ink-muted");
     expect(logLevelBadgeClass(7)).toContain("ink-muted");
     expect(logLevelBadgeClass(undefined)).toContain("ink-muted");
+  });
+});
+
+describe("logLevelLabel", () => {
+  it("maps all 8 syslog severities to their canonical short name", () => {
+    expect(logLevelLabel(0)).toBe("emerg");
+    expect(logLevelLabel(1)).toBe("alert");
+    expect(logLevelLabel(2)).toBe("crit");
+    expect(logLevelLabel(3)).toBe("err");
+    expect(logLevelLabel(4)).toBe("warning");
+    expect(logLevelLabel(5)).toBe("notice");
+    expect(logLevelLabel(6)).toBe("info");
+    expect(logLevelLabel(7)).toBe("debug");
+  });
+
+  it("falls back to the raw number for out-of-range levels, and '?' when missing", () => {
+    expect(logLevelLabel(9)).toBe("9");
+    expect(logLevelLabel(undefined)).toBe("?");
   });
 });

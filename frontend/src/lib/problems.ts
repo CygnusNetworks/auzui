@@ -1,5 +1,13 @@
 import type { ZabbixItemTag, ZabbixProblem, ZabbixTrigger } from "@auzui/zabbix-client";
 import { severityFromWire, type Severity } from "./severity";
+import type { Locale } from "./i18n";
+import { de } from "../locales/de";
+import { en } from "../locales/en";
+
+const AGE_CATALOG: Record<Locale, typeof de.problems.age> = {
+  de: de.problems.age,
+  en: en.problems.age,
+};
 
 /** A problem.get row joined with its trigger's host + expression. */
 export interface EnrichedProblem {
@@ -10,6 +18,8 @@ export interface EnrichedProblem {
   /** Unix seconds. */
   clock: number;
   acknowledged: boolean;
+  /** Currently suppressed (maintenance or manual event.acknowledge suppress). */
+  suppressed?: boolean;
   tags: ZabbixItemTag[];
   hostId?: string;
   hostName?: string;
@@ -42,6 +52,7 @@ export function joinProblemsWithTriggers(
       severity: severityFromWire(p.severity),
       clock: Number(p.clock),
       acknowledged: p.acknowledged === "1",
+      suppressed: p.suppressed === "1",
       // "__"-Tags sind interne Marker von Alert-Integrationen
       // (z. B. __message_ts_#zabbix) — nicht anzeigen.
       tags: (p.tags ?? []).filter((t) => !t.tag.startsWith("__")),
@@ -100,15 +111,20 @@ export function groupIntoLanes(
     .filter((lane) => lane.problems.length > 0);
 }
 
-export function formatAge(clockSeconds: number, nowSeconds: number = Date.now() / 1000): string {
+export function formatAge(
+  clockSeconds: number,
+  nowSeconds: number = Date.now() / 1000,
+  locale: Locale = "de",
+): string {
+  const t = AGE_CATALOG[locale];
   const seconds = Math.max(0, Math.floor(nowSeconds - clockSeconds));
   const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes} m`;
+  if (minutes < 60) return t.minutes(minutes);
   const hours = Math.floor(minutes / 60);
   if (hours < 24) {
     const rem = minutes % 60;
-    return rem ? `${hours} h ${rem} m` : `${hours} h`;
+    return rem ? t.hoursMinutes(hours, rem) : t.hoursOnly(hours);
   }
   const days = Math.floor(hours / 24);
-  return `${days} d`;
+  return t.days(days);
 }

@@ -11,6 +11,7 @@ import type {
   ZabbixMaintenance,
   ZabbixMap,
   ZabbixProblem,
+  ZabbixProxy,
   ZabbixTrendPoint,
   ZabbixTrigger,
 } from "./types";
@@ -104,14 +105,19 @@ export class ZabbixApi {
   }
 
   /**
-   * Acknowledge / comment / close problems. `action` is a bitmask:
-   * 1 close, 2 ack, 4 message, 8 change severity, 16 unack.
+   * Acknowledge / comment / close / suppress problems. `action` is a
+   * bitmask: 1 close, 2 ack, 4 message, 8 change severity, 16 unack,
+   * 32 suppress, 64 unsuppress. `suppress_until` is required by the API
+   * when action includes the suppress bit (0 = indefinite, else a Unix
+   * timestamp); `severity` is required when action includes the
+   * change-severity bit.
    */
   eventAcknowledge(params: {
     eventids: ZabbixId[];
     action: number;
     message?: string;
     severity?: number;
+    suppress_until?: number;
   }): Promise<{ eventids: ZabbixId[] }> {
     return this.client.call("event.acknowledge", params);
   }
@@ -167,6 +173,15 @@ export class ZabbixApi {
     } = {},
   ): Promise<ZabbixMap[]> {
     return this.client.call("map.get", params);
+  }
+
+  /** Zabbix 7.x field is "name" (renamed from the pre-7.0 "host" field). */
+  proxyGet(
+    params: GetParamsBase & {
+      proxyids?: ZabbixId[];
+    } = {},
+  ): Promise<ZabbixProxy[]> {
+    return this.client.call("proxy.get", params);
   }
 
   maintenanceGet(

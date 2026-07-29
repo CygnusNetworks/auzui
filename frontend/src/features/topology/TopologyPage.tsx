@@ -1,280 +1,153 @@
-import { useMemo, useState } from "react";
-import { Link, useNavigate, useSearch } from "@tanstack/react-router";
-import { useHostGroups } from "../hosts/use-hosts";
-import type { TopologyEdge, TopologyEdgeLevel, TopologyNode } from "../../lib/topology";
-import { matchesSeverityFilter, SEVERITY_LABEL, type SeverityFilter } from "../../lib/severity";
-import { validateTopologySearch } from "./search-params";
+import { useEffect, useMemo, useState } from "react";
+import { useNavigate, useSearch } from "@tanstack/react-router";
+import type { ClusterSummary } from "../../lib/topology";
+import { findClusterForHostQuery } from "../../lib/topology";
+import { severityLabel } from "../../lib/severity";
+import { validateTopologySearch, type TopologyTab } from "./search-params";
 import { useTopology } from "./use-topology";
-import { FilterBar } from "./FilterBar";
-import { GraphView } from "./GraphView";
+import { ClusterList } from "./ClusterList";
+import { FocusStage } from "./FocusStage";
+import { MapStage } from "./MapStage";
 import { MapView } from "./MapView";
+import { useLocale, useT } from "../../lib/i18n";
 
-type LayerKey = TopologyEdgeLevel;
-
-/** Above this many hosts, only show hosts with active problems + their subnet neighbors initially (PLAN.md). */
-const MAX_INITIAL_HOSTS = 250;
-
-function isHostNodeId(id: string): boolean {
-  return id.startsWith("host:");
-}
-
-/** PLAN.md: >250 hosts → only problem hosts + their subnet neighbors, unless "alle anzeigen" is on. */
-function reduceForLargeGraphs(
-  nodes: TopologyNode[],
-  edges: TopologyEdge[],
-  showAll: boolean,
-): { nodes: TopologyNode[]; edges: TopologyEdge[] } {
-  const hostNodes = nodes.filter((n) => n.kind === "host");
-  if (showAll || hostNodes.length <= MAX_INITIAL_HOSTS) return { nodes, edges };
-
-  const problemHostIds = new Set(hostNodes.filter((n) => n.severity !== undefined).map((n) => n.id));
-  const subnetIdsOfProblemHosts = new Set(
-    edges.filter((e) => e.level === "l3" && problemHostIds.has(e.source)).map((e) => e.target),
-  );
-  const visibleHostIds = new Set(problemHostIds);
-  for (const e of edges) {
-    if (e.level === "l3" && subnetIdsOfProblemHosts.has(e.target)) visibleHostIds.add(e.source);
-  }
-
-  const visibleIds = new Set<string>(visibleHostIds);
-  for (const n of nodes) if (n.kind !== "host") visibleIds.add(n.id); // pruned below once edges are known
-
-  const filteredEdges = edges.filter((e) => visibleIds.has(e.source) && visibleIds.has(e.target));
-  const idsWithEdge = new Set<string>();
-  for (const e of filteredEdges) {
-    idsWithEdge.add(e.source);
-    idsWithEdge.add(e.target);
-  }
-  const filteredNodes = nodes.filter((n) => (n.kind === "host" ? visibleHostIds.has(n.id) : idsWithEdge.has(n.id)));
-  return { nodes: filteredNodes, edges: filteredEdges };
-}
+const TABS: Exclude<TopologyTab, "geo">[] = ["maps", "l3", "proxies"];
+/** The fourth, optional Geomap tab (PLAN.md: kept as-is, "wenn ohne großen Aufwand") — reuses the existing inventory-coordinate MapView unchanged. */
+const ALL_TABS: TopologyTab[] = [...TABS, "geo"];
 
 /**
- * Auto-Topologie (/topology, PLAN.md M3 + Phase 2 C Entwurf 2 + Redesign).
- * Force-layout SVG graph with Maps/L3/Proxy layer toggles, or a Geomap
- * (?view=map) from inventory location_lat/lon with a world-land.json kulisse
- * — both without any external mapping dependency. TopologyPage owns data
- * fetching + the shared filter pipeline (severity/group/proxy/search);
- * GraphView/MapView own only rendering + pan/zoom.
+ * Auto-Topologie redesign "Cluster + Fokus" (PLAN.md M3 + freigegebener
+ * Entwurf 3): drei Evidenz-Tabs (Zabbix-Maps / L3-Subnetze / Proxies) —
+ * niemals gemischt —, links eine sortierte, durchsuchbare Cluster-Liste,
+ * rechts eine ruhige Fokus-Bühne für genau den gewählten Cluster. Ein
+ * vierter Tab "Karte" bleibt als Geomap aus Inventar-Koordinaten bestehen
+ * (unverändert, kein Cluster-Konzept dort). Tab + Cluster leben in der URL
+ * (search-params.ts) — teilbar/bookmarkbar, eigene Param-Namen (`tab`,
+ * `cluster`) um Kollision mit dem `sev`-Param der Problems-Seite zu
+ * vermeiden.
  */
 export function TopologyPage() {
+  const t = useT();
+  const { locale } = useLocale();
   const rawSearch = useSearch({ strict: false }) as Record<string, unknown>;
   const search = validateTopologySearch(rawSearch);
   const navigate = useNavigate();
-  const view = search.view ?? "graph";
+  const tab = search.tab ?? "maps";
 
-  const { graph, hosts, isLoading, problemsByHost } = useTopology();
-  const groupsQuery = useHostGroups();
-  const groups = groupsQuery.data ?? [];
-  const hostByHostId = useMemo(() => new Map(hosts.map((h) => [h.hostid, h])), [hosts]);
-  const problemCountByHostId = useMemo(
-    () => new Map([...problemsByHost.entries()].map(([id, s]) => [id, s.count])),
-    [problemsByHost],
-  );
-
-  const [layers, setLayers] = useState<Record<LayerKey, boolean>>({ explicit: true, l3: true, logical: true });
-  const [showAll, setShowAll] = useState(false);
+  const { hosts, hostByHostId, maps, problemsByHost, clustersByTab, isLoading } = useTopology();
   const [query, setQuery] = useState("");
-  const [selectedNodeId, setSelectedNodeId] = useState<string | undefined>();
-  const [severityFilter, setSeverityFilter] = useState<SeverityFilter>("all");
-  const [groupFilter, setGroupFilter] = useState<string | undefined>(undefined);
-  const [proxyFilter, setProxyFilter] = useState<string | undefined>(undefined);
+  const [listOpen, setListOpen] = useState(true);
 
-  const proxyIds = useMemo(
-    () => [...new Set(hosts.map((h) => h.proxyid).filter((id): id is string => Boolean(id)))].sort(),
-    [hosts],
-  );
+  const tabLabel: Record<TopologyTab, string> = {
+    maps: t("topology.tabs.maps"),
+    l3: t("topology.tabs.l3"),
+    proxies: t("topology.tabs.proxies"),
+    geo: t("topology.tabs.geo"),
+  };
 
-  function setView(next: "graph" | "map") {
-    void navigate({ to: "/topology", search: (prev) => ({ ...prev, view: next === "map" ? "map" : undefined }) });
+  const clusters: ClusterSummary[] = tab === "geo" ? [] : clustersByTab[tab];
+  const selectedCluster = clusters.find((c) => c.id === search.cluster);
+
+  function setTab(next: TopologyTab) {
+    setQuery("");
+    void navigate({
+      to: "/topology",
+      search: (prev) => ({ ...prev, tab: next === "maps" ? undefined : next, cluster: undefined }),
+    });
   }
 
-  const hostVisibleSet = useMemo(() => {
-    const set = new Set<string>();
-    for (const h of hosts) {
-      if (groupFilter && !(h.hostgroups ?? []).some((g) => g.groupid === groupFilter)) continue;
-      if (proxyFilter && h.proxyid !== proxyFilter) continue;
-      const severity = problemsByHost.get(h.hostid)?.maxSeverity;
-      if (!matchesSeverityFilter(severity, severityFilter)) continue;
-      set.add(`host:${h.hostid}`);
+  function setCluster(id: string) {
+    void navigate({ to: "/topology", search: (prev) => ({ ...prev, cluster: id }) });
+  }
+
+  // "Suchfeld ... springt bei Host-Treffern zum Cluster des Hosts" (PLAN.md).
+  useEffect(() => {
+    if (tab === "geo") return;
+    const hit = findClusterForHostQuery(clusters, query);
+    if (hit && hit.id !== search.cluster) setCluster(hit.id);
+    // Intentionally scoped to `query` only — jumping is a query-driven
+    // one-shot side effect, not something that should re-fire when
+    // `clusters`/`search.cluster` change for other reasons.
+  }, [query]);
+
+  const hostCountTotal = hosts.length;
+
+  const breadcrumbText = useMemo(() => {
+    if (tab === "geo" || !selectedCluster) return undefined;
+    const worst = selectedCluster.severity;
+    let text = t("topology.breadcrumb.summary", tabLabel[tab], selectedCluster.name, selectedCluster.hosts.length);
+    if (worst !== undefined) {
+      const worstCount = selectedCluster.hosts.filter((h) => h.severity === worst).length;
+      text += ` · ${t("topology.breadcrumb.severityPart", worstCount, severityLabel(worst, locale))}`;
     }
-    return set;
-  }, [hosts, groupFilter, proxyFilter, severityFilter, problemsByHost]);
+    return text;
+  }, [tab, selectedCluster, tabLabel, t, locale]);
 
-  const reduced = useMemo(
-    () => reduceForLargeGraphs(graph.nodes, graph.edges, showAll),
-    [graph.nodes, graph.edges, showAll],
-  );
-
-  const filterEdges = useMemo(
-    () =>
-      reduced.edges.filter((e) => {
-        const sOk = !isHostNodeId(e.source) || hostVisibleSet.has(e.source);
-        const tOk = !isHostNodeId(e.target) || hostVisibleSet.has(e.target);
-        return sOk && tOk;
-      }),
-    [reduced.edges, hostVisibleSet],
-  );
-
-  const layerFilteredEdges = useMemo(
-    () => filterEdges.filter((e) => layers[e.level]),
-    [filterEdges, layers],
-  );
-  const idsWithVisibleEdge = useMemo(() => {
-    const s = new Set<string>();
-    for (const e of layerFilteredEdges) {
-      s.add(e.source);
-      s.add(e.target);
-    }
-    return s;
-  }, [layerFilteredEdges]);
-  const visibleNodes = useMemo(
-    () =>
-      reduced.nodes.filter((n) =>
-        n.kind === "host" ? hostVisibleSet.has(n.id) : idsWithVisibleEdge.has(n.id),
-      ),
-    [reduced.nodes, hostVisibleSet, idsWithVisibleEdge],
-  );
-
-  const mapHostNodes = useMemo(
-    () => reduced.nodes.filter((n) => n.kind === "host" && hostVisibleSet.has(n.id)),
-    [reduced.nodes, hostVisibleSet],
-  );
-
-  const hostCountTotal = graph.nodes.filter((n) => n.kind === "host").length;
-  const isLargeGraph = hostCountTotal > MAX_INITIAL_HOSTS && !showAll;
-
-  const currentNodeList = view === "graph" ? visibleNodes : mapHostNodes;
-  const selectedNode = currentNodeList.find((n) => n.id === selectedNodeId);
-  const selectedProblem = selectedNode?.hostid ? problemsByHost.get(selectedNode.hostid) : undefined;
+  const selectedMap = tab === "maps" && selectedCluster ? maps.find((m) => `map:${m.sysmapid}` === selectedCluster.id) : undefined;
 
   return (
     <div className="mx-auto max-w-[1400px] px-3 min-[700px]:px-5 pb-16 pt-4.5">
       <div className="mb-4 mt-1.5 flex flex-wrap items-baseline gap-3">
-        <h1 className="text-[19px] font-bold tracking-tight">Auto-Topologie</h1>
-        <span className="text-[13px] text-ink-2">
-          Kanten aus Evidenz — Maps, L3-Subnetze, Proxy. Keine gepflegte Map.
-        </span>
-        <span className="font-mono text-[10.5px] text-ink-muted">
-          generiert aus {hostCountTotal} Hosts · 0 Konfiguration
-        </span>
-        <div className="ml-auto inline-flex gap-0.5 rounded-lg bg-surface-3 p-0.5">
-          <button
-            type="button"
-            onClick={() => setView("graph")}
-            className={`rounded-md px-3 py-1 text-[12.5px] ${view === "graph" ? "bg-surface font-semibold text-ink shadow-sm" : "text-ink-2"}`}
-          >
-            Graph
-          </button>
-          <button
-            type="button"
-            onClick={() => setView("map")}
-            className={`rounded-md px-3 py-1 text-[12.5px] ${view === "map" ? "bg-surface font-semibold text-ink shadow-sm" : "text-ink-2"}`}
-          >
-            Karte
-          </button>
+        <h1 className="text-[19px] font-bold tracking-tight">{t("topology.title")}</h1>
+        <span className="text-[13px] text-ink-2">{t("topology.subtitle")}</span>
+        <span className="font-mono text-[10.5px] text-ink-muted">{t("topology.generatedFrom", hostCountTotal)}</span>
+        <div className="ml-auto inline-flex flex-wrap gap-0.5 rounded-lg bg-surface-3 p-0.5">
+          {ALL_TABS.map((key) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => setTab(key)}
+              className={`rounded-md px-3 py-1 text-[12.5px] ${tab === key ? "bg-surface font-semibold text-ink shadow-sm" : "text-ink-2"}`}
+            >
+              {tabLabel[key]}
+            </button>
+          ))}
         </div>
       </div>
 
       {isLoading ? (
-        <div className="rounded-lg border border-line bg-surface p-10 text-center text-sm text-ink-2">Lade…</div>
+        <div className="rounded-lg border border-line bg-surface p-10 text-center text-sm text-ink-2">{t("topology.loading")}</div>
+      ) : tab === "geo" ? (
+        <div className="rounded-lg border border-line bg-surface">
+          <MapView
+            hostNodes={hosts.map((h) => ({
+              id: `host:${h.hostid}`,
+              hostid: h.hostid,
+              label: h.name || h.host,
+              kind: "host" as const,
+              severity: problemsByHost.get(h.hostid)?.maxSeverity,
+            }))}
+            hostByHostId={hostByHostId}
+            query={query}
+            selectedNodeId={undefined}
+            onSelect={() => {}}
+          />
+        </div>
       ) : (
-        <div className="grid grid-cols-[1fr_260px] items-start gap-3.5 max-[980px]:grid-cols-1">
-          <div className="rounded-lg border border-line bg-surface">
-            <FilterBar
-              view={view}
-              severityFilter={severityFilter}
-              onSeverityFilterChange={setSeverityFilter}
-              groups={groups}
-              groupFilter={groupFilter}
-              onGroupFilterChange={setGroupFilter}
-              proxyIds={proxyIds}
-              proxyFilter={proxyFilter}
-              onProxyFilterChange={setProxyFilter}
-              query={query}
-              onQueryChange={setQuery}
-              layers={layers}
-              onToggleLayer={(key) => setLayers((prev) => ({ ...prev, [key]: !prev[key] }))}
-              largeGraphNotice={
-                view === "graph" && isLargeGraph ? (
-                  <button
-                    type="button"
-                    onClick={() => setShowAll(true)}
-                    className="rounded-md border border-line bg-surface-2 px-2.5 py-1 text-[11.5px] text-ink-2"
-                  >
-                    Nur Probleme + Nachbarn ({visibleNodes.filter((n) => n.kind === "host").length} von{" "}
-                    {hostCountTotal}) — alle anzeigen
-                  </button>
-                ) : undefined
-              }
-            />
-            <div className="relative">
-              {view === "graph" ? (
-                <GraphView
-                  nodes={visibleNodes}
-                  edges={layerFilteredEdges}
-                  query={query}
-                  selectedNodeId={selectedNodeId}
-                  onSelect={setSelectedNodeId}
-                  problemCountByHostId={problemCountByHostId}
-                />
-              ) : (
-                <MapView
-                  hostNodes={mapHostNodes}
-                  hostByHostId={hostByHostId}
-                  query={query}
-                  selectedNodeId={selectedNodeId}
-                  onSelect={setSelectedNodeId}
-                />
-              )}
-            </div>
+        <div className="grid grid-cols-[260px_1fr] items-start gap-3.5 max-[820px]:grid-cols-1">
+          <div className="min-[821px]:hidden">
+            <button
+              type="button"
+              onClick={() => setListOpen((v) => !v)}
+              className="mb-2 w-full rounded-md border border-line bg-surface-2 px-3 py-1.5 text-left text-[12.5px] text-ink-2"
+            >
+              {t("topology.clusterList.toggleList")} ({clusters.length}) {listOpen ? "▲" : "▼"}
+            </button>
+          </div>
+          <div className={`${listOpen ? "" : "hidden"} min-[821px]:block sticky top-4 max-h-[640px] rounded-lg border border-line bg-surface`}>
+            <ClusterList clusters={clusters} selectedId={search.cluster} onSelect={setCluster} query={query} onQueryChange={setQuery} />
           </div>
 
-          <aside className="flex flex-col gap-3">
-            <div className="rounded-lg border border-line bg-surface p-3">
-              <div className="mb-2 font-mono text-[10px] uppercase tracking-wider text-ink-muted">Legende</div>
-              <div className="flex flex-col gap-1.5 text-[11.5px] text-ink-2">
-                <div className="text-ink-muted">
-                  Knotenfarbe = schwerstes aktives Problem, Größe = Anzahl Probleme. Positionen persistiert
-                  — Layout springt nie.
-                </div>
-              </div>
+          <div className="rounded-lg border border-line bg-surface">
+            <div className="border-b border-line-soft px-3.5 py-2.5 font-mono text-[11.5px] text-ink-2">
+              {breadcrumbText ?? t("topology.breadcrumb.empty")}
             </div>
-
-            {selectedNode && (
-              <div className="rounded-lg border border-line bg-surface-2 p-3">
-                <div className="mb-1 font-mono text-[10px] uppercase tracking-wider text-ink-muted">
-                  {selectedNode.kind === "host" ? "Host" : selectedNode.kind === "subnet" ? "Subnetz" : "Proxy"}
-                </div>
-                <div className="mb-1 text-[13px] font-semibold text-ink">{selectedNode.label}</div>
-                {selectedNode.kind === "host" && (
-                  <>
-                    <div className="mb-2 text-[12px] text-ink-2">
-                      {selectedNode.severity !== undefined
-                        ? `${SEVERITY_LABEL[selectedNode.severity]} · ${selectedProblem?.count ?? 0} Probleme`
-                        : "OK — keine aktiven Probleme"}
-                    </div>
-                    <div className="flex gap-2">
-                      <Link
-                        to="/hosts/$hostId"
-                        params={{ hostId: selectedNode.hostid! }}
-                        className="rounded-md border border-line bg-surface px-2.5 py-1 text-[12px] text-ink-2 hover:text-ink"
-                      >
-                        Deep-Dive
-                      </Link>
-                      <Link
-                        to="/"
-                        search={{ host: selectedNode.hostid! }}
-                        className="rounded-md border border-line bg-surface px-2.5 py-1 text-[12px] text-ink-2 hover:text-ink"
-                      >
-                        Probleme
-                      </Link>
-                    </div>
-                  </>
-                )}
-              </div>
+            {tab === "maps" ? (
+              <MapStage map={selectedMap} hostByHostId={hostByHostId} problemsByHost={problemsByHost} />
+            ) : (
+              <FocusStage cluster={selectedCluster} />
             )}
-          </aside>
+          </div>
         </div>
       )}
     </div>

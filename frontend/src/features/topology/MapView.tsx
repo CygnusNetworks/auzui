@@ -7,6 +7,7 @@ import type { TopologyNode } from "../../lib/topology";
 import type { Severity } from "../../lib/severity";
 import { usePanZoom, type ViewBox } from "./use-pan-zoom";
 import { ZoomControls } from "./ZoomControls";
+import { useT } from "../../lib/i18n";
 
 const LAND: number[][][] = land as number[][][];
 const PAN_ZOOM_OPTS = { minW: 0.5, maxW: 400, minH: 0.4, maxH: 300 };
@@ -63,6 +64,7 @@ export function MapView({
   selectedNodeId: string | undefined;
   onSelect: (id: string | undefined) => void;
 }) {
+  const t = useT();
   const [activeClusterId, setActiveClusterId] = useState<string | undefined>();
   const [showMissingList, setShowMissingList] = useState(false);
 
@@ -145,7 +147,7 @@ export function MapView({
           viewBox={`${viewBox.x} ${viewBox.y} ${viewBox.w} ${viewBox.h}`}
           className="h-[560px] w-full cursor-grab touch-none select-none overflow-hidden rounded-b-lg bg-surface-2 active:cursor-grabbing"
           role="img"
-          aria-label="Geomap aus Inventar-Koordinaten"
+          aria-label={t("topology.mapAria")}
           onWheel={onWheel}
           onDoubleClick={onDoubleClick}
           onPointerDown={onBackgroundPointerDown}

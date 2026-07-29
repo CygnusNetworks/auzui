@@ -5,6 +5,7 @@ import { RouterProvider } from "@tanstack/react-router";
 import { router } from "./router";
 import { useAuthStore } from "./lib/auth/store";
 import { isSessionError } from "./lib/auth/session-errors";
+import { I18nProvider } from "./lib/i18n";
 import "./index.css";
 
 function handleQueryError(error: unknown) {
@@ -36,7 +37,9 @@ if (storedTheme === "dark" || (storedTheme === null && !prefersLight)) {
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
-      <RouterProvider router={router} />
+      <I18nProvider>
+        <RouterProvider router={router} />
+      </I18nProvider>
     </QueryClientProvider>
   </StrictMode>,
 );

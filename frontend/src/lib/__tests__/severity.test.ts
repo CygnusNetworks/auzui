@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { matchesSeverityFilter } from "../severity";
+import { matchesSeverityFilter, severityDotColor } from "../severity";
 
 describe("matchesSeverityFilter", () => {
   it("'all' passes everything, including hosts without a problem", () => {
@@ -25,5 +25,17 @@ describe("matchesSeverityFilter", () => {
     expect(matchesSeverityFilter(3, "high")).toBe(false);
     expect(matchesSeverityFilter(4, "high")).toBe(true);
     expect(matchesSeverityFilter(5, "high")).toBe(true);
+  });
+});
+
+describe("severityDotColor", () => {
+  it("maps undefined to the OK token", () => {
+    expect(severityDotColor(undefined)).toBe("var(--color-sev-ok)");
+  });
+
+  it("maps each severity to its distinct token", () => {
+    expect(severityDotColor(5)).toBe("var(--color-sev-disaster)");
+    expect(severityDotColor(4)).toBe("var(--color-sev-high)");
+    expect(severityDotColor(0)).toBe("var(--color-ink-muted)");
   });
 });
