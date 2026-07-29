@@ -46,11 +46,15 @@ class SpnegoService:
             server_creds = gssapi.Credentials(usage="accept")
             ctx = gssapi.SecurityContext(creds=server_creds, usage="accept")
             ctx.step(token)
+            # gssapi defers some errors (e.g. unwritable replay cache) until
+            # the next attribute access — keep these inside the try block.
+            complete = ctx.complete
+            initiator = str(ctx.initiator_name)
         except Exception as exc:  # noqa: BLE001 — gssapi.exceptions.GSSError (dynamic import)
             raise SpnegoAuthFailed(f"SPNEGO negotiation failed: {exc}") from exc
-        if not ctx.complete:
+        if not complete:
             raise SpnegoUnavailable("multi-leg SPNEGO negotiation is not supported")
-        return str(ctx.initiator_name)
+        return initiator
 
     async def accept(self, token: bytes) -> str:
         """Return the full Kerberos principal (``user@REALM``) for *token*."""
