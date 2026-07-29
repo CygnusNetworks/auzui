@@ -47,7 +47,7 @@ export function HostsPage() {
   });
 
   return (
-    <div className="mx-auto max-w-[1400px] px-5 pb-16 pt-4.5">
+    <div className="mx-auto max-w-[1400px] px-3 pb-16 pt-4.5 min-[700px]:px-5">
       <div className="mb-4 mt-1.5 flex flex-wrap items-baseline gap-3">
         <h1 className="text-[19px] font-bold tracking-tight">Hosts</h1>
         <span className="text-[13px] text-ink-2">{hosts.length} überwachte Hosts</span>
@@ -60,7 +60,7 @@ export function HostsPage() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Suchen nach Name, Host, IP…"
-            className="min-w-[200px] flex-1 rounded-md border border-line bg-surface-2 px-2.5 py-1.5 text-[12.5px] text-ink"
+            className="min-w-[200px] flex-1 rounded-md border border-line bg-surface-2 px-2.5 py-1.5 text-[12.5px] text-ink max-[700px]:w-full"
           />
           <select
             value={groupId}
@@ -92,12 +92,12 @@ export function HostsPage() {
           </div>
         </div>
 
-        <div className="grid grid-cols-[24px_1.6fr_1.4fr_1.2fr_1.2fr_90px_28px] gap-2 border-b border-line-soft px-3.5 py-2 font-mono text-[10px] uppercase tracking-wider text-ink-muted">
+        <div className="grid grid-cols-[20px_1fr_70px_24px] gap-2 border-b border-line-soft px-2.5 py-2 font-mono text-[10px] uppercase tracking-wider text-ink-muted min-[700px]:grid-cols-[24px_1.6fr_1.4fr_90px_28px] min-[700px]:px-3.5 min-[1000px]:grid-cols-[24px_1.6fr_1.4fr_1.2fr_1.2fr_90px_28px]">
           <span />
           <span>Host</span>
-          <span>Gruppen</span>
-          <span>Rolle</span>
-          <span>Interfaces</span>
+          <span className="hidden min-[700px]:block">Gruppen</span>
+          <span className="hidden min-[1000px]:block">Rolle</span>
+          <span className="hidden min-[1000px]:block">Interfaces</span>
           <span>Probleme</span>
           <span />
         </div>
@@ -154,14 +154,14 @@ function HostRow({
     <Link
       to="/hosts/$hostId"
       params={{ hostId: host.hostid }}
-      className="grid h-full grid-cols-[24px_1.6fr_1.4fr_1.2fr_1.2fr_90px_28px] items-center gap-2 border-b border-line-soft px-3.5 text-[12.5px] hover:bg-surface-2"
+      className="grid h-full grid-cols-[20px_1fr_70px_24px] items-center gap-2 border-b border-line-soft px-2.5 text-[12.5px] hover:bg-surface-2 min-[700px]:grid-cols-[24px_1.6fr_1.4fr_90px_28px] min-[700px]:px-3.5 min-[1000px]:grid-cols-[24px_1.6fr_1.4fr_1.2fr_1.2fr_90px_28px]"
     >
       <span className={`h-2 w-2 rounded-sm ${statusColor}`} />
       <span className="min-w-0">
         <div className="truncate font-medium text-ink">{host.name || host.host}</div>
         <div className="truncate font-mono text-[10.5px] text-ink-muted">{host.host}</div>
       </span>
-      <span className="flex min-w-0 flex-wrap gap-1">
+      <span className="hidden min-w-0 flex-wrap gap-1 min-[700px]:flex">
         {visibleGroups.map((g) => (
           <span
             key={g.groupid}
@@ -176,8 +176,12 @@ function HostRow({
           </span>
         )}
       </span>
-      <span className="truncate text-ink-2">{roles.map((r) => r.name).join(", ") || "–"}</span>
-      <span className="truncate font-mono text-[11.5px] text-ink-2">{ifaceLabel}</span>
+      <span className="hidden truncate text-ink-2 min-[1000px]:block">
+        {roles.map((r) => r.name).join(", ") || "–"}
+      </span>
+      <span className="hidden truncate font-mono text-[11.5px] text-ink-2 min-[1000px]:block">
+        {ifaceLabel}
+      </span>
       <span>
         {problem && problem.count > 0 ? (
           <span

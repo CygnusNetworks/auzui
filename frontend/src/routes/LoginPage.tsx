@@ -59,8 +59,8 @@ export function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-bg text-ink">
-      <div className="w-[340px] min-h-[309px] rounded-xl border border-line bg-surface p-6 shadow-lg">
+    <div className="flex min-h-screen items-center justify-center bg-bg px-4 text-ink">
+      <div className="w-full max-w-[340px] min-h-[309px] rounded-xl border border-line bg-surface p-6 shadow-lg">
         <div className="mb-6 text-center">
           <div className="font-mono text-2xl font-bold">
             au<span className="text-accent">z</span>ui

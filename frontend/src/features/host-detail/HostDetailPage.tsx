@@ -40,7 +40,7 @@ export function HostDetailPage() {
   if (!hostId) return null;
 
   if (isLoading || !host) {
-    return <div className="mx-auto max-w-[1400px] px-5 pt-4.5 text-sm text-ink-2">Lade Host…</div>;
+    return <div className="mx-auto max-w-[1400px] px-3 min-[700px]:px-5 pt-4.5 text-sm text-ink-2">Lade Host…</div>;
   }
 
   const groups = host.hostgroups ?? [];
@@ -50,7 +50,7 @@ export function HostDetailPage() {
   const inMaintenance = host.maintenance_status === "1";
 
   return (
-    <div className="mx-auto max-w-[1400px] px-5 pb-16 pt-4.5">
+    <div className="mx-auto max-w-[1400px] px-3 min-[700px]:px-5 pb-16 pt-4.5">
       <div className="mb-1.5 flex flex-wrap items-baseline gap-2.5">
         <h1 className="text-[19px] font-bold tracking-tight">{host.name || host.host}</h1>
         <span className="font-mono text-[13px] text-ink-muted">{host.host}</span>

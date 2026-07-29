@@ -150,7 +150,7 @@ export function TopologyPage() {
   const selectedProblem = selectedNode?.hostid ? problemsByHost.get(selectedNode.hostid) : undefined;
 
   return (
-    <div className="mx-auto max-w-[1400px] px-5 pb-16 pt-4.5">
+    <div className="mx-auto max-w-[1400px] px-3 min-[700px]:px-5 pb-16 pt-4.5">
       <div className="mb-4 mt-1.5 flex flex-wrap items-baseline gap-3">
         <h1 className="text-[19px] font-bold tracking-tight">Auto-Topologie</h1>
         <span className="text-[13px] text-ink-2">
@@ -337,24 +337,24 @@ function usePanZoom(initial: ViewBox) {
     });
   }
 
-  function onBackgroundMouseDown(e: React.MouseEvent<SVGSVGElement>) {
+  function onBackgroundPointerDown(e: React.PointerEvent<SVGSVGElement>) {
     panRef.current = { startX: e.clientX, startY: e.clientY, origin: viewBox };
   }
 
-  function onMouseMove(e: React.MouseEvent<SVGSVGElement>) {
+  function onPointerMove(e: React.PointerEvent<SVGSVGElement>) {
     if (!panRef.current) return;
     const { dx, dy } = screenToUnits(e.clientX - panRef.current.startX, e.clientY - panRef.current.startY);
     const origin = panRef.current.origin;
     setViewBox({ ...origin, x: origin.x - dx, y: origin.y - dy });
   }
 
-  function onMouseUp() {
+  function onPointerUp() {
     panRef.current = null;
   }
 
   const scale = initial.w / viewBox.w;
 
-  return { viewBox, svgRef, onWheel, onBackgroundMouseDown, onMouseMove, onMouseUp, screenToUnits, scale };
+  return { viewBox, svgRef, onWheel, onBackgroundPointerDown, onPointerMove, onPointerUp, screenToUnits, scale };
 }
 
 function GraphCanvas({
@@ -373,7 +373,7 @@ function GraphCanvas({
   const nodeIdKey = useMemo(() => nodes.map((n) => n.id).sort().join(","), [nodes]);
   const [positions, setPositions] = useState<Positions>({});
   const dragRef = useRef<{ id: string } | null>(null);
-  const { viewBox, svgRef, onWheel, onBackgroundMouseDown, onMouseMove, onMouseUp, scale } =
+  const { viewBox, svgRef, onWheel, onBackgroundPointerDown, onPointerMove, onPointerUp, scale } =
     usePanZoom(INITIAL_VIEWBOX);
 
   // Layout runs once per distinct node set (PLAN.md: "einmalig, dann statisch") —
@@ -392,12 +392,12 @@ function GraphCanvas({
     // distinct node set (PLAN.md), not on every edges/nodes reference change.
   }, [nodeIdKey]);
 
-  function onNodeMouseDown(e: React.MouseEvent, id: string) {
+  function onNodePointerDown(e: React.PointerEvent, id: string) {
     e.stopPropagation();
     dragRef.current = { id };
   }
 
-  function onSvgMouseMove(e: React.MouseEvent<SVGSVGElement>) {
+  function onSvgPointerMove(e: React.PointerEvent<SVGSVGElement>) {
     if (dragRef.current) {
       const rect = svgRef.current?.getBoundingClientRect();
       if (!rect) return;
@@ -406,16 +406,16 @@ function GraphCanvas({
       setPositions((prev) => ({ ...prev, [dragRef.current!.id]: { x: ux, y: uy } }));
       return;
     }
-    onMouseMove(e);
+    onPointerMove(e);
   }
 
-  function onSvgMouseUp() {
+  function onSvgPointerUp() {
     if (dragRef.current) {
       savePositions(positions);
       dragRef.current = null;
       return;
     }
-    onMouseUp();
+    onPointerUp();
   }
 
   const q = query.trim().toLowerCase();
@@ -429,10 +429,10 @@ function GraphCanvas({
       role="img"
       aria-label="Automatisch abgeleitete Topologie"
       onWheel={onWheel}
-      onMouseDown={onBackgroundMouseDown}
-      onMouseMove={onSvgMouseMove}
-      onMouseUp={onSvgMouseUp}
-      onMouseLeave={onSvgMouseUp}
+      onPointerDown={onBackgroundPointerDown}
+      onPointerMove={onSvgPointerMove}
+      onPointerUp={onSvgPointerUp}
+      onPointerLeave={onSvgPointerUp}
     >
       {edges.map((e, i) => {
         const a = positions[e.source];
@@ -463,7 +463,7 @@ function GraphCanvas({
             key={n.id}
             transform={`translate(${p.x} ${p.y})`}
             opacity={dimmed ? 0.3 : 1}
-            onMouseDown={(e) => onNodeMouseDown(e, n.id)}
+            onPointerDown={(e) => onNodePointerDown(e, n.id)}
             onClick={(e) => {
               e.stopPropagation();
               onSelect(n.id);
@@ -576,7 +576,7 @@ function GeoMapCanvas({
     [bounds],
   );
 
-  const { viewBox, svgRef, onWheel, onBackgroundMouseDown, onMouseMove, onMouseUp, scale } =
+  const { viewBox, svgRef, onWheel, onBackgroundPointerDown, onPointerMove, onPointerUp, scale } =
     usePanZoom(initialViewBox);
 
   const q = query.trim().toLowerCase();
@@ -596,10 +596,10 @@ function GeoMapCanvas({
         role="img"
         aria-label="Geomap aus Inventar-Koordinaten"
         onWheel={onWheel}
-        onMouseDown={onBackgroundMouseDown}
-        onMouseMove={onMouseMove}
-        onMouseUp={onMouseUp}
-        onMouseLeave={onMouseUp}
+        onPointerDown={onBackgroundPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerLeave={onPointerUp}
       >
         {gridLons.map((lon) => (
           <line key={`lon${lon}`} x1={lon} y1={-90} x2={lon} y2={90} stroke="var(--color-line-soft)" strokeWidth={0.05} />

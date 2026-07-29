@@ -21,11 +21,11 @@ export function LogsPage() {
   const { data: logsEnabled, isLoading: statusLoading } = useLogsEnabled();
 
   if (statusLoading) {
-    return <div className="mx-auto max-w-[1400px] px-5 pt-4.5 text-sm text-ink-2">Lade…</div>;
+    return <div className="mx-auto max-w-[1400px] px-3 min-[700px]:px-5 pt-4.5 text-sm text-ink-2">Lade…</div>;
   }
   if (!logsEnabled) {
     return (
-      <div className="mx-auto max-w-[1400px] px-5 pb-16 pt-4.5">
+      <div className="mx-auto max-w-[1400px] px-3 min-[700px]:px-5 pb-16 pt-4.5">
         <h1 className="mb-3 text-[19px] font-bold tracking-tight">Logs</h1>
         <div className="rounded-lg border border-line bg-surface p-10 text-center text-sm text-ink-2">
           Graylog nicht konfiguriert.
@@ -62,7 +62,7 @@ function LogsBrowser() {
   }
 
   return (
-    <div className="mx-auto max-w-[1400px] px-5 pb-16 pt-4.5">
+    <div className="mx-auto max-w-[1400px] px-3 min-[700px]:px-5 pb-16 pt-4.5">
       <div className="mb-4 mt-1.5 flex flex-wrap items-baseline gap-3">
         <h1 className="text-[19px] font-bold tracking-tight">Logs</h1>
         <span className="text-[13px] text-ink-2">Graylog Stream-Browser</span>

@@ -140,12 +140,19 @@ export function TimeChart({ series, unit, height = 220, thresholds = [], onBrush
 
     const plot = new uPlot(opts, toUplotData(series), container);
 
+    // Debounce via rAF — a container resize (e.g. sidebar toggle, window drag)
+    // can fire many ResizeObserver callbacks per frame; coalesce to one setSize.
+    let rafId: number | undefined;
     const resizeObserver = new ResizeObserver(() => {
-      plot.setSize({ width: container.clientWidth || 600, height });
+      if (rafId !== undefined) cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(() => {
+        plot.setSize({ width: container.clientWidth || 600, height });
+      });
     });
     resizeObserver.observe(container);
 
     return () => {
+      if (rafId !== undefined) cancelAnimationFrame(rafId);
       resizeObserver.disconnect();
       plot.destroy();
     };

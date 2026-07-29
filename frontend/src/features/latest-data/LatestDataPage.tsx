@@ -29,7 +29,7 @@ export function LatestDataPage() {
   }
 
   return (
-    <div className="mx-auto max-w-[1400px] px-5 pb-16 pt-4.5">
+    <div className="mx-auto max-w-[1400px] px-3 pb-16 pt-4.5 min-[700px]:px-5">
       <div className="mb-4 mt-1.5 flex flex-wrap items-baseline gap-3">
         <h1 className="text-[19px] font-bold tracking-tight">Latest Data</h1>
         <span className="text-[13px] text-ink-2">Aktuelle Item-Werte je Host, gruppiert nach Komponente</span>
@@ -144,15 +144,19 @@ function ItemRow({
     <button
       type="button"
       onClick={onOpen}
-      className="grid w-full grid-cols-[1.8fr_1fr_70px_140px] items-center gap-3 border-b border-line-soft px-3.5 py-2 text-left text-[12.5px] last:border-b-0 hover:bg-surface-2"
+      className="flex w-full flex-col gap-0.5 border-b border-line-soft px-3.5 py-2 text-left text-[12.5px] last:border-b-0 hover:bg-surface-2 min-[700px]:grid min-[700px]:grid-cols-[1.8fr_1fr_70px_140px] min-[700px]:items-center min-[700px]:gap-3"
     >
       <span className="min-w-0">
         <div className="truncate text-ink">{item.name}</div>
         <div className="truncate font-mono text-[10.5px] text-ink-muted">{item.key_}</div>
       </span>
-      <span className="truncate font-mono text-ink-2">{lastValue}</span>
-      <span className="font-mono text-[11px] text-ink-muted">{age}</span>
-      <span>{series && series.points.length > 1 && <Sparkline points={series.points} />}</span>
+      <span className="flex items-center gap-2 min-[700px]:contents">
+        <span className="truncate font-mono text-ink-2">{lastValue}</span>
+        <span className="font-mono text-[11px] text-ink-muted">{age}</span>
+      </span>
+      <span className="hidden min-[700px]:block">
+        {series && series.points.length > 1 && <Sparkline points={series.points} />}
+      </span>
     </button>
   );
 }

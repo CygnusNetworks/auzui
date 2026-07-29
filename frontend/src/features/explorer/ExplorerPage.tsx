@@ -69,7 +69,7 @@ export function ExplorerPage() {
   }
 
   return (
-    <div className="mx-auto max-w-[1400px] px-5 pb-16 pt-4.5">
+    <div className="mx-auto max-w-[1400px] px-3 min-[700px]:px-5 pb-16 pt-4.5">
       <div className="mb-4 mt-1.5 flex flex-wrap items-baseline gap-3">
         <h1 className="text-[19px] font-bold tracking-tight">Infrastructure Explorer</h1>
         <span className="text-[13px] text-ink-2">
