@@ -53,6 +53,9 @@ export function AppShell({ children }: { children: ReactNode }) {
           <Link to="/explorer" className={navLinkClass}>
             Explorer
           </Link>
+          <Link to="/topology" className={navLinkClass}>
+            Topologie
+          </Link>
           <Link to="/metrics" className={navLinkClass}>
             Metrics
           </Link>

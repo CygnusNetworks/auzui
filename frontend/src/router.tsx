@@ -17,6 +17,8 @@ import { HostDetailPage } from "./features/host-detail/HostDetailPage";
 import { validateHostDetailSearch } from "./features/host-detail/search-params";
 import { ExplorerPage } from "./features/explorer/ExplorerPage";
 import { validateExplorerSearch } from "./features/explorer/search-params";
+import { TopologyPage } from "./features/topology/TopologyPage";
+import { validateTopologySearch } from "./features/topology/search-params";
 import { MetricsPage } from "./features/metrics/MetricsPage";
 import { validateMetricsSearch } from "./features/metrics/search-params";
 import { LogsPage } from "./features/logs/LogsPage";
@@ -94,6 +96,13 @@ const explorerRoute = createRoute({
   validateSearch: validateExplorerSearch,
 });
 
+const topologyRoute = createRoute({
+  getParentRoute: () => appLayoutRoute,
+  path: "/topology",
+  component: TopologyPage,
+  validateSearch: validateTopologySearch,
+});
+
 const metricsRoute = createRoute({
   getParentRoute: () => appLayoutRoute,
   path: "/metrics",
@@ -117,6 +126,7 @@ const routeTree = rootRoute.addChildren([
     maintenanceRoute,
     hostDetailRoute,
     explorerRoute,
+    topologyRoute,
     metricsRoute,
     logsRoute,
   ]),

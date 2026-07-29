@@ -1,7 +1,8 @@
 import { useMemo } from "react";
 import type { ZabbixItem } from "@auzui/zabbix-client";
 import type { TimeRange } from "@auzui/timeseries";
-import { TimeChart, type TimeChartSeries } from "../../components/charts/TimeChart";
+import type { TimeChartSeries } from "../../components/charts/TimeChart";
+import { TimeChartPanel } from "../../components/charts/TimeChartPanel";
 import { formatUnitValue } from "../../lib/format-units";
 import { useTimeseries } from "../../lib/use-timeseries";
 import type { DashboardChart } from "../../lib/auto-dashboard";
@@ -30,7 +31,7 @@ export function ChartCard({
     [chart.items],
   );
 
-  const { seriesByItem, isLoading } = useTimeseries(requestItems, range, {
+  const { seriesByItem, isLoading, slow, refetch } = useTimeseries(requestItems, range, {
     points: CHART_POINTS,
     enabled: !isCounter,
   });
@@ -54,11 +55,15 @@ export function ChartCard({
         <span className="truncate text-[12.5px] font-semibold text-ink">{chart.title}</span>
         {unit && <span className="font-mono text-[10.5px] text-ink-muted">{unit}</span>}
       </div>
-      {isLoading && series.every((s) => s.points.length === 0) ? (
-        <div className="flex h-[220px] items-center justify-center text-[12px] text-ink-2">Lade…</div>
-      ) : (
-        <TimeChart series={series} unit={unit} thresholds={chart.thresholds} onBrush={onBrush} />
-      )}
+      <TimeChartPanel
+        series={series}
+        unit={unit}
+        thresholds={chart.thresholds}
+        onBrush={onBrush}
+        isLoading={isLoading}
+        slow={slow}
+        onRetry={() => void refetch()}
+      />
     </div>
   );
 }

@@ -160,7 +160,11 @@ export class ZabbixApi {
   }
 
   mapGet(
-    params: GetParamsBase & { sysmapids?: ZabbixId[]; selectSelements?: "extend" } = {},
+    params: GetParamsBase & {
+      sysmapids?: ZabbixId[];
+      selectSelements?: "extend";
+      selectLinks?: "extend";
+    } = {},
   ): Promise<ZabbixMap[]> {
     return this.client.call("map.get", params);
   }

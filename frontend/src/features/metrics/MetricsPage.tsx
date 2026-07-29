@@ -3,7 +3,7 @@ import { useNavigate, useSearch } from "@tanstack/react-router";
 import type { ZabbixItem } from "@auzui/zabbix-client";
 import { Sparkline } from "../../components/Sparkline";
 import { RangePicker, type RangeValue } from "../../components/RangePicker";
-import { TimeChart } from "../../components/charts/TimeChart";
+import { TimeChartPanel } from "../../components/charts/TimeChartPanel";
 import { formatUnitValue } from "../../lib/format-units";
 import { isNumericItem } from "../../lib/latest-items";
 import { deriveComponentFacet, deriveUnitFacet, filterItemsByFacets, parseItemIds } from "../../lib/metrics-facets";
@@ -241,7 +241,7 @@ function CompareModal({ itemIds, onClose }: { itemIds: string[]; onClose: () => 
   const items = itemsQuery.data ?? [];
   const numericItems = useMemo(() => items.filter(isNumericItem), [items]);
 
-  const { seriesByItem } = useTimeseries(
+  const { seriesByItem, isLoading, slow, refetch } = useTimeseries(
     numericItems.map((i) => ({ itemid: i.itemid, valueType: Number(i.value_type) as 0 | 3 })),
     range,
     { points: 800, enabled: numericItems.length > 0 },
@@ -282,7 +282,15 @@ function CompareModal({ itemIds, onClose }: { itemIds: string[]; onClose: () => 
           {itemsQuery.isLoading ? (
             <div className="p-6 text-center text-sm text-ink-2">Lade Items…</div>
           ) : (
-            <TimeChart series={chartSeries} unit={commonUnit} height={340} onBrush={(from, to) => setRange({ from, to })} />
+            <TimeChartPanel
+              series={chartSeries}
+              unit={commonUnit}
+              height={340}
+              onBrush={(from, to) => setRange({ from, to })}
+              isLoading={isLoading}
+              slow={slow}
+              onRetry={() => void refetch()}
+            />
           )}
         </div>
       </div>

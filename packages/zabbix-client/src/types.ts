@@ -141,10 +141,19 @@ export interface ZabbixDiscoveryRule {
 
 export interface ZabbixMapElement {
   selementid: ZabbixId;
+  /** 0 host, 1 map, 2 trigger, 3 host group, 4 image — auzui only resolves "0" (host). */
   elementtype: string;
   label: string;
   x: string;
   y: string;
+  /** Present when elementtype "0"; auzui reads elements[0].hostid. */
+  elements?: { hostid: ZabbixId }[];
+}
+
+export interface ZabbixMapLink {
+  linkid: ZabbixId;
+  selementid1: ZabbixId;
+  selementid2: ZabbixId;
 }
 
 export interface ZabbixMap {
@@ -153,6 +162,7 @@ export interface ZabbixMap {
   width: string;
   height: string;
   selements?: ZabbixMapElement[];
+  links?: ZabbixMapLink[];
 }
 
 export interface ZabbixTimeperiod {
