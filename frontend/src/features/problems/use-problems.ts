@@ -11,18 +11,25 @@ const POLL_INTERVAL_MS = 30_000;
  * paused while the tab is hidden (TanStack Query default for
  * refetchIntervalInBackground).
  *
- * Sichtbarkeit wie die Zabbix-UI: keine per Maintenance supprimierten
- * Probleme, und nur Probleme, deren Trigger aktiv und Host monitored ist
- * (problem.get liefert sonst auch Leichen deaktivierter Hosts/Trigger).
+ * Sichtbarkeit wie die Zabbix-UI: standardmäßig keine per Maintenance oder
+ * manuell supprimierten Probleme, und nur Probleme, deren Trigger aktiv und
+ * Host monitored ist (problem.get liefert sonst auch Leichen deaktivierter
+ * Hosts/Trigger).
+ *
+ * `showSuppressed` lässt den `suppressed: false`-Filter weg, sodass auch
+ * unterdrückte Probleme geladen werden (Filter-Chip „Unterdrückte anzeigen").
+ * Die beiden Varianten sind getrennte Query-Keys, teilen sich aber das
+ * `["problems", …]`-Präfix, über das useAcknowledge optimistisch schreibt.
  */
-export function useProblems() {
+export function useProblems({ showSuppressed = false }: { showSuppressed?: boolean } = {}) {
   const problemsQuery = useQuery({
-    queryKey: ["problems"],
+    queryKey: ["problems", showSuppressed ? "with-suppressed" : "default"],
     queryFn: () =>
       zabbixApi.problemGet({
         output: "extend",
         selectTags: "extend",
-        suppressed: false,
+        // Ohne Flag wie die Zabbix-UI filtern; mit Flag unterdrückte einschließen.
+        ...(showSuppressed ? {} : { suppressed: false }),
         sortfield: "eventid",
         sortorder: "DESC",
         limit: 1001,

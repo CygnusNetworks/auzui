@@ -37,30 +37,31 @@ export function useAcknowledge() {
       }),
     onMutate: async (input) => {
       await queryClient.cancelQueries({ queryKey: ["problems"] });
-      const previous = queryClient.getQueryData<ZabbixProblem[]>(["problems"]);
-      if (previous) {
-        const ids = new Set(input.eventids);
-        queryClient.setQueryData<ZabbixProblem[]>(
-          ["problems"],
-          previous.map((p) => {
-            if (!ids.has(p.eventid)) return p;
-            return {
-              ...p,
-              ...(input.ack || input.unack ? { acknowledged: input.ack ? "1" : "0" } : {}),
-              ...(input.suppress || input.unsuppress
-                ? { suppressed: input.suppress ? "1" : "0" }
-                : {}),
-              ...(input.severity !== undefined
-                ? { severity: String(input.severity) as ZabbixSeverity }
-                : {}),
-            };
-          }),
-        );
-      }
+      // Beide Varianten (default / with-suppressed) teilen das ["problems", …]
+      // Präfix — optimistisch in allen matchenden Caches spiegeln.
+      const previous = queryClient.getQueriesData<ZabbixProblem[]>({ queryKey: ["problems"] });
+      const ids = new Set(input.eventids);
+      queryClient.setQueriesData<ZabbixProblem[]>({ queryKey: ["problems"] }, (old) =>
+        old?.map((p) => {
+          if (!ids.has(p.eventid)) return p;
+          return {
+            ...p,
+            ...(input.ack || input.unack ? { acknowledged: input.ack ? "1" : "0" } : {}),
+            ...(input.suppress || input.unsuppress
+              ? { suppressed: input.suppress ? "1" : "0" }
+              : {}),
+            ...(input.severity !== undefined
+              ? { severity: String(input.severity) as ZabbixSeverity }
+              : {}),
+          };
+        }),
+      );
       return { previous };
     },
     onError: (_err, _input, context) => {
-      if (context?.previous) queryClient.setQueryData(["problems"], context.previous);
+      for (const [key, data] of context?.previous ?? []) {
+        queryClient.setQueryData(key, data);
+      }
     },
     onSettled: () => {
       void queryClient.invalidateQueries({ queryKey: ["problems"] });

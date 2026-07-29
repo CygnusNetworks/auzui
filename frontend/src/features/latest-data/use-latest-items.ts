@@ -12,6 +12,7 @@ export function useLatestItems(hostId: string | undefined) {
           "itemid",
           "hostid",
           "name",
+          "name_resolved",
           "key_",
           "units",
           "value_type",

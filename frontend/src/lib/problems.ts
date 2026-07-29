@@ -71,6 +71,13 @@ export interface ProblemFilter {
   unackOnly?: boolean;
   /** Restrict to a single host, matched by its technical name (⌘K "jump to host's problems"). */
   host?: string;
+  /**
+   * Show suppressed problems as well. Default (false) hides them client-side —
+   * mirroring the `suppressed: false` server filter — so an optimistic suppress
+   * removes the row immediately (one clean exit animation) instead of waiting
+   * for the next refetch to drop it.
+   */
+  showSuppressed?: boolean;
 }
 
 /** Pure filter used by both the URL search-params layer and tests. */
@@ -86,6 +93,7 @@ export function filterProblems(
   return problems.filter((p) => {
     if (sevSet && sevSet.size > 0 && !sevSet.has(p.severity)) return false;
     if (filter.unackOnly && p.acknowledged) return false;
+    if (!filter.showSuppressed && p.suppressed) return false;
     if (filter.host && p.hostName !== filter.host) return false;
     return true;
   });

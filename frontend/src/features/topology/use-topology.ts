@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { zabbixApi } from "../../lib/auth/store";
+import { useT } from "../../lib/i18n";
 import { useHosts, useHostProblemCounts } from "../hosts/use-hosts";
 import {
   deriveMapClusters,
@@ -39,10 +40,13 @@ function useProxies() {
  * pre-sorted worst-severity-first, then name.
  */
 export function useTopology() {
+  const t = useT();
   const hostsQuery = useHosts();
   const mapsQuery = useMaps();
   const proxiesQuery = useProxies();
   const problemsByHost = useHostProblemCounts();
+
+  const directProxyName = t("topology.directProxy");
 
   const hosts = hostsQuery.data ?? [];
   const maps = mapsQuery.data ?? [];
@@ -56,8 +60,8 @@ export function useTopology() {
     [hosts, problemsByHost],
   );
   const proxyClusters = useMemo(
-    () => sortClustersBySeverity(deriveProxyClusters(hosts, problemsByHost, proxyNameById)),
-    [hosts, problemsByHost, proxyNameById],
+    () => sortClustersBySeverity(deriveProxyClusters(hosts, problemsByHost, proxyNameById, directProxyName)),
+    [hosts, problemsByHost, proxyNameById, directProxyName],
   );
   const mapClusters = useMemo(
     () => sortClustersBySeverity(deriveMapClusters(maps, hostByHostId, problemsByHost)),

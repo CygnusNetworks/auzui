@@ -6,6 +6,8 @@ export interface ProblemsSearch {
   sev?: string;
   /** "0" = also show acknowledged problems; absent/"1" = only unacknowledged (default). */
   unack?: string;
+  /** "1" = also show suppressed problems; absent = hide them (default). */
+  suppressed?: string;
   /** Selected eventid for the detail panel. */
   event?: string;
   /** Restrict to one host's problems (set by the ⌘K palette). */
@@ -16,6 +18,7 @@ export function validateProblemsSearch(search: Record<string, unknown>): Problem
   const result: ProblemsSearch = {};
   if (typeof search.sev === "string") result.sev = search.sev;
   if (typeof search.unack === "string") result.unack = search.unack;
+  if (typeof search.suppressed === "string") result.suppressed = search.suppressed;
   if (typeof search.event === "string") result.event = search.event;
   if (typeof search.host === "string") result.host = search.host;
   return result;

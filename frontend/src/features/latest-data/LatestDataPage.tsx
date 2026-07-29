@@ -6,7 +6,7 @@ import { RangePicker, type RangeValue } from "../../components/RangePicker";
 import { TimeChartPanel } from "../../components/charts/TimeChartPanel";
 import { formatUnitValue } from "../../lib/format-units";
 import { formatAge } from "../../lib/problems";
-import { isNumericItem } from "../../lib/latest-items";
+import { isNumericItem, resolveItemName } from "../../lib/latest-items";
 import { useTimeseries } from "../../lib/use-timeseries";
 import { nowSeconds, rangeFromPreset } from "@auzui/timeseries";
 import { classifyConstancy, type Constancy } from "../../lib/constant-items";
@@ -46,17 +46,33 @@ export function LatestDataPage() {
   );
   const rawSections = useMemo(() => buildSections(template, items), [template, items]);
 
-  // Items whose lastvalue/prevvalue never differ (cheap, from item.get alone)
-  // are unconditionally facts. Sections opened by the user additionally
-  // promote items into facts once their loaded series proves min==max (or
-  // exactly one change) over the current range — see onFactDetected.
+  // Items the template bound into a bundle or family are ALWAYS shown in their
+  // consolidated graph and are entirely exempt from the constancy/fact
+  // classification — a CPU or ICMP-loss series that looks flat over a short
+  // range (or has a constant lastvalue==prevvalue) must not be pulled out of
+  // its graph. Facts are derived only from unmatched ("free") items.
+  const matchedIds = useMemo(() => {
+    const set = new Set<string>();
+    for (const section of rawSections) {
+      if (section.kind === "bundle" || section.kind === "family") {
+        for (const si of section.items) set.add(si.item.itemid);
+      }
+    }
+    return set;
+  }, [rawSections]);
+
+  // Free items whose lastvalue/prevvalue never differ (cheap, from item.get
+  // alone) are unconditionally facts. Free items shown in a component section
+  // additionally promote into facts once their loaded series proves min==max
+  // (or exactly one change) over the current range — see onFactDetected.
   const baseFactIds = useMemo(() => {
     const set = new Set<string>();
     for (const item of items) {
+      if (matchedIds.has(item.itemid)) continue;
       if (classifyConstancy(item).kind === "constant") set.add(item.itemid);
     }
     return set;
-  }, [items]);
+  }, [items, matchedIds]);
   const [promoted, setPromoted] = useState<Map<string, Constancy>>(new Map());
 
   const onFactDetected = useCallback((itemid: string, constancy: Constancy) => {
@@ -72,9 +88,13 @@ export function LatestDataPage() {
   const factDetails = useMemo(() => {
     const map = new Map<string, Constancy>();
     for (const id of baseFactIds) map.set(id, { kind: "constant" });
-    for (const [id, c] of promoted) map.set(id, c);
+    // A promotion may linger from before an item became bundle/family-matched
+    // (or a template change) — never let a matched item into the facts map.
+    for (const [id, c] of promoted) {
+      if (!matchedIds.has(id)) map.set(id, c);
+    }
     return map;
-  }, [baseFactIds, promoted]);
+  }, [baseFactIds, promoted, matchedIds]);
 
   const sections = useMemo(
     () =>
@@ -154,7 +174,11 @@ export function LatestDataPage() {
               <FactsView items={factItems} details={factDetails} />
             ) : selectedSection ? (
               selectedSection.kind === "component" ? (
-                <LegacySectionView section={selectedSection} onSelectItem={setSelectedItem} />
+                <LegacySectionView
+                  section={selectedSection}
+                  onSelectItem={setSelectedItem}
+                  onFactDetected={onFactDetected}
+                />
               ) : (
                 <ConsolidatedSectionView
                   section={selectedSection}
@@ -163,7 +187,6 @@ export function LatestDataPage() {
                   live={live}
                   onLiveChange={setLive}
                   onSelectItem={setSelectedItem}
-                  onFactDetected={onFactDetected}
                 />
               )
             ) : (
@@ -305,11 +328,14 @@ function Chip({ label, active, onClick }: { label: string; active: boolean; onCl
 }
 
 /**
- * Bundle/Family rubric: one consolidated multi-series chart (same-unit
- * items only — a family like vfs.fs mixes bytes and % items, so only the
- * majority unit is charted) with a current-value legend, plus every bound
- * item as a row below. Numeric items' loaded series are also fed through
- * classifyConstancy to opportunistically promote constants into Facts.
+ * Bundle/Family rubric: a consolidated panel driven by each bound item's
+ * displayRole — "line" items share one multi-series chart (same-unit items
+ * only; a family like vfs.fs mixes bytes and % items, so only the majority
+ * unit is charted), while "stat" items (e.g. packet-loss %) render as compact
+ * value tiles and "status" items (e.g. 0/1 ping) as up/down badges beside it.
+ * Every bound item is also listed as a row below. Bundle/family items are
+ * ALWAYS shown here regardless of constancy — the facts promotion lives with
+ * the free-item (component) view only.
  */
 function ConsolidatedSectionView({
   section,
@@ -318,7 +344,6 @@ function ConsolidatedSectionView({
   live,
   onLiveChange,
   onSelectItem,
-  onFactDetected,
 }: {
   section: TemplateSection;
   range: RangeValue;
@@ -326,31 +351,30 @@ function ConsolidatedSectionView({
   live: boolean;
   onLiveChange: (live: boolean) => void;
   onSelectItem: (item: ZabbixItem) => void;
-  onFactDetected: (itemid: string, constancy: Constancy) => void;
 }) {
   const t = useT();
   const { locale } = useLocale();
-  const numericBound = useMemo(
-    () => section.items.filter((si) => isNumericItem(si.item)),
+  const lineBound = useMemo(
+    () => section.items.filter((si) => isNumericItem(si.item) && (si.displayRole ?? "line") === "line"),
     [section.items],
   );
+  const statItems = useMemo(
+    () => section.items.filter((si) => si.displayRole === "stat"),
+    [section.items],
+  );
+  const statusItems = useMemo(
+    () => section.items.filter((si) => si.displayRole === "status"),
+    [section.items],
+  );
+
   const { seriesByItem, isLoading, isFetching, slow, refetch } = useTimeseries(
-    numericBound.map((si) => ({ itemid: si.item.itemid, valueType: Number(si.item.value_type) as 0 | 3 })),
+    lineBound.map((si) => ({ itemid: si.item.itemid, valueType: Number(si.item.value_type) as 0 | 3 })),
     range,
     { points: 300 },
   );
 
-  const chartUnit = numericBound[0]?.item.units;
-  const chartBound = numericBound.filter((si) => si.item.units === chartUnit);
-
-  useEffect(() => {
-    for (const si of numericBound) {
-      const series = seriesByItem.get(si.item.itemid);
-      if (!series) continue;
-      const constancy = classifyConstancy(si.item, series.points);
-      if (constancy.kind !== "variable") onFactDetected(si.item.itemid, constancy);
-    }
-  }, [numericBound, seriesByItem, onFactDetected]);
+  const chartUnit = lineBound[0]?.item.units;
+  const chartBound = lineBound.filter((si) => si.item.units === chartUnit);
 
   return (
     <div>
@@ -402,6 +426,19 @@ function ConsolidatedSectionView({
             </div>
           </>
         )}
+
+        {(statItems.length > 0 || statusItems.length > 0) && (
+          <div
+            className={`flex flex-wrap gap-2 ${chartBound.length > 0 ? "mt-3 border-t border-line-soft pt-3" : ""}`}
+          >
+            {statusItems.map((si) => (
+              <StatusBadge key={si.item.itemid} bound={si} onClick={() => onSelectItem(si.item)} />
+            ))}
+            {statItems.map((si) => (
+              <StatTile key={si.item.itemid} bound={si} onClick={() => onSelectItem(si.item)} />
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="border-t border-line-soft">
@@ -413,13 +450,86 @@ function ConsolidatedSectionView({
   );
 }
 
-/** Old-style per-item-sparkline rendering, kept for leftover component-tag sections ("wie bisher"). */
+/** Severity tone for a percentage-style "stat" value (0 = ok, small = warn, large = high). */
+function percentTone(value: number): { text: string; bg: string } {
+  if (value <= 0) return { text: "text-sev-ok", bg: "bg-sev-ok/15" };
+  if (value < 5) return { text: "text-sev-warn", bg: "bg-sev-warn/15" };
+  return { text: "text-sev-high", bg: "bg-sev-high/15" };
+}
+
+/** Compact value tile for a "stat"-role bundle item (e.g. ICMP packet loss %). */
+function StatTile({ bound, onClick }: { bound: SectionSeriesItem; onClick: () => void }) {
+  const t = useT();
+  const { locale } = useLocale();
+  const { item, seriesLabel } = bound;
+  const has = item.lastvalue !== undefined && item.lastvalue !== "";
+  const numValue = has ? Number(item.lastvalue) : Number.NaN;
+  const tone = has && Number.isFinite(numValue) ? percentTone(numValue) : { text: "text-ink-2", bg: "bg-surface-2" };
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`flex min-w-[84px] flex-col rounded-md px-2.5 py-1.5 text-left ${tone.bg} hover:opacity-90`}
+    >
+      <span className="font-mono text-[10px] uppercase tracking-wider text-ink-muted">{seriesLabel}</span>
+      <span className={`font-mono text-[15px] font-semibold ${tone.text}`}>
+        {has && Number.isFinite(numValue)
+          ? formatUnitValue(numValue, item.units || "%", 1, locale)
+          : t("latestData.noValue")}
+      </span>
+    </button>
+  );
+}
+
+/** up/down badge for a "status"-role bundle/family item (a 0/1 value, e.g. icmpping or ifOperStatus). */
+function StatusBadge({ bound, onClick }: { bound: SectionSeriesItem; onClick: () => void }) {
+  const t = useT();
+  const { item, seriesLabel } = bound;
+  const has = item.lastvalue !== undefined && item.lastvalue !== "";
+  const up = isStatusUp(item.lastvalue);
+  const tone = !has
+    ? { text: "text-ink-2", bg: "bg-surface-2", dot: "bg-ink-muted" }
+    : up
+      ? { text: "text-sev-ok", bg: "bg-sev-ok/15", dot: "bg-sev-ok" }
+      : { text: "text-sev-high", bg: "bg-sev-high/15", dot: "bg-sev-high" };
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`flex items-center gap-2 rounded-md px-2.5 py-1.5 text-left ${tone.bg} hover:opacity-90`}
+    >
+      <span aria-hidden className={`inline-block h-2 w-2 rounded-full ${tone.dot}`} />
+      <span className="flex flex-col leading-tight">
+        <span className="font-mono text-[10px] uppercase tracking-wider text-ink-muted">{seriesLabel}</span>
+        <span className={`text-[12.5px] font-semibold ${tone.text}`}>
+          {!has ? t("latestData.noValue") : up ? t("latestData.statusUp") : t("latestData.statusDown")}
+        </span>
+      </span>
+    </button>
+  );
+}
+
+/** A 0/1-style status reads as "up" for 1 (and common textual truthy forms), everything else down. */
+function isStatusUp(lastvalue: string | undefined): boolean {
+  if (lastvalue === undefined) return false;
+  const v = lastvalue.trim().toLowerCase();
+  return v === "1" || v === "up" || v === "true";
+}
+
+/**
+ * Old-style per-item-sparkline rendering, kept for leftover component-tag
+ * ("free") sections. This is the only place constancy promotion runs: a free
+ * numeric item whose loaded series proves constant (or changed exactly once)
+ * is promoted into the Facts rubric via onFactDetected.
+ */
 function LegacySectionView({
   section,
   onSelectItem,
+  onFactDetected,
 }: {
   section: TemplateSection;
   onSelectItem: (item: ZabbixItem) => void;
+  onFactDetected: (itemid: string, constancy: Constancy) => void;
 }) {
   const items = useMemo(() => section.items.map((si) => si.item), [section.items]);
   const numericItems = useMemo(() => items.filter(isNumericItem), [items]);
@@ -428,6 +538,15 @@ function LegacySectionView({
     useMemo(() => ({ from: nowSeconds() - 2 * 3600, to: nowSeconds() }), []),
     { points: 40 },
   );
+
+  useEffect(() => {
+    for (const item of numericItems) {
+      const series = seriesByItem.get(item.itemid);
+      if (!series) continue;
+      const constancy = classifyConstancy(item, series.points);
+      if (constancy.kind !== "variable") onFactDetected(item.itemid, constancy);
+    }
+  }, [numericItems, seriesByItem, onFactDetected]);
 
   return (
     <div>
@@ -467,7 +586,7 @@ function BoundItemRow({ bound, onOpen }: { bound: SectionSeriesItem; onOpen: () 
     >
       <span className="truncate font-medium text-ink-2">{seriesLabel}</span>
       <span className="min-w-0">
-        <div className="truncate text-ink">{item.name}</div>
+        <div className="truncate text-ink">{resolveItemName(item)}</div>
         <div className="truncate font-mono text-[10.5px] text-ink-muted">{item.key_}</div>
       </span>
       <span className="truncate font-mono text-ink-2">{lastValue}</span>
@@ -519,7 +638,7 @@ function FactsView({ items, details }: { items: ZabbixItem[]; details: Map<strin
               className="flex w-full flex-col gap-0.5 border-b border-line-soft px-3.5 py-2 text-left text-[12.5px] last:border-b-0 hover:bg-surface-2 min-[700px]:grid min-[700px]:grid-cols-[1.6fr_1fr_1fr] min-[700px]:items-center min-[700px]:gap-3"
             >
               <span className="min-w-0">
-                <div className="truncate text-ink">{item.name}</div>
+                <div className="truncate text-ink">{resolveItemName(item)}</div>
                 <div className="truncate font-mono text-[10.5px] text-ink-muted">{item.key_}</div>
               </span>
               <span className="truncate font-mono text-ink-2">{displayValue}</span>
@@ -607,7 +726,7 @@ function ItemRow({
       className="flex w-full flex-col gap-0.5 border-b border-line-soft px-3.5 py-2 text-left text-[12.5px] last:border-b-0 hover:bg-surface-2 min-[700px]:grid min-[700px]:grid-cols-[1.8fr_1fr_70px_140px] min-[700px]:items-center min-[700px]:gap-3"
     >
       <span className="min-w-0">
-        <div className="truncate text-ink">{item.name}</div>
+        <div className="truncate text-ink">{resolveItemName(item)}</div>
         <div className="truncate font-mono text-[10.5px] text-ink-muted">{item.key_}</div>
       </span>
       <span className="flex items-center gap-2 min-[700px]:contents">
@@ -645,7 +764,7 @@ function ItemChartModal({ item, onClose }: { item: ZabbixItem; onClose: () => vo
       >
         <div className="flex items-center gap-3 border-b border-line-soft px-4 py-3">
           <div>
-            <div className="text-[13.5px] font-semibold text-ink">{item.name}</div>
+            <div className="text-[13.5px] font-semibold text-ink">{resolveItemName(item)}</div>
             <div className="font-mono text-[10.5px] text-ink-muted">{item.key_}</div>
           </div>
           <div className="ml-auto flex items-center gap-2">
@@ -662,7 +781,7 @@ function ItemChartModal({ item, onClose }: { item: ZabbixItem; onClose: () => vo
         <div className="p-3">
           {numeric ? (
             <TimeChartPanel
-              series={[{ label: item.name, points: (series?.points ?? []).map((p) => [p.t, p.v]) }]}
+              series={[{ label: resolveItemName(item), points: (series?.points ?? []).map((p) => [p.t, p.v]) }]}
               unit={item.units}
               height={280}
               isLoading={isLoading}

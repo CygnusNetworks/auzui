@@ -166,7 +166,9 @@ function HostRow({
   function goToProblems(e: MouseEvent) {
     e.preventDefault();
     e.stopPropagation();
-    void navigate({ to: "/", search: { host: host.host } });
+    // unack:"0" disables the Problems page's unack-only default (unack !== "0"),
+    // so acknowledged problems for this host stay visible too.
+    void navigate({ to: "/", search: { host: host.host, unack: "0" } });
   }
 
   return (

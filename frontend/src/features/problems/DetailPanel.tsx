@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link } from "@tanstack/react-router";
-import { SeverityBadge } from "../../components/SeverityBadge";
+import { SeverityBadge, severityDotClass } from "../../components/SeverityBadge";
 import { ALL_SEVERITIES, severityLabel, type Severity } from "../../lib/severity";
 import { formatAge, type EnrichedProblem } from "../../lib/problems";
 import { useAcknowledge } from "./use-acknowledge";
@@ -15,7 +15,6 @@ export function DetailPanel({ problem }: { problem: EnrichedProblem | undefined 
   const t = useT();
   const { locale } = useLocale();
   const [comment, setComment] = useState("");
-  const [newSeverity, setNewSeverity] = useState<Severity | undefined>(undefined);
   const acknowledge = useAcknowledge();
   const timeline = useEventTimeline(problem?.eventid);
   const { data: config } = useAppConfig();
@@ -39,12 +38,9 @@ export function DetailPanel({ problem }: { problem: EnrichedProblem | undefined 
     );
   }
 
-  function submitSeverity() {
-    if (!problem || newSeverity === undefined) return;
-    acknowledge.mutate(
-      { eventids: [problem.eventid], severity: newSeverity },
-      { onSuccess: () => setNewSeverity(undefined) },
-    );
+  function changeSeverity(severity: Severity) {
+    if (!problem || severity === problem.severity) return;
+    acknowledge.mutate({ eventids: [problem.eventid], severity });
   }
 
   return (
@@ -54,6 +50,11 @@ export function DetailPanel({ problem }: { problem: EnrichedProblem | undefined 
           <SeverityBadge severity={problem.severity} />
           {problem.hostName && (
             <span className="font-mono text-xs font-bold">{problem.hostName}</span>
+          )}
+          {problem.suppressed && (
+            <span className="rounded bg-surface-3 px-1.5 font-mono text-[10px] text-ink-muted">
+              {t("problems.lane.suppressedBadge")}
+            </span>
           )}
         </div>
         <div className="text-sm font-semibold">{problem.name}</div>
@@ -144,29 +145,32 @@ export function DetailPanel({ problem }: { problem: EnrichedProblem | undefined 
             </button>
           )}
         </div>
-        <div className="mb-2 flex gap-1.5">
-          <select
-            value={newSeverity ?? ""}
-            onChange={(e) =>
-              setNewSeverity(e.target.value === "" ? undefined : (Number(e.target.value) as Severity))
-            }
-            className="min-w-0 flex-1 rounded-md border border-line bg-surface-2 px-2.5 py-1 text-xs text-ink outline-none focus-visible:border-accent"
-          >
-            <option value="">{t("problems.detailPanel.changeSeverity")}</option>
-            {ALL_SEVERITIES.map((sev) => (
-              <option key={sev} value={sev}>
-                {severityLabel(sev, locale)}
-              </option>
-            ))}
-          </select>
-          <button
-            type="button"
-            className="rounded-md border border-line bg-surface-2 px-2.5 py-1 text-xs text-ink-2 disabled:opacity-40"
-            disabled={acknowledge.isPending || newSeverity === undefined || newSeverity === problem.severity}
-            onClick={submitSeverity}
-          >
-            {t("problems.detailPanel.apply")}
-          </button>
+        <div className="mb-2">
+          <div className="mb-1.5 font-mono text-[10px] uppercase tracking-wider text-ink-muted">
+            {t("problems.detailPanel.changeSeverity")}
+          </div>
+          <div className="flex flex-wrap gap-1">
+            {ALL_SEVERITIES.map((sev) => {
+              const active = sev === problem.severity;
+              return (
+                <button
+                  key={sev}
+                  type="button"
+                  aria-pressed={active}
+                  disabled={acknowledge.isPending || active}
+                  onClick={() => changeSeverity(sev)}
+                  className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 font-mono text-[11px] transition-opacity disabled:cursor-default ${
+                    active
+                      ? "border-accent/50 font-semibold text-ink opacity-100"
+                      : "border-line text-ink-2 opacity-60 hover:opacity-100"
+                  }`}
+                >
+                  <i className={`inline-block h-2 w-2 rounded-sm ${severityDotClass(sev)}`} />
+                  {severityLabel(sev, locale)}
+                </button>
+              );
+            })}
+          </div>
         </div>
         <div className="flex gap-1.5">
           <input

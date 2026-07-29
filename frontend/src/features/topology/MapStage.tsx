@@ -6,6 +6,7 @@ import { severityDotColor, severityLabel } from "../../lib/severity";
 import { computeBounds } from "../../lib/geo";
 import { usePanZoom, type ViewBox } from "./use-pan-zoom";
 import { ZoomControls } from "./ZoomControls";
+import { resolveMapLabel } from "../../lib/topology";
 import { useLocale, useT } from "../../lib/i18n";
 
 const NODE_R_PX = 8;
@@ -16,6 +17,8 @@ interface TooltipState {
   y: number;
   hostid: string | undefined;
   label: string;
+  /** Resolved map label, shown as a secondary line only when it differs from the host name. */
+  mapLabel: string | undefined;
 }
 
 /**
@@ -41,14 +44,25 @@ export function MapStage({
 
   const points = useMemo(
     () =>
-      (map?.selements ?? []).map((el) => ({
-        selementid: el.selementid,
-        x: Number(el.x),
-        y: Number(el.y),
-        label: el.label,
-        hostid: el.elementtype === "0" ? el.elements?.[0]?.hostid : undefined,
-      })),
-    [map],
+      (map?.selements ?? []).map((el) => {
+        const hostid = el.elementtype === "0" ? el.elements?.[0]?.hostid : undefined;
+        const host = hostid ? hostByHostId.get(hostid) : undefined;
+        // Map labels arrive with unexpanded macros ("{HOST.NAME}", "{HOST.IP}", …).
+        // For host elements prefer the real hostname from host.get; keep the resolved
+        // map label only when it is non-empty and differs from that name.
+        const resolved = resolveMapLabel(el.label, host);
+        const label = host ? host.name || host.host : resolved || el.label;
+        const mapLabel = host && resolved && resolved !== label ? resolved : undefined;
+        return {
+          selementid: el.selementid,
+          x: Number(el.x),
+          y: Number(el.y),
+          label,
+          mapLabel,
+          hostid,
+        };
+      }),
+    [map, hostByHostId],
   );
   const pointBySelementId = useMemo(() => new Map(points.map((p) => [p.selementid, p])), [points]);
 
@@ -66,8 +80,8 @@ export function MapStage({
     if (bounds) fitTo(bounds, 0.12, 40);
   }
 
-  function showTooltip(clientX: number, clientY: number, hostid: string | undefined, label: string) {
-    setTooltip({ x: clientX, y: clientY, hostid, label });
+  function showTooltip(clientX: number, clientY: number, hostid: string | undefined, label: string, mapLabel?: string) {
+    setTooltip({ x: clientX, y: clientY, hostid, label, mapLabel });
   }
 
   if (!map) {
@@ -120,7 +134,7 @@ export function MapStage({
             <g
               key={p.selementid}
               transform={`translate(${p.x} ${p.y})`}
-              onPointerEnter={(e) => showTooltip(e.clientX, e.clientY, p.hostid, p.label)}
+              onPointerEnter={(e) => showTooltip(e.clientX, e.clientY, p.hostid, p.label, p.mapLabel)}
               onPointerLeave={() => setTooltip(undefined)}
               onClick={(e) => {
                 e.stopPropagation();
@@ -157,6 +171,7 @@ export function MapStage({
           style={{ left: tooltip.x + 12, top: tooltip.y + 12 }}
         >
           <div className="font-semibold">{tooltip.label}</div>
+          {tooltip.mapLabel && <div className="text-ink-muted">{tooltip.mapLabel}</div>}
           {tooltip.hostid &&
             (() => {
               const host = hostByHostId.get(tooltip.hostid);

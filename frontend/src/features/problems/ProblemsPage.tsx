@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { ALL_SEVERITIES, type Severity } from "../../lib/severity";
 import { filterProblems, groupIntoLanes } from "../../lib/problems";
@@ -10,7 +10,8 @@ import { useAcknowledge } from "./use-acknowledge";
 import { FilterChips } from "./FilterChips";
 import { LaneSection, type ViewMode } from "./LaneSection";
 import { DetailPanel } from "./DetailPanel";
-import { BulkActionBar } from "./BulkActionBar";
+import { SelectionActionBar } from "./SelectionActionBar";
+import { setLaneSelection, retainVisible, toggleSelection } from "./selection";
 import { useT } from "../../lib/i18n";
 import {
   severitiesFromSearch,
@@ -34,7 +35,9 @@ export function ProblemsPage() {
   const search = validateProblemsSearch(rawSearch);
   const navigate = useNavigate();
 
-  const { problems, isLoading, isError, error, refetch } = useProblems();
+  // Default: unterdrückte ausgeblendet — Anzeigen wird explizit als suppressed=1 kodiert.
+  const showSuppressed = search.suppressed === "1";
+  const { problems, isLoading, isError, error, refetch } = useProblems({ showSuppressed });
   const { data: hostsInMaintenance } = useHostsInMaintenance();
   const [mode, setMode] = useLocalStorageState<ViewMode>("auzui-problems-view-mode", "rows");
   const [laneOpen, setLaneOpen] = useLocalStorageState<Record<Severity, boolean>>(
@@ -42,6 +45,7 @@ export function ProblemsPage() {
     DEFAULT_LANE_OPEN,
   );
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [selectMode, setSelectMode] = useState(false);
   const acknowledge = useAcknowledge();
 
   const activeSeverities = useMemo(() => new Set(severitiesFromSearch(search)), [search]);
@@ -49,17 +53,26 @@ export function ProblemsPage() {
   const unackOnly = search.unack !== "0";
 
   const filtered = useMemo(
-    () => filterProblems(problems, { severities: activeSeverities, unackOnly, host: search.host }),
-    [problems, activeSeverities, unackOnly, search.host],
+    () =>
+      filterProblems(problems, {
+        severities: activeSeverities,
+        unackOnly,
+        host: search.host,
+        showSuppressed,
+      }),
+    [problems, activeSeverities, unackOnly, search.host, showSuppressed],
   );
   const lanes = useMemo(() => groupIntoLanes(filtered, ALL_SEVERITIES), [filtered]);
 
   const sparklines = useSparklines(mode === "cards" ? filtered : []);
 
-  const selected = useMemo(
-    () => filtered.find((p) => p.eventid === search.event) ?? filtered[0],
-    [filtered, search.event],
-  );
+  // Auto-select the first problem only when nothing is explicitly selected.
+  // If an explicitly selected problem leaves the list (suppress/ack drops it),
+  // the panel closes cleanly instead of jumping to an unrelated first row.
+  const selected = useMemo(() => {
+    if (search.event !== undefined) return filtered.find((p) => p.eventid === search.event);
+    return filtered[0];
+  }, [filtered, search.event]);
 
   function updateSearch(patch: Partial<ProblemsSearch>) {
     void navigate({
@@ -81,31 +94,43 @@ export function ProblemsPage() {
   }
 
   function toggleSelect(eventid: string) {
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(eventid)) next.delete(eventid);
-      else next.add(eventid);
-      return next;
-    });
+    setSelectedIds((prev) => toggleSelection(prev, eventid));
   }
 
   function toggleSelectAll(eventids: string[], checked: boolean) {
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      for (const id of eventids) {
-        if (checked) next.add(id);
-        else next.delete(id);
-      }
-      return next;
-    });
+    setSelectedIds((prev) => setLaneSelection(prev, eventids, checked));
   }
+
+  function exitSelectMode() {
+    setSelectMode(false);
+    setSelectedIds(new Set());
+  }
+
+  function toggleSelectMode() {
+    if (selectMode) exitSelectMode();
+    else setSelectMode(true);
+  }
+
+  // Esc verlässt den Auswahlmodus und leert die Auswahl.
+  useEffect(() => {
+    if (!selectMode) return;
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") exitSelectMode();
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [selectMode]);
 
   // Nur noch tatsächlich sichtbare Auswahl behalten, falls Probleme durch
   // Ack/Filterwechsel aus der Liste fallen.
-  const visibleSelectedIds = useMemo(() => {
-    const visible = new Set(filtered.map((p) => p.eventid));
-    return new Set([...selectedIds].filter((id) => visible.has(id)));
-  }, [selectedIds, filtered]);
+  const visibleSelectedIds = useMemo(
+    () => retainVisible(selectedIds, filtered.map((p) => p.eventid)),
+    [selectedIds, filtered],
+  );
+
+  function runBulk(input: Parameters<typeof acknowledge.mutate>[0]) {
+    acknowledge.mutate(input, { onSuccess: () => setSelectedIds(new Set()) });
+  }
 
   const counts = {
     total: problems.length,
@@ -147,7 +172,11 @@ export function ProblemsPage() {
       ) : (
         <div className="grid grid-cols-[1fr_330px] items-start gap-3.5 max-[1100px]:grid-cols-1">
           <div className="rounded-lg border border-line bg-surface">
-            <div className="flex flex-wrap items-center gap-2 border-b border-line-soft px-3.5 py-2.5">
+            <div
+              className={`flex flex-wrap items-center gap-2 border-b border-line-soft px-3.5 py-2.5 ${
+                selectMode ? "sticky top-0 z-20 rounded-t-lg bg-surface" : ""
+              }`}
+            >
               <span className="text-xs text-ink-muted">{t("problems.page.view")}</span>
               <div className="inline-flex gap-0.5 rounded-md bg-surface-3 p-0.5">
                 <button
@@ -165,16 +194,36 @@ export function ProblemsPage() {
                   {t("problems.page.viewCards")}
                 </button>
               </div>
+              {selectMode && (
+                <SelectionActionBar
+                  count={visibleSelectedIds.size}
+                  pending={acknowledge.isPending}
+                  onConfirm={(message) =>
+                    runBulk({ eventids: [...visibleSelectedIds], ack: true, message })
+                  }
+                  onRemoveAck={(message) =>
+                    runBulk({ eventids: [...visibleSelectedIds], unack: true, message })
+                  }
+                  onSuppress={(message) =>
+                    runBulk({ eventids: [...visibleSelectedIds], suppress: true, message })
+                  }
+                  onDone={exitSelectMode}
+                />
+              )}
             </div>
 
             <FilterChips
               problems={problems}
               activeSeverities={activeSeverities}
               unackOnly={unackOnly}
+              showSuppressed={showSuppressed}
               hostFilter={search.host}
               onToggleSeverity={toggleSeverity}
               onToggleUnack={() => updateSearch({ unack: unackOnly ? "0" : undefined })}
+              onToggleSuppressed={() => updateSearch({ suppressed: showSuppressed ? undefined : "1" })}
               onClearHostFilter={() => updateSearch({ host: undefined })}
+              selectMode={selectMode}
+              onToggleSelectMode={toggleSelectMode}
             />
 
             {isLoading ? (
@@ -196,6 +245,7 @@ export function ProblemsPage() {
                     selectedEventId={selected?.eventid}
                     onSelect={(p) => selectProblem(p.eventid)}
                     sparklines={sparklines}
+                    selectMode={selectMode}
                     selectedIds={visibleSelectedIds}
                     onToggleSelect={toggleSelect}
                     onToggleSelectAll={toggleSelectAll}
@@ -213,24 +263,6 @@ export function ProblemsPage() {
           </aside>
         </div>
       )}
-
-      <BulkActionBar
-        selectedIds={visibleSelectedIds}
-        pending={acknowledge.isPending}
-        onAck={(message) =>
-          acknowledge.mutate(
-            { eventids: [...visibleSelectedIds], ack: true, message },
-            { onSuccess: () => setSelectedIds(new Set()) },
-          )
-        }
-        onUnack={(message) =>
-          acknowledge.mutate(
-            { eventids: [...visibleSelectedIds], unack: true, message },
-            { onSuccess: () => setSelectedIds(new Set()) },
-          )
-        }
-        onClear={() => setSelectedIds(new Set())}
-      />
     </div>
   );
 }

@@ -111,6 +111,8 @@ export function useTimeseries(
       isLoading: query.isLoading,
       /** True while a background refetch (e.g. the 30s live tick) is in flight and previous data is still shown. */
       isFetching: query.isFetching,
+      /** True once the query has settled successfully (incl. keepPreviousData placeholder) — used to decide "genuinely empty". */
+      isSuccess: query.isSuccess,
       isError: query.isError,
       error: query.error,
       slow,
@@ -121,6 +123,7 @@ export function useTimeseries(
     query.data,
     query.isLoading,
     query.isFetching,
+    query.isSuccess,
     query.isError,
     query.error,
     slow,

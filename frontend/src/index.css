@@ -106,4 +106,30 @@
       animation: none;
     }
   }
+
+  /*
+   * Problems-Auswahlmodus: die Check-Spur fährt links ein, wenn der Modus
+   * aktiviert wird. Animiert Breite (Slide) + Deckkraft; unter
+   * prefers-reduced-motion erscheint sie ohne Bewegung.
+   */
+  @keyframes select-spur-in {
+    from {
+      width: 0;
+      opacity: 0;
+    }
+    to {
+      width: var(--select-spur-width, 30px);
+      opacity: 1;
+    }
+  }
+
+  .animate-select-spur-in {
+    animation: select-spur-in 200ms ease-out;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .animate-select-spur-in {
+      animation: none;
+    }
+  }
 }

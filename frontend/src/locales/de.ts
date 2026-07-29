@@ -85,15 +85,19 @@ export const de = {
       hoursMinutes: (h: number, m: number) => `${h} h ${m} m`,
       days: (d: number) => `${d} d`,
     },
-    bulkBar: {
+    selectMode: {
+      enter: "Auswählen",
+      active: "Auswählen aktiv",
       selectedCount: (n: number) => `${n} ausgewählt`,
-      commentPlaceholder: "Kommentar (optional)…",
-      acknowledge: "✓ Bestätigen",
-      unacknowledge: "Bestätigung entfernen",
-      clearSelection: "Auswahl aufheben",
+      commentPlaceholder: "Grund/Kommentar (optional)…",
+      confirm: "✓ Bestätigen",
+      removeAck: "Ack entfernen",
+      suppress: "Unterdrücken",
+      done: "Fertig",
     },
     filterChips: {
       unackOnly: "nur unbestätigte",
+      showSuppressed: "unterdrückte anzeigen",
       hostFilter: (host: string) => `Host ${host} ✕`,
     },
     detailPanel: {
@@ -124,6 +128,7 @@ export const de = {
       tableAria: (label: string) => `Probleme ${label}`,
       selectRowAria: (name: string) => `${name} auswählen`,
       ackedCount: (n: number) => `${n} ack`,
+      suppressedBadge: "unterdrückt",
     },
     page: {
       title: "Problems",
@@ -214,6 +219,8 @@ export const de = {
     factCopyHint: "Klicken zum Kopieren",
     noFacts: "Keine konstanten Werte.",
     legendCurrent: "Aktuell:",
+    statusUp: "up",
+    statusDown: "down",
   },
   explorer: {
     title: "Infrastructure Explorer",
@@ -258,6 +265,7 @@ export const de = {
     kindSubnet: "Subnetz",
     kindProxy: "Proxy",
     kindMap: "Map",
+    directProxy: "Direkt überwacht (ohne Proxy)",
     nodeSummary: (label: string, count: number) => `${label} · ${count} Probleme`,
     nodeOk: "OK — keine aktiven Probleme",
     deepDive: "Deep-Dive",
@@ -340,6 +348,7 @@ export const de = {
     levelLabel: "Level:",
     filterLabel: "Filter:",
     removeFilter: (v: string) => `Filter ${v} entfernen`,
+    resetFilters: "Filter zurücksetzen",
     not: "NICHT",
     loadingLogs: "Lade Logs…",
     loadError: (message: string) => `Logs konnten nicht geladen werden: ${message}`,
@@ -356,6 +365,9 @@ export const de = {
     },
     include: (v: string) => `„${v}“ einschließen`,
     exclude: (v: string) => `„${v}“ ausschließen`,
+    includeAction: "Nur anzeigen",
+    excludeAction: "Ausblenden",
+    filterActions: (v: string) => `Filter für „${v}“…`,
   },
   maintenance: {
     errors: {

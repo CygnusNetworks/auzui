@@ -33,6 +33,7 @@ function mkProblem(overrides: Partial<EnrichedProblem> = {}): EnrichedProblem {
 /** Bulk-selection props every LaneSection render needs — no-op defaults. */
 function bulkProps(overrides: Partial<Parameters<typeof LaneSection>[0]> = {}) {
   return {
+    selectMode: false,
     selectedIds: new Set<string>(),
     onToggleSelect: vi.fn(),
     onToggleSelectAll: vi.fn(),
@@ -129,7 +130,24 @@ describe("LaneSection (rows mode)", () => {
     expect(onToggleOpen).toHaveBeenCalled();
   });
 
-  it("calls onToggleSelect when a row checkbox is toggled, without triggering onSelect", () => {
+  it("renders no selection control when select mode is off", () => {
+    render(
+      <LaneSection
+        severity={4}
+        problems={[mkProblem()]}
+        mode="rows"
+        open={true}
+        onToggleOpen={vi.fn()}
+        selectedEventId={undefined}
+        onSelect={vi.fn()}
+        sparklines={new Map()}
+        {...bulkProps({ selectMode: false })}
+      />,
+    );
+    expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
+  });
+
+  it("toggles selection on a row click in select mode, without opening the detail", () => {
     const onToggleSelect = vi.fn();
     const onSelect = vi.fn();
     const problems = [mkProblem({ eventid: "7", hostName: "acc-sw-b04" })];
@@ -144,13 +162,38 @@ describe("LaneSection (rows mode)", () => {
         selectedEventId={undefined}
         onSelect={onSelect}
         sparklines={new Map()}
-        {...bulkProps({ onToggleSelect })}
+        {...bulkProps({ selectMode: true, onToggleSelect })}
       />,
     );
 
-    fireEvent.click(screen.getByRole("checkbox", { name: "Temperature critical on chassis auswählen" }));
+    // Clicking anywhere on the row toggles the selection instead of selecting.
+    fireEvent.click(screen.getByText("acc-sw-b04"));
     expect(onToggleSelect).toHaveBeenCalledWith("7");
     expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it("exposes a custom row checkbox in select mode that toggles the selection", () => {
+    const onToggleSelect = vi.fn();
+    const problems = [mkProblem({ eventid: "7" })];
+
+    render(
+      <LaneSection
+        severity={4}
+        problems={problems}
+        mode="rows"
+        open={true}
+        onToggleOpen={vi.fn()}
+        selectedEventId={undefined}
+        onSelect={vi.fn()}
+        sparklines={new Map()}
+        {...bulkProps({ selectMode: true, onToggleSelect })}
+      />,
+    );
+
+    fireEvent.click(
+      screen.getByRole("checkbox", { name: "Temperature critical on chassis auswählen" }),
+    );
+    expect(onToggleSelect).toHaveBeenCalledWith("7");
   });
 
   it("selects all problems in the lane via the header checkbox", () => {
@@ -167,7 +210,7 @@ describe("LaneSection (rows mode)", () => {
         selectedEventId={undefined}
         onSelect={vi.fn()}
         sparklines={new Map()}
-        {...bulkProps({ onToggleSelectAll })}
+        {...bulkProps({ selectMode: true, onToggleSelectAll })}
       />,
     );
 
@@ -188,7 +231,7 @@ describe("LaneSection (rows mode)", () => {
         selectedEventId={undefined}
         onSelect={vi.fn()}
         sparklines={new Map()}
-        {...bulkProps({ selectedIds: new Set(["1", "2"]) })}
+        {...bulkProps({ selectMode: true, selectedIds: new Set(["1", "2"]) })}
       />,
     );
 

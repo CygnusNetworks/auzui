@@ -1,5 +1,5 @@
 import type { ZabbixHost, ZabbixItem } from "@auzui/zabbix-client";
-import { groupItemsByComponent } from "../latest-items";
+import { groupItemsByComponent, resolveItemName } from "../latest-items";
 import { linuxTemplate } from "./linux";
 import { windowsTemplate } from "./windows";
 import { switchTemplate } from "./switch";
@@ -98,7 +98,7 @@ export function buildSections(template: DisplayTemplate | undefined, items: Zabb
         if (claimed.has(item.itemid)) continue;
         const match = compiled.find((c) => c.re?.test(item.key_));
         if (!match) continue;
-        bound.push({ item, seriesLabel: match.seriesLabel });
+        bound.push({ item, seriesLabel: match.seriesLabel, displayRole: match.role ?? "line" });
         claimed.add(item.itemid);
       }
       if (bound.length > 0) {
@@ -122,7 +122,14 @@ export function buildSections(template: DisplayTemplate | undefined, items: Zabb
           if (!m) continue;
           const instance = m[1] ?? "";
           const list = byInstance.get(instance) ?? [];
-          list.push({ item, seriesLabel: kp.seriesLabel ?? roleLabels[kp.seriesRole], seriesRole: kp.seriesRole });
+          list.push({
+            item,
+            seriesLabel: kp.seriesLabel ?? roleLabels[kp.seriesRole],
+            seriesRole: kp.seriesRole,
+            // Generic: an interface/oper-status series renders as an up/down
+            // badge, everything else (in/out/errors/value) as a chart line.
+            displayRole: kp.seriesRole === "status" ? "status" : "line",
+          });
           byInstance.set(instance, list);
           claimed.add(item.itemid);
           break;
@@ -147,7 +154,7 @@ export function buildSections(template: DisplayTemplate | undefined, items: Zabb
       kind: "component",
       navGroup: component,
       label: component,
-      items: componentItems.map((item) => ({ item, seriesLabel: item.name })),
+      items: componentItems.map((item) => ({ item, seriesLabel: resolveItemName(item) })),
     });
   }
 

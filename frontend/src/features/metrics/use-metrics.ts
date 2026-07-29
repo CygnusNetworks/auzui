@@ -10,6 +10,20 @@ const SUGGEST_LIMIT = 20;
 const SUGGEST_DEBOUNCE_MS = 200;
 
 /**
+ * Zabbix' `search` mit `searchWildcardsEnabled: true` macht OHNE `*` einen
+ * anchored (exakten) Match: ein bloßes Präfix wie "d" wird zu `LIKE 'd'` und
+ * liefert NICHTS, obwohl passende Hosts existieren — genau die Ursache des
+ * "host:d → leere Vorschlagsliste"-Bugs (bei leerem Präfix fällt `search` ganz
+ * weg, deshalb listete "host:" noch alle Hosts). Für Substring-Autocomplete den
+ * Wert in `*…*` wrappen (Wildcards bleiben für Power-User nutzbar, da `*` im
+ * Wert erhalten bleibt). Resolve-Queries (Token→id) matchen bewusst exakt und
+ * nutzen diesen Helfer daher nicht.
+ */
+function contains(value: string): string {
+  return `*${value}*`;
+}
+
+/**
  * Item search for the Query-Bar (PLAN.md Entwurf 2). Historically the ⌘K/
  * metrics search "found nothing" for terms that only matched the key (or
  * only the name) because Zabbix ANDs every field inside `search` by default;
@@ -67,7 +81,10 @@ export function useMetricsSearch(query: ParsedMetricQuery) {
   const keySearch = keyToken || text || undefined;
   const search =
     nameSearch || keySearch
-      ? { ...(nameSearch ? { name: nameSearch } : {}), ...(keySearch ? { key_: keySearch } : {}) }
+      ? {
+          ...(nameSearch ? { name: contains(nameSearch) } : {}),
+          ...(keySearch ? { key_: contains(keySearch) } : {}),
+        }
       : undefined;
 
   return useQuery({
@@ -116,7 +133,7 @@ export function useHostSuggestions(prefix: string) {
     queryKey: ["metrics-host-suggest", debounced],
     queryFn: () =>
       zabbixApi.hostGet({
-        search: debounced ? { host: debounced, name: debounced } : undefined,
+        search: debounced ? { host: contains(debounced), name: contains(debounced) } : undefined,
         searchByAny: true,
         searchWildcardsEnabled: true,
         output: ["hostid", "host", "name"],
@@ -134,7 +151,7 @@ export function useGroupSuggestions(prefix: string) {
     queryKey: ["metrics-group-suggest", debounced],
     queryFn: () =>
       zabbixApi.hostgroupGet({
-        search: debounced ? { name: debounced } : undefined,
+        search: debounced ? { name: contains(debounced) } : undefined,
         searchWildcardsEnabled: true,
         output: ["groupid", "name"],
         sortfield: "name",

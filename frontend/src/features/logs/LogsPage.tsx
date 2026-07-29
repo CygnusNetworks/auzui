@@ -1,14 +1,26 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
-import type { LogFilter, LogFilterField } from "@auzui/logs";
+import type { LogFilterField } from "@auzui/logs";
 import { rangeFromPreset } from "@auzui/timeseries";
 import { LogRows } from "../../components/LogRows";
 import { RangePicker, type RangeValue } from "../../components/RangePicker";
 import { useDebouncedValue } from "../../lib/use-debounced-value";
 import { useLogsEnabled, useLogSource } from "../../lib/use-logs";
 import { buildLevelQuery, LOG_LEVEL_CHIPS } from "../../lib/log-level";
-import { zabbixApi } from "../../lib/auth/store";
+import {
+  activeFilterMode,
+  toggleFilter,
+  type LogFilterMode,
+  type LogFilterState,
+} from "../../lib/log-filters";
+import {
+  clearLogFilters,
+  hasStoredValues,
+  readLogFilters,
+  writeLogFilters,
+} from "../../lib/log-filter-storage";
+import { useAuthStore, zabbixApi } from "../../lib/auth/store";
 import { filtersFromSearch, filtersToSearchValue, validateLogsSearch } from "./search-params";
 import { useLogSearch, useLogStreams } from "./use-logs-page";
 import { useT } from "../../lib/i18n";
@@ -94,9 +106,57 @@ function LogsBrowser() {
   const [hostQuery, setHostQuery] = useState("");
   const [hostFocused, setHostFocused] = useState(false);
 
+  const username = useAuthStore((s) => s.username);
+
   const selectedHosts = useMemo(() => parseHostParam(search.host), [search.host]);
   const includeFilters = useMemo(() => filtersFromSearch(search.include), [search.include]);
   const excludeFilters = useMemo(() => filtersFromSearch(search.exclude), [search.exclude]);
+
+  /**
+   * Einheitlicher Filterzustand für toggleFilter: Ein Include auf `source`
+   * lebt in der bestehenden Host-Chip-Liste (?host=), nicht in ?include= —
+   * hier wieder zusammengeführt, damit gegenseitige Exklusivität (ein
+   * Host-Include und ein Host-Exclude schließen sich aus) und die aktive
+   * Markierung in der Zeile über EINE reine Funktion laufen.
+   */
+  const filterState = useMemo<LogFilterState>(
+    () => ({
+      include: [...selectedHosts.map((h) => ({ field: "source" as const, value: h })), ...includeFilters],
+      exclude: excludeFilters,
+    }),
+    [selectedHosts, includeFilters, excludeFilters],
+  );
+
+  const activeModeFor = useCallback(
+    (field: LogFilterField, value: string) => activeFilterMode(filterState, field, value),
+    [filterState],
+  );
+
+  // Per-User-Persistenz (PLAN Aufgabe 3): gespeicherte Filter beim ersten
+  // Öffnen ohne URL-Params anwenden (URL hat Vorrang); danach jede Änderung
+  // zurückschreiben. `hydrated` verhindert, dass der Schreib-Effekt vor der
+  // Anwendung feuert; ein evtl. leerer Zwischenstand wird durch das folgende
+  // Navigate sofort mit den echten Werten überschrieben.
+  const [hydrated, setHydrated] = useState(false);
+  useEffect(() => {
+    if (username && !search.include && !search.exclude && !search.host && !search.stream) {
+      const stored = readLogFilters(username);
+      if (stored && hasStoredValues(stored)) {
+        void navigate({ to: "/logs", search: { ...stored }, replace: true });
+      }
+    }
+    setHydrated(true);
+    // Nur einmal beim Mount: gespeicherte Filter anwenden, dann persistieren.
+  }, []);
+  useEffect(() => {
+    if (!hydrated || !username) return;
+    writeLogFilters(username, {
+      stream: search.stream,
+      host: search.host,
+      include: search.include,
+      exclude: search.exclude,
+    });
+  }, [hydrated, username, search.stream, search.host, search.include, search.exclude]);
 
   // Beim ersten Laden ohne ?stream= den is_default-Stream vorauswählen, statt
   // stillschweigend "alle Streams" zu durchsuchen (Nutzerbeschwerde: Default
@@ -137,41 +197,31 @@ function LogsBrowser() {
   }
 
   /**
-   * Include auf "source" fließt in die bestehende Host-Chip-Liste (?host=)
-   * statt in die generische Filterliste — dieselbe Zeile klickbar zu machen
-   * darf die schon funktionierende Host-Auswahl nicht duplizieren. Exclude
-   * gibt es dort nicht, deshalb läuft Exclude für JEDES Feld (auch Hosts)
-   * über die generischen include/exclude-Filter.
+   * Setzt/entfernt einen Filter über die reine Funktion `toggleFilter`
+   * (gegenseitige Exklusivität + Toggle-off, PLAN Aufgabe 2). Danach wird der
+   * neue Zustand wieder in die URL zerlegt: Source-Includes in `?host=` (damit
+   * die bestehende Host-Auswahl nicht dupliziert wird), alles andere in
+   * `?include=`/`?exclude=`. Auch das Entfernen eines Filter-Chips läuft
+   * hierüber (erneuter Klick auf den aktiven Modus = entfernen).
    */
-  function addFilter(field: LogFilterField, value: string, mode: "include" | "exclude") {
-    if (field === "source" && mode === "include") {
-      if (!selectedHosts.includes(value)) setHosts([...selectedHosts, value]);
-      return;
-    }
-    const list = mode === "include" ? includeFilters : excludeFilters;
-    if (list.some((f) => f.field === field && f.value === value)) return;
-    const nextList = [...list, { field, value }];
+  function handleFilter(field: LogFilterField, value: string, mode: LogFilterMode) {
+    const next = toggleFilter(filterState, field, value, mode);
+    const hostSources = next.include.filter((f) => f.field === "source").map((f) => f.value);
+    const genericInclude = next.include.filter((f) => f.field !== "source");
     void navigate({
       to: "/logs",
       search: {
         ...search,
-        include: filtersToSearchValue(mode === "include" ? nextList : includeFilters),
-        exclude: filtersToSearchValue(mode === "exclude" ? nextList : excludeFilters),
+        host: hostSources.length > 0 ? hostSources.join(",") : undefined,
+        include: filtersToSearchValue(genericInclude),
+        exclude: filtersToSearchValue(next.exclude),
       },
     });
   }
 
-  function removeFilter(mode: "include" | "exclude", filter: LogFilter) {
-    const list = mode === "include" ? includeFilters : excludeFilters;
-    const nextList = list.filter((f) => !(f.field === filter.field && f.value === filter.value));
-    void navigate({
-      to: "/logs",
-      search: {
-        ...search,
-        include: filtersToSearchValue(mode === "include" ? nextList : includeFilters),
-        exclude: filtersToSearchValue(mode === "exclude" ? nextList : excludeFilters),
-      },
-    });
+  function resetFilters() {
+    if (username) clearLogFilters(username);
+    void navigate({ to: "/logs", search: { stream: search.stream }, replace: true });
   }
 
   // Level-Chips sind ein Standard-Syslog-Feld und müssen immer wählbar sein —
@@ -197,7 +247,8 @@ function LogsBrowser() {
     void navigate({ to: "/logs", search: { ...search, stream: streamId } });
   }
 
-  const hasActiveFilters = includeFilters.length > 0 || excludeFilters.length > 0;
+  const hasActiveFilters =
+    includeFilters.length > 0 || excludeFilters.length > 0 || selectedHosts.length > 0;
 
   return (
     <div className="mx-auto max-w-[1400px] px-3 min-[700px]:px-5 pb-16 pt-4.5">
@@ -335,12 +386,14 @@ function LogsBrowser() {
                 {includeFilters.map((f) => (
                   <span
                     key={`inc-${f.field}-${f.value}`}
+                    title={t("logs.include", f.value)}
                     className="inline-flex items-center gap-1 rounded bg-accent-soft px-1.5 py-0.5 font-mono text-[10.5px] text-accent"
                   >
+                    <span aria-hidden>＋</span>
                     {fieldLabels[f.field]}: {f.value}
                     <button
                       type="button"
-                      onClick={() => removeFilter("include", f)}
+                      onClick={() => handleFilter(f.field, f.value, "include")}
                       aria-label={t("logs.removeFilter", f.value)}
                     >
                       ✕
@@ -350,18 +403,27 @@ function LogsBrowser() {
                 {excludeFilters.map((f) => (
                   <span
                     key={`exc-${f.field}-${f.value}`}
+                    title={t("logs.exclude", f.value)}
                     className="inline-flex items-center gap-1 rounded bg-sev-high/15 px-1.5 py-0.5 font-mono text-[10.5px] text-sev-high"
                   >
+                    <span aria-hidden>－</span>
                     {t("logs.not")} {fieldLabels[f.field]}: {f.value}
                     <button
                       type="button"
-                      onClick={() => removeFilter("exclude", f)}
+                      onClick={() => handleFilter(f.field, f.value, "exclude")}
                       aria-label={t("logs.removeFilter", f.value)}
                     >
                       ✕
                     </button>
                   </span>
                 ))}
+                <button
+                  type="button"
+                  onClick={resetFilters}
+                  className="ml-auto rounded border border-line px-1.5 py-0.5 font-mono text-[10.5px] text-ink-muted hover:bg-surface-2 hover:text-ink"
+                >
+                  {t("logs.resetFilters")}
+                </button>
               </div>
             )}
           </div>
@@ -383,7 +445,7 @@ function LogsBrowser() {
                 <div className="border-b border-line-soft px-3.5 py-1.5 font-mono text-[10.5px] text-ink-muted">
                   {t("logs.hits", total ?? messages.length)}
                 </div>
-                <LogRows messages={messages} onFilter={addFilter} />
+                <LogRows messages={messages} onFilter={handleFilter} activeModeFor={activeModeFor} />
                 {resultQuery.hasNextPage && (
                   <div className="border-t border-line-soft p-2 text-center">
                     <button

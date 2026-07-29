@@ -12,6 +12,33 @@ export function isTextItem(item: Pick<ZabbixItem, "value_type">): boolean {
   return item.value_type === "1" || item.value_type === "2" || item.value_type === "4";
 }
 
+/**
+ * Removes unresolved Zabbix macro tokens (e.g. `{#IFNAME}`, `{HOST.NAME}`,
+ * `{$USERMACRO}`) from an item name and tidies the whitespace/punctuation they
+ * leave behind, so a name like "Interface {#IFNAME}: Bits received" degrades to
+ * "Interface: Bits received" instead of showing the raw macro. Used only as a
+ * fallback when Zabbix 7.x's server-resolved `name_resolved` is unavailable.
+ */
+export function stripUnresolvedMacros(name: string): string {
+  return name
+    .replace(/\{[^{}]*\}/g, "")
+    .replace(/\s+([:,.)\]])/g, "$1")
+    .replace(/([([])\s+/g, "$1")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
+/**
+ * Display name for an item: Zabbix 7.0+ resolves LLD/host/user macros
+ * server-side into `name_resolved` — prefer it; otherwise fall back to `name`
+ * with any still-unresolved `{…}` macros stripped (see stripUnresolvedMacros).
+ */
+export function resolveItemName(item: Pick<ZabbixItem, "name" | "name_resolved">): string {
+  const resolved = item.name_resolved?.trim();
+  if (resolved) return resolved;
+  return stripUnresolvedMacros(item.name);
+}
+
 export interface ComponentSection {
   component: string;
   items: ZabbixItem[];

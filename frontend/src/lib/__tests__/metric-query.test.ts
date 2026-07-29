@@ -123,4 +123,41 @@ describe("currentFieldDraft", () => {
     expect(currentFieldDraft("eth0")).toBeNull();
     expect(currentFieldDraft("foo:bar")).toBeNull();
   });
+
+  // Regression: the "host:d → empty list" bug. The draft value must be just the
+  // typed prefix ("" then "d" then "docker-v"), so the host search keeps
+  // matching; an empty prefix lists all hosts, a one-char prefix must not clear
+  // the list.
+  it("yields an empty value right after the colon (host: lists all)", () => {
+    expect(currentFieldDraft("host:")).toEqual({ field: "host", value: "" });
+  });
+
+  it("yields the single typed character, not the whole word", () => {
+    expect(currentFieldDraft("host:d")).toEqual({ field: "host", value: "d" });
+  });
+
+  it("grows the prefix as the user keeps typing", () => {
+    expect(currentFieldDraft("host:docker-v")).toEqual({ field: "host", value: "docker-v" });
+  });
+
+  it("extracts the draft from the last word when preceded by free text", () => {
+    expect(currentFieldDraft("cpu load host:")).toEqual({ field: "host", value: "" });
+    expect(currentFieldDraft("cpu load host:docker-v")).toEqual({ field: "host", value: "docker-v" });
+  });
+
+  it("strips the opening quote of a still-open quoted value", () => {
+    expect(currentFieldDraft('host:"docker-v')).toEqual({ field: "host", value: "docker-v" });
+    expect(currentFieldDraft('cpu host:"doc')).toEqual({ field: "host", value: "doc" });
+  });
+
+  it("strips surrounding quotes of a closed quoted value", () => {
+    expect(currentFieldDraft('host:"docker"')).toEqual({ field: "host", value: "docker" });
+  });
+
+  it("supports every recognized field prefix", () => {
+    expect(currentFieldDraft("group:pro")).toEqual({ field: "group", value: "pro" });
+    expect(currentFieldDraft("component:cp")).toEqual({ field: "component", value: "cp" });
+    expect(currentFieldDraft("key:eth")).toEqual({ field: "key", value: "eth" });
+    expect(currentFieldDraft("unit:%")).toEqual({ field: "unit", value: "%" });
+  });
 });

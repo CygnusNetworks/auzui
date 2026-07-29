@@ -7,7 +7,9 @@ import {
   deriveProxyClusters,
   deriveSubnetClusters,
   findClusterForHostQuery,
+  resolveMapLabel,
   sortClustersBySeverity,
+  DIRECT_PROXY_CLUSTER_ID,
   type ClusterSummary,
 } from "../topology";
 
@@ -132,6 +134,18 @@ describe("buildTopology", () => {
     expect(logicalEdges).toHaveLength(2);
   });
 
+  it("treats proxyid '0' (no proxy) as no proxy — never a 'Proxy 0' node", () => {
+    const hosts = [
+      mkHost({ hostid: "1", proxyid: "0" }),
+      mkHost({ hostid: "2", proxyid: "0" }),
+      mkHost({ hostid: "3" }), // undefined proxyid
+    ];
+    const graph = buildTopology(hosts, [], new Map());
+    expect(graph.nodes.filter((n) => n.kind === "proxy")).toHaveLength(0);
+    expect(graph.edges.filter((e) => e.level === "logical")).toHaveLength(0);
+    expect(graph.nodes.some((n) => n.label === "Proxy 0")).toBe(false);
+  });
+
   it("uses the resolved proxy name (proxy.get) instead of 'Proxy <id>' when available", () => {
     const hosts = [mkHost({ hostid: "1", proxyid: "5" }), mkHost({ hostid: "2", proxyid: "5" })];
     const graph = buildTopology(hosts, [], new Map(), new Map([["5", "proxy-fra1"]]));
@@ -172,9 +186,11 @@ describe("deriveSubnetClusters", () => {
 });
 
 describe("deriveProxyClusters", () => {
+  const DIRECT = "Directly monitored (no proxy)";
+
   it("groups hosts by proxyid and resolves the proxy name", () => {
-    const hosts = [mkHost({ hostid: "1", proxyid: "5" }), mkHost({ hostid: "2", proxyid: "5" }), mkHost({ hostid: "3" })];
-    const clusters = deriveProxyClusters(hosts, new Map(), new Map([["5", "proxy-fra1"]]));
+    const hosts = [mkHost({ hostid: "1", proxyid: "5" }), mkHost({ hostid: "2", proxyid: "5" })];
+    const clusters = deriveProxyClusters(hosts, new Map(), new Map([["5", "proxy-fra1"]]), DIRECT);
     expect(clusters).toHaveLength(1);
     expect(clusters[0]).toMatchObject({ id: "proxy:5", name: "proxy-fra1" });
     expect(clusters[0]!.hosts).toHaveLength(2);
@@ -182,8 +198,78 @@ describe("deriveProxyClusters", () => {
 
   it("falls back to 'Proxy <id>' without a resolved name", () => {
     const hosts = [mkHost({ hostid: "1", proxyid: "9" })];
-    const clusters = deriveProxyClusters(hosts, new Map(), new Map());
+    const clusters = deriveProxyClusters(hosts, new Map(), new Map(), DIRECT);
     expect(clusters[0]!.name).toBe("Proxy 9");
+  });
+
+  it("buckets hosts with proxyid '0'/undefined into the 'directly monitored' cluster, not 'Proxy 0'", () => {
+    const hosts = [
+      mkHost({ hostid: "1", proxyid: "5" }),
+      mkHost({ hostid: "2", proxyid: "0" }),
+      mkHost({ hostid: "3" }),
+      mkHost({ hostid: "4", proxyid: "" }),
+    ];
+    const clusters = deriveProxyClusters(hosts, new Map(), new Map([["5", "proxy-fra1"]]), DIRECT);
+    expect(clusters.some((c) => c.name === "Proxy 0")).toBe(false);
+    const direct = clusters.find((c) => c.id === DIRECT_PROXY_CLUSTER_ID)!;
+    expect(direct).toBeDefined();
+    expect(direct.name).toBe(DIRECT);
+    expect(direct.hosts.map((h) => h.hostid).sort()).toEqual(["2", "3", "4"]);
+  });
+
+  it("omits the 'directly monitored' cluster when every host has a real proxy", () => {
+    const hosts = [mkHost({ hostid: "1", proxyid: "5" })];
+    const clusters = deriveProxyClusters(hosts, new Map(), new Map(), DIRECT);
+    expect(clusters.some((c) => c.id === DIRECT_PROXY_CLUSTER_ID)).toBe(false);
+  });
+});
+
+describe("resolveMapLabel", () => {
+  const host = mkHost({
+    hostid: "1",
+    host: "sw01.tech",
+    name: "Switch 01",
+    interfaces: [{ interfaceid: "i1", ip: "10.0.0.5", dns: "sw01.example.net", useip: "1", port: "161", type: "2" }],
+  });
+
+  it("resolves the common host macros against the loaded host", () => {
+    expect(resolveMapLabel("{HOST.NAME}", host)).toBe("Switch 01");
+    expect(resolveMapLabel("{HOSTNAME}", host)).toBe("Switch 01");
+    expect(resolveMapLabel("{HOST.HOST}", host)).toBe("sw01.tech");
+    expect(resolveMapLabel("{HOST.IP}", host)).toBe("10.0.0.5");
+    expect(resolveMapLabel("{IPADDRESS}", host)).toBe("10.0.0.5");
+    expect(resolveMapLabel("{HOST.DNS}", host)).toBe("sw01.example.net");
+  });
+
+  it("resolves {HOST.CONN} to the IP or DNS depending on interface.useip", () => {
+    expect(resolveMapLabel("{HOST.CONN}", host)).toBe("10.0.0.5");
+    const dnsHost = mkHost({
+      interfaces: [{ interfaceid: "i1", ip: "10.0.0.5", dns: "sw01.example.net", useip: "0", port: "161", type: "2" }],
+    });
+    expect(resolveMapLabel("{HOST.CONN}", dnsHost)).toBe("sw01.example.net");
+  });
+
+  it("substitutes macros inside surrounding text", () => {
+    expect(resolveMapLabel("{HOST.NAME} ({HOST.IP})", host)).toBe("Switch 01 (10.0.0.5)");
+  });
+
+  it("drops unknown macros and collapses the whitespace/blank lines they leave behind", () => {
+    expect(resolveMapLabel("{HOST.NAME}\n{UNKNOWN.MACRO}", host)).toBe("Switch 01");
+    expect(resolveMapLabel("Core {SOME.THING} switch", host)).toBe("Core switch");
+    expect(resolveMapLabel("{$UNRESOLVED}", host)).toBe("");
+  });
+
+  it("returns an empty string when the macro cannot be resolved (no host / no interface)", () => {
+    expect(resolveMapLabel("{HOST.NAME}", undefined)).toBe("");
+    const noIface = mkHost({ name: "n", host: "h", interfaces: [] });
+    expect(resolveMapLabel("{HOST.IP}", noIface)).toBe("");
+    expect(resolveMapLabel("{HOST.CONN}", noIface)).toBe("");
+    expect(resolveMapLabel("{HOST.NAME}", noIface)).toBe("n");
+  });
+
+  it("leaves macro-free labels untouched", () => {
+    expect(resolveMapLabel("Core Switch", host)).toBe("Core Switch");
+    expect(resolveMapLabel("", host)).toBe("");
   });
 });
 

@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { LogFilterField, LogMessage } from "@auzui/logs";
 import { resolveFacilityName } from "../lib/log-facility";
 import { logLevelBadgeClass, logLevelLabel } from "../lib/log-level";
 import { formatLogTimestamp } from "../lib/log-timestamp";
-import { useT } from "../lib/i18n";
+import type { LogFilterMode } from "../lib/log-filters";
+import { useT, type Translate } from "../lib/i18n";
 
 function applicationName(fields: Record<string, unknown>): string | undefined {
   const v = fields.application_name;
@@ -20,57 +21,165 @@ function rowKey(msg: LogMessage, index: number): string {
   return msg.id ?? `${msg.timestamp}-${msg.source}-${index}`;
 }
 
-type FilterMode = "include" | "exclude";
-type OnFilter = (field: LogFilterField, value: string, mode: FilterMode) => void;
+type OnFilter = (field: LogFilterField, value: string, mode: LogFilterMode) => void;
+/** Liefert den aktiven Filtermodus für ein `field:value` (oder undefined). */
+type ActiveModeFor = (field: LogFilterField, value: string) => LogFilterMode | undefined;
 
 /**
- * Hostname/Facility/application_name sind auf Hover mit ＋/－-Buttons
- * versehen, die einen Include- bzw. Exclude-Filter setzen (PLAN.md Abschnitt
- * H, Nutzerwunsch "Filter direkt aus der Logzeile"). `onFilter` ist optional
- * — ohne ihn (z.B. im schlankeren Host-Detail-Panel) werden keine Buttons
- * gerendert.
+ * Die beiden beschrifteten Aktions-Buttons „＋ Nur anzeigen" (accent) und
+ * „－ Ausblenden" (sev-high). Wird sowohl im Hover-Streifen (Desktop) als auch
+ * im Touch-Popover verwendet, damit Beschriftung/Farbe/Tooltip identisch sind.
+ * Der jeweils aktive Modus wird gefüllt dargestellt (aria-pressed) — ein Klick
+ * darauf entfernt den Filter wieder (Toggle, siehe toggleFilter).
+ */
+function FilterActionButtons({
+  t,
+  value,
+  activeMode,
+  onPick,
+  size,
+}: {
+  t: Translate;
+  value: string;
+  activeMode: LogFilterMode | undefined;
+  onPick: (mode: LogFilterMode) => void;
+  size: "compact" | "full";
+}) {
+  const pad = size === "full" ? "px-2 py-1" : "px-1 py-0.5";
+  const incActive = activeMode === "include";
+  const excActive = activeMode === "exclude";
+  return (
+    <>
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          onPick("include");
+        }}
+        title={t("logs.include", value)}
+        aria-label={t("logs.include", value)}
+        aria-pressed={incActive}
+        className={`inline-flex items-center gap-1 rounded font-mono text-[10.5px] leading-none ${pad} ${
+          incActive
+            ? "bg-accent text-white"
+            : "text-accent hover:bg-accent-soft"
+        }`}
+      >
+        <span aria-hidden>＋</span>
+        {t("logs.includeAction")}
+      </button>
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          onPick("exclude");
+        }}
+        title={t("logs.exclude", value)}
+        aria-label={t("logs.exclude", value)}
+        aria-pressed={excActive}
+        className={`inline-flex items-center gap-1 rounded font-mono text-[10.5px] leading-none ${pad} ${
+          excActive
+            ? "bg-sev-high text-white"
+            : "text-sev-high hover:bg-sev-high/15"
+        }`}
+      >
+        <span aria-hidden>－</span>
+        {t("logs.excludeAction")}
+      </button>
+    </>
+  );
+}
+
+/**
+ * Hostname/Facility/application_name sind klickbare Filterwerte (PLAN.md
+ * Abschnitt H + PLAN Aufgabe 1). Damit klar ist, dass ＋/－ „einschließen" bzw.
+ * „ausblenden" bedeutet:
+ *
+ * - Auf Hover-Geräten erscheinen neben dem Wert zwei beschriftete Buttons
+ *   „＋ Nur anzeigen" (accent) / „－ Ausblenden" (rot) mit Tooltip.
+ * - Auf Touch-Geräten (kein Hover) öffnet ein Klick auf den Wert ein kleines
+ *   Popover mit denselben Aktionen plus Anzeige des Werts.
+ * - Ein bereits gesetzter Filter färbt den Wert selbst grün (include) bzw. rot
+ *   (exclude), sodass aktive Filter direkt in der Zeile sichtbar sind.
+ *
+ * `onFilter` ist optional — ohne ihn (z.B. im schlankeren Host-Detail-Panel)
+ * wird der Wert als reiner Text gerendert.
  */
 function FilterableField({
   value,
   field,
   onFilter,
+  activeModeFor,
   className,
 }: {
   value: string;
   field: LogFilterField;
   onFilter: OnFilter | undefined;
+  activeModeFor: ActiveModeFor | undefined;
   className: string;
 }) {
   const t = useT();
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef<HTMLSpanElement>(null);
+  const activeMode = activeModeFor?.(field, value);
+
+  useEffect(() => {
+    if (!open) return;
+    function onDocDown(e: MouseEvent) {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", onDocDown);
+    return () => document.removeEventListener("mousedown", onDocDown);
+  }, [open]);
+
+  if (!onFilter) {
+    return <span className={className}>{value}</span>;
+  }
+
+  const activeCls =
+    activeMode === "include"
+      ? "!bg-accent-soft !text-accent px-1 ring-1 ring-inset ring-accent/40"
+      : activeMode === "exclude"
+        ? "!bg-sev-high/15 !text-sev-high px-1 ring-1 ring-inset ring-sev-high/40"
+        : "";
+
+  function pick(mode: LogFilterMode) {
+    setOpen(false);
+    onFilter?.(field, value, mode);
+  }
+
   return (
-    <span className="group/f inline-flex items-center gap-0.5">
-      <span className={className}>{value}</span>
-      {onFilter && (
-        <span className="hidden items-center gap-0.5 group-hover/f:inline-flex">
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              onFilter(field, value, "include");
-            }}
-            title={t("logs.include", value)}
-            aria-label={t("logs.include", value)}
-            className="rounded px-0.5 text-[11px] leading-none text-ink-muted hover:text-accent"
-          >
-            ＋
-          </button>
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              onFilter(field, value, "exclude");
-            }}
-            title={t("logs.exclude", value)}
-            aria-label={t("logs.exclude", value)}
-            className="rounded px-0.5 text-[11px] leading-none text-ink-muted hover:text-sev-high"
-          >
-            －
-          </button>
+    <span ref={wrapRef} className="group/f relative inline-flex items-center gap-1">
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          setOpen((o) => !o);
+        }}
+        title={activeMode ? undefined : t("logs.filterActions", value)}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        className={`cursor-pointer rounded ${className} ${activeCls}`}
+      >
+        {value}
+      </button>
+      {/* Desktop: beschrifteter Aktions-Streifen nur auf Hover-Geräten. */}
+      <span className="hidden items-center gap-1 [@media(hover:hover)]:group-hover/f:inline-flex">
+        <FilterActionButtons t={t} value={value} activeMode={activeMode} onPick={pick} size="compact" />
+      </span>
+      {/* Touch/Klick: Popover mit Wert-Anzeige + Aktionen. */}
+      {open && (
+        <span
+          role="menu"
+          className="absolute left-0 top-full z-20 mt-1 flex flex-col gap-1 rounded-md border border-line bg-surface p-1.5 shadow-md"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <span className="max-w-[220px] truncate px-1 pb-0.5 font-mono text-[10px] text-ink-muted">
+            {value}
+          </span>
+          <span className="flex items-center gap-1">
+            <FilterActionButtons t={t} value={value} activeMode={activeMode} onPick={pick} size="full" />
+          </span>
         </span>
       )}
     </span>
@@ -104,9 +213,12 @@ function FilterableField({
 export function LogRows({
   messages,
   onFilter,
+  activeModeFor,
 }: {
   messages: LogMessage[];
   onFilter?: OnFilter;
+  /** Markiert Werte, auf die bereits ein Include/Exclude gesetzt ist. */
+  activeModeFor?: ActiveModeFor;
 }) {
   const [expanded, setExpanded] = useState<string | undefined>(undefined);
 
@@ -146,6 +258,7 @@ export function LogRows({
                     value={msg.source}
                     field="source"
                     onFilter={onFilter}
+                    activeModeFor={activeModeFor}
                     className="truncate font-mono text-[11px] text-ink-2"
                   />
                   {facilityName && (
@@ -153,6 +266,7 @@ export function LogRows({
                       value={facilityName}
                       field="facility"
                       onFilter={onFilter}
+                      activeModeFor={activeModeFor}
                       className="rounded bg-surface-3 px-1.5 py-0.5 font-mono text-[10px] text-ink-muted"
                     />
                   )}
@@ -161,6 +275,7 @@ export function LogRows({
                       value={appName}
                       field="application_name"
                       onFilter={onFilter}
+                      activeModeFor={activeModeFor}
                       className="rounded bg-surface-3 px-1.5 py-0.5 font-mono text-[10px] text-ink-muted"
                     />
                   )}

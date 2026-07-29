@@ -10,11 +10,23 @@
 /** What a family key-pattern's matched series represents, for chart/legend styling. */
 export type SeriesRole = "in" | "out" | "errors" | "status" | "value";
 
+/**
+ * How a bound item is rendered inside a consolidated panel:
+ * - "line"   → a series line in the shared chart (default),
+ * - "stat"   → a compact value/percent tile beside the chart (e.g. packet loss %),
+ * - "status" → an up/down badge from a 0/1 value (e.g. ping / interface status).
+ * Generic across templates (bundles and families) so e.g. the ICMP bundle and
+ * an interface family can both surface status/percent items without a line.
+ */
+export type DisplayRole = "line" | "stat" | "status";
+
 export interface DisplayBundleItem {
   /** Regex (as a plain string, no delimiters) tested against item.key_. */
   keyPattern: string;
   /** Legend/series label for this item within the bundle's consolidated chart. */
   seriesLabel: string;
+  /** Panel rendering for this item; defaults to "line" when omitted. */
+  role?: DisplayRole;
 }
 
 export interface DisplayBundle {
@@ -64,6 +76,8 @@ export interface SectionSeriesItem {
   item: import("@auzui/zabbix-client").ZabbixItem;
   seriesLabel: string;
   seriesRole?: SeriesRole;
+  /** Panel rendering role (line/stat/status); defaults to "line" at render time. */
+  displayRole?: DisplayRole;
 }
 
 export interface TemplateSection {

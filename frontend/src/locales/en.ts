@@ -85,15 +85,19 @@ export const en = {
       hoursMinutes: (h: number, m: number) => `${h}h ${m}m`,
       days: (d: number) => `${d}d`,
     },
-    bulkBar: {
+    selectMode: {
+      enter: "Select",
+      active: "Selecting",
       selectedCount: (n: number) => `${n} selected`,
-      commentPlaceholder: "Comment (optional)…",
-      acknowledge: "✓ Acknowledge",
-      unacknowledge: "Remove acknowledgement",
-      clearSelection: "Clear selection",
+      commentPlaceholder: "Reason/comment (optional)…",
+      confirm: "✓ Confirm",
+      removeAck: "Remove ack",
+      suppress: "Suppress",
+      done: "Done",
     },
     filterChips: {
       unackOnly: "unacknowledged only",
+      showSuppressed: "show suppressed",
       hostFilter: (host: string) => `Host ${host} ✕`,
     },
     detailPanel: {
@@ -124,6 +128,7 @@ export const en = {
       tableAria: (label: string) => `Problems ${label}`,
       selectRowAria: (name: string) => `Select ${name}`,
       ackedCount: (n: number) => `${n} ack`,
+      suppressedBadge: "suppressed",
     },
     page: {
       title: "Problems",
@@ -214,6 +219,8 @@ export const en = {
     factCopyHint: "Click to copy",
     noFacts: "No constant values.",
     legendCurrent: "Current:",
+    statusUp: "up",
+    statusDown: "down",
   },
   explorer: {
     title: "Infrastructure Explorer",
@@ -258,6 +265,7 @@ export const en = {
     kindSubnet: "Subnet",
     kindProxy: "Proxy",
     kindMap: "Map",
+    directProxy: "Directly monitored (no proxy)",
     nodeSummary: (label: string, count: number) => `${label} · ${count} problems`,
     nodeOk: "OK — no active problems",
     deepDive: "Deep-dive",
@@ -339,6 +347,7 @@ export const en = {
     levelLabel: "Level:",
     filterLabel: "Filter:",
     removeFilter: (v: string) => `Remove filter ${v}`,
+    resetFilters: "Reset filters",
     not: "NOT",
     loadingLogs: "Loading logs…",
     loadError: (message: string) => `Logs could not be loaded: ${message}`,
@@ -355,6 +364,9 @@ export const en = {
     },
     include: (v: string) => `Include "${v}"`,
     exclude: (v: string) => `Exclude "${v}"`,
+    includeAction: "Show only",
+    excludeAction: "Hide",
+    filterActions: (v: string) => `Filter "${v}"…`,
   },
   maintenance: {
     errors: {

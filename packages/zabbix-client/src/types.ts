@@ -57,6 +57,12 @@ export interface ZabbixItem {
   itemid: ZabbixId;
   hostid: ZabbixId;
   name: string;
+  /**
+   * Zabbix 7.0+ item.get field: `name` with all supported macros (LLD `{#…}`,
+   * `{HOST.NAME}`, user macros) resolved server-side. Optional — absent on
+   * older servers or when not requested; prefer it over `name` for display.
+   */
+  name_resolved?: string;
   key_: string;
   /** 0 float, 1 char, 2 log, 3 uint, 4 text */
   value_type: "0" | "1" | "2" | "3" | "4";

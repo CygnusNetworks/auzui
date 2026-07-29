@@ -120,6 +120,31 @@ describe("filterProblems", () => {
     expect(result).toHaveLength(3);
   });
 
+  it("hides suppressed problems by default", () => {
+    const withSuppressed = joinProblemsWithTriggers(
+      [
+        problem({ eventid: "1", suppressed: "0" }),
+        problem({ eventid: "2", suppressed: "1" }),
+      ],
+      [trigger()],
+    );
+    expect(filterProblems(withSuppressed, {}).map((p) => p.eventid)).toEqual(["1"]);
+  });
+
+  it("includes suppressed problems when showSuppressed is set", () => {
+    const withSuppressed = joinProblemsWithTriggers(
+      [
+        problem({ eventid: "1", suppressed: "0" }),
+        problem({ eventid: "2", suppressed: "1" }),
+      ],
+      [trigger()],
+    );
+    expect(filterProblems(withSuppressed, { showSuppressed: true }).map((p) => p.eventid)).toEqual([
+      "1",
+      "2",
+    ]);
+  });
+
   it("filters by host", () => {
     const withHost = joinProblemsWithTriggers(
       [problem({ eventid: "1", objectid: "100" }), problem({ eventid: "2", objectid: "200" })],

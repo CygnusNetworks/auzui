@@ -8,19 +8,27 @@ export function FilterChips({
   problems,
   activeSeverities,
   unackOnly,
+  showSuppressed,
   hostFilter,
   onToggleSeverity,
   onToggleUnack,
+  onToggleSuppressed,
   onClearHostFilter,
+  selectMode,
+  onToggleSelectMode,
 }: {
   problems: EnrichedProblem[];
   activeSeverities: Set<Severity>;
   unackOnly: boolean;
+  showSuppressed: boolean;
   /** Restrict to one host's problems (set via the Hosts-Tabelle or the ⌘K palette). */
   hostFilter?: string;
   onToggleSeverity: (severity: Severity) => void;
   onToggleUnack: () => void;
+  onToggleSuppressed: () => void;
   onClearHostFilter?: () => void;
+  selectMode: boolean;
+  onToggleSelectMode: () => void;
 }) {
   const t = useT();
   const { locale } = useLocale();
@@ -54,6 +62,16 @@ export function FilterChips({
       >
         {t("problems.filterChips.unackOnly")}
       </button>
+      <button
+        type="button"
+        onClick={onToggleSuppressed}
+        aria-pressed={showSuppressed}
+        className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 font-mono text-xs ${
+          showSuppressed ? "border-accent/50 text-ink font-semibold" : "border-line text-ink-2"
+        }`}
+      >
+        {t("problems.filterChips.showSuppressed")}
+      </button>
       {hostFilter && (
         <button
           type="button"
@@ -64,6 +82,18 @@ export function FilterChips({
           {t("problems.filterChips.hostFilter", hostFilter)}
         </button>
       )}
+      <button
+        type="button"
+        onClick={onToggleSelectMode}
+        aria-pressed={selectMode}
+        className={`ml-auto inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 font-mono text-xs transition-colors ${
+          selectMode
+            ? "border-accent bg-accent-soft font-semibold text-accent"
+            : "border-line text-ink-2 hover:text-ink"
+        }`}
+      >
+        {selectMode ? t("problems.selectMode.active") : t("problems.selectMode.enter")}
+      </button>
     </div>
   );
 }

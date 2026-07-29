@@ -59,6 +59,57 @@ function hostNodeId(hostid: string): string {
   return `host:${hostid}`;
 }
 
+/**
+ * Zabbix reports "no proxy" as proxyid "0" (not null) — that id resolves to no
+ * proxy in proxy.get, so it must never become a "Proxy 0" cluster/node.
+ */
+const NO_PROXY_ID = "0";
+
+/** True when the host is monitored via a real proxy (proxyid set, non-empty, not "0"). */
+function hasRealProxy(proxyid: string | undefined): proxyid is string {
+  return !!proxyid && proxyid !== NO_PROXY_ID;
+}
+
+/** Synthetic cluster id for the "directly monitored (no proxy)" bucket in the Proxies tab. */
+export const DIRECT_PROXY_CLUSTER_ID = "proxy:__direct__";
+
+/**
+ * Resolves the common Zabbix host macros a map selement/link label may still
+ * carry (map.get does NOT expand them, so labels arrive as literal
+ * "{HOST.NAME}", "{HOST.IP}", …). Replaces the known macros against the loaded
+ * host data; unknown "{…}" macros are dropped and the whitespace/blank lines
+ * they leave behind are collapsed. Pure — unit-tested in topology.test.ts.
+ */
+export function resolveMapLabel(label: string, host: ZabbixHost | undefined): string {
+  if (!label) return "";
+  const iface = host?.interfaces?.[0];
+  const replaced = label.replace(/\{[^{}]+\}/g, (macro) => {
+    switch (macro) {
+      case "{HOST.NAME}":
+      case "{HOSTNAME}":
+        return host?.name ?? "";
+      case "{HOST.HOST}":
+        return host?.host ?? "";
+      case "{HOST.IP}":
+      case "{IPADDRESS}":
+        return iface?.ip ?? "";
+      case "{HOST.DNS}":
+        return iface?.dns ?? "";
+      case "{HOST.CONN}":
+        if (!iface) return "";
+        return iface.useip === "1" ? iface.ip : iface.dns;
+      default:
+        return ""; // unknown macro — drop it
+    }
+  });
+  // Collapse the whitespace/blank lines removed macros leave behind.
+  return replaced
+    .split("\n")
+    .map((line) => line.replace(/[ \t]+/g, " ").trim())
+    .filter((line) => line.length > 0)
+    .join("\n");
+}
+
 const IPV4_RE = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/;
 
 /** First three octets ("/24 heuristic") — undefined for non-IPv4 addresses. */
@@ -150,7 +201,7 @@ export function buildTopology(
   // --- logical: shared proxy, as host<->proxy-group edges ------------------
   const hostsByProxy = new Map<string, string[]>();
   for (const host of hosts) {
-    if (!host.proxyid) continue;
+    if (!hasRealProxy(host.proxyid)) continue; // proxyid "0"/undefined = no proxy
     const list = hostsByProxy.get(host.proxyid);
     if (list) list.push(host.hostid);
     else hostsByProxy.set(host.proxyid, [host.hostid]);
@@ -246,15 +297,25 @@ export function deriveSubnetClusters(
   return clusters;
 }
 
-/** Proxies-Tab: eine Gruppe je Proxy, Klarname aus `proxyNameById` (proxy.get, siehe use-topology.ts), Fallback "Proxy <id>". */
+/**
+ * Proxies-Tab: eine Gruppe je Proxy, Klarname aus `proxyNameById` (proxy.get,
+ * siehe use-topology.ts), Fallback "Proxy <id>". Hosts ohne Proxy (proxyid
+ * "0"/undefined/leer) landen NICHT als "Proxy 0" (die id löst in proxy.get
+ * nichts auf), sondern gebündelt im Cluster `directClusterName` (i18n).
+ */
 export function deriveProxyClusters(
   hosts: ZabbixHost[],
   problemsByHost: Map<string, HostProblemSummary>,
   proxyNameById: Map<string, string>,
+  directClusterName: string,
 ): ClusterSummary[] {
   const byProxy = new Map<string, ZabbixHost[]>();
+  const direct: ZabbixHost[] = [];
   for (const host of hosts) {
-    if (!host.proxyid) continue;
+    if (!hasRealProxy(host.proxyid)) {
+      direct.push(host);
+      continue;
+    }
     const list = byProxy.get(host.proxyid);
     if (list) list.push(host);
     else byProxy.set(host.proxyid, [host]);
@@ -266,6 +327,16 @@ export function deriveProxyClusters(
       id: `proxy:${proxyid}`,
       kind: "proxy",
       name: proxyNameById.get(proxyid) ?? `Proxy ${proxyid}`,
+      hosts: hostRefs,
+      severity: worstSeverityOf(hostRefs.map((h) => h.severity)),
+    });
+  }
+  if (direct.length > 0) {
+    const hostRefs = direct.map((h) => hostRef(h, problemsByHost));
+    clusters.push({
+      id: DIRECT_PROXY_CLUSTER_ID,
+      kind: "proxy",
+      name: directClusterName,
       hosts: hostRefs,
       severity: worstSeverityOf(hostRefs.map((h) => h.severity)),
     });

@@ -7,6 +7,7 @@ import { formatUnitValue } from "../../lib/format-units";
 import { useTimeseries } from "../../lib/use-timeseries";
 import type { DashboardChart } from "../../lib/auto-dashboard";
 import { useLocale } from "../../lib/i18n";
+import { isChartEmpty } from "./chart-empty";
 
 const CHART_POINTS = 300;
 
@@ -35,30 +36,24 @@ export function ChartCard({
     [chart.items],
   );
 
-  const { seriesByItem, isLoading, isFetching, slow, refetch } = useTimeseries(requestItems, range, {
+  const { seriesByItem, isLoading, isFetching, isSuccess, slow, refetch } = useTimeseries(requestItems, range, {
     points: CHART_POINTS,
     enabled: !isCounter,
   });
 
   const hasData = chart.items.some((item) => (seriesByItem.get(item.itemid)?.points.length ?? 0) > 0);
-  // Counters never get hidden — they aren't a time-series graph, so "no data points in range" doesn't apply.
-  const isEmpty = !isCounter && !isLoading && !slow && !hasData;
+  // A card only counts as empty once its query has genuinely succeeded with
+  // zero points (see chart-empty.ts). It reports both directions: it can
+  // re-announce "not empty" as soon as data arrives, because the section keeps
+  // it mounted (hidden via CSS) rather than unmounting hidden cards.
+  const isEmpty = isChartEmpty({ isCounter, isSuccess, hasData });
 
   useEffect(() => {
     onEmptyChange?.(chart.id, isEmpty);
-    // No unregister-on-unmount here: once marked empty, the parent stops
-    // rendering this card at all (it's filtered out of the visible grid),
-    // which would unmount it — reporting "not empty" on that unmount would
-    // just re-add it to the grid, remount it, and re-report empty, forever.
-    // It only gets re-evaluated for real once "Einblenden" remounts it.
   }, [chart.id, isEmpty, onEmptyChange]);
 
   if (isCounter) {
     return <CounterCard item={chart.items[0]!} title={chart.title} />;
-  }
-
-  if (isEmpty) {
-    return null;
   }
 
   const series: TimeChartSeries[] = chart.items.map((item, i) => ({

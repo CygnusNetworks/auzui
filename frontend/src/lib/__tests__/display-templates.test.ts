@@ -102,6 +102,50 @@ describe("buildSections — bundles", () => {
     const icmp = sections.find((s) => s.id === "bundle:icmp");
     expect(icmp!.items).toHaveLength(4);
   });
+
+  it("assigns line/stat/status display roles to the ICMP bundle items", () => {
+    const items = [
+      mkItem({ itemid: "1", key_: "icmppingsec" }),
+      mkItem({ itemid: "2", key_: "icmppingloss" }),
+      mkItem({ itemid: "3", key_: "icmpping" }),
+    ];
+    const icmp = buildSections(linuxTemplate, items).find((s) => s.id === "bundle:icmp")!;
+    const roleByKey = new Map(icmp.items.map((si) => [si.item.key_, si.displayRole]));
+    expect(roleByKey.get("icmppingsec")).toBe("line");
+    expect(roleByKey.get("icmppingloss")).toBe("stat");
+    expect(roleByKey.get("icmpping")).toBe("status");
+  });
+
+  it("keeps a constant-0 ICMP packet-loss item bound to the ICMP bundle (never a free/fact item)", () => {
+    // Regression: a packet-loss series that is a flat 0 must stay in the
+    // bundle — buildSections matches it regardless of its (constant) value, so
+    // it is one of the template-claimed items the facts view must exclude.
+    const loss = mkItem({
+      itemid: "1",
+      key_: "icmppingloss",
+      lastvalue: "0",
+      prevvalue: "0",
+    });
+    const sections = buildSections(linuxTemplate, [loss]);
+    const icmp = sections.find((s) => s.id === "bundle:icmp");
+    expect(icmp).toBeDefined();
+    expect(icmp!.items.map((si) => si.item.itemid)).toContain("1");
+    // and it must NOT have leaked into a leftover component section
+    expect(sections.some((s) => s.kind === "component")).toBe(false);
+  });
+});
+
+describe("buildSections — family display roles", () => {
+  it("marks an interface oper-status series as a status badge, in/out as lines", () => {
+    const items = [
+      mkItem({ itemid: "1", key_: "net.if.in[eth0]" }),
+      mkItem({ itemid: "2", key_: "net.if.status[eth0]" }),
+    ];
+    const eth0 = buildSections(linuxTemplate, items).find((s) => s.id === "family:net-if:eth0")!;
+    const roleByKey = new Map(eth0.items.map((si) => [si.item.key_, si.displayRole]));
+    expect(roleByKey.get("net.if.in[eth0]")).toBe("line");
+    expect(roleByKey.get("net.if.status[eth0]")).toBe("status");
+  });
 });
 
 describe("buildSections — families", () => {

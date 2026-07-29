@@ -4,6 +4,8 @@ import {
   isNumericItem,
   isTextItem,
   NO_COMPONENT_SECTION,
+  resolveItemName,
+  stripUnresolvedMacros,
 } from "../latest-items";
 import type { ZabbixItem } from "@auzui/zabbix-client";
 
@@ -59,5 +61,41 @@ describe("groupItemsByComponent", () => {
 
   it("returns an empty array for no items", () => {
     expect(groupItemsByComponent([])).toEqual([]);
+  });
+});
+
+describe("stripUnresolvedMacros", () => {
+  it("removes an LLD macro and fixes the space before the colon", () => {
+    expect(stripUnresolvedMacros("Interface {#IFNAME}: Bits received")).toBe(
+      "Interface: Bits received",
+    );
+  });
+
+  it("removes a leading host macro and trims", () => {
+    expect(stripUnresolvedMacros("{HOST.NAME} CPU utilization")).toBe("CPU utilization");
+  });
+
+  it("removes a user macro inside brackets and tidies punctuation", () => {
+    expect(stripUnresolvedMacros("Disk [{$PATH}] usage")).toBe("Disk [] usage");
+  });
+
+  it("leaves a name without macros untouched", () => {
+    expect(stripUnresolvedMacros("Load average (1m)")).toBe("Load average (1m)");
+  });
+});
+
+describe("resolveItemName", () => {
+  it("prefers Zabbix 7.x name_resolved when present", () => {
+    expect(
+      resolveItemName(mkItem({ name: "Interface {#IFNAME}: Bits", name_resolved: "Interface eth0: Bits" })),
+    ).toBe("Interface eth0: Bits");
+  });
+
+  it("falls back to macro-stripped name when name_resolved is absent", () => {
+    expect(resolveItemName(mkItem({ name: "Interface {#IFNAME}: Bits" }))).toBe("Interface: Bits");
+  });
+
+  it("falls back to macro-stripped name when name_resolved is blank", () => {
+    expect(resolveItemName(mkItem({ name: "{HOST.NAME} uptime", name_resolved: "   " }))).toBe("uptime");
   });
 });

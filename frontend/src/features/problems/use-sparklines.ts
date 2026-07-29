@@ -3,8 +3,29 @@ import { useQuery } from "@tanstack/react-query";
 import { ZabbixApiSource, rangeFromPreset, type Series } from "@auzui/timeseries";
 import { zabbixApi } from "../../lib/auth/store";
 import type { EnrichedProblem } from "../../lib/problems";
+import { classifyConstancy } from "../../lib/constant-items";
 
 const source = new ZabbixApiSource(zabbixApi);
+
+/**
+ * Pure decision whether a trigger-item sparkline carries any signal worth
+ * drawing. Suppressed when (a) the item is not numeric (value_type not 0/3 —
+ * e.g. a text "Health check missing" item), (b) the series is too short to
+ * form a line, or (c) the loaded series is constant (min == max, a flat line).
+ * Reuses classifyConstancy so the "constant" definition matches Latest Data.
+ */
+export function shouldShowSparkline(
+  valueType: "0" | "3" | undefined,
+  series: Series | undefined,
+): boolean {
+  if (valueType !== "0" && valueType !== "3") return false;
+  if (!series || series.points.length < 2) return false;
+  const constancy = classifyConstancy(
+    { value_type: valueType, lastvalue: "", prevvalue: undefined },
+    series.points,
+  );
+  return constancy.kind !== "constant";
+}
 
 /**
  * Batches history.get for the "cards" view's trigger-item sparklines — one

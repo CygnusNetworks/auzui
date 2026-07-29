@@ -13,8 +13,12 @@ import { useT } from "../../lib/i18n";
  * es laufen also keine Queries für eingeklappte Sektionen.
  *
  * Charts ohne Datenpunkte im gewählten Zeitraum melden sich per
- * onEmptyChange ab (ChartCard rendert dann selbst `null`); sind ALLE Charts
- * einer Sektion leer, kollabiert die ganze Sektion zu einem schmalen
+ * onEmptyChange; die Karte bleibt dabei gemountet und wird nur per CSS
+ * (`hidden`) ausgeblendet — NICHT aus dem Grid entfernt. Dadurch kann eine
+ * Karte, sobald doch Daten eintreffen (Live-Tick, Influx-Recovery,
+ * Range-Wechsel), sich wieder als nicht-leer melden und sichtbar werden; das
+ * frühere Unmount-der-leeren-Karte hat sie für immer versteckt. Sind ALLE
+ * gemounteten Charts leer, kollabiert die ganze Sektion zu einem schmalen
  * Hinweis-Balken mit Toggle statt der vollen Box.
  */
 export function DashboardSection({
@@ -42,14 +46,19 @@ export function DashboardSection({
     });
   }, []);
 
-  const nonEmptyCharts = section.charts.filter((c) => !emptyIds.has(c.id));
-  const emptyCount = section.charts.length - nonEmptyCharts.length;
-  const allEmpty = section.charts.length > 0 && emptyCount === section.charts.length;
-  const sectionCollapsed = allEmpty && !showEmpty;
+  // Mounted set is position-based (never depends on emptiness) so a chart
+  // flipping empty/non-empty does not change WHICH cards are mounted — the
+  // empties just get CSS-hidden in place. Overflow charts past
+  // MAX_CHARTS_PER_SECTION stay unmounted (no queries) until "show more".
+  const mountedCharts = showAll ? section.charts : section.charts.slice(0, MAX_CHARTS_PER_SECTION);
+  const hiddenOverflowCount = section.charts.length - mountedCharts.length;
 
-  const displayCharts = showEmpty ? section.charts : nonEmptyCharts;
-  const visibleCharts = showAll ? displayCharts : displayCharts.slice(0, MAX_CHARTS_PER_SECTION);
-  const hiddenOverflowCount = displayCharts.length - visibleCharts.length;
+  const emptyCount = mountedCharts.reduce((n, c) => n + (emptyIds.has(c.id) ? 1 : 0), 0);
+  // Only collapse the whole section when every mounted chart is empty AND
+  // nothing is hidden behind "show more" (otherwise there may be data past the
+  // overflow cutoff we haven't queried yet).
+  const allEmpty = mountedCharts.length > 0 && hiddenOverflowCount === 0 && emptyCount === mountedCharts.length;
+  const sectionCollapsed = allEmpty && !showEmpty;
 
   if (sectionCollapsed) {
     return (
@@ -86,9 +95,16 @@ export function DashboardSection({
       {open && (
         <div className="p-3.5">
           <div className="grid grid-cols-2 gap-3 max-[1100px]:grid-cols-1">
-            {visibleCharts.map((chart) => (
-              <ChartCard key={chart.id} chart={chart} range={range} onBrush={onBrush} onEmptyChange={handleEmptyChange} />
-            ))}
+            {mountedCharts.map((chart) => {
+              // Kept mounted so it keeps its query alive and can re-report
+              // non-empty; `hidden` (display:none) just drops it from the grid.
+              const hide = emptyIds.has(chart.id) && !showEmpty;
+              return (
+                <div key={chart.id} className={hide ? "hidden" : undefined}>
+                  <ChartCard chart={chart} range={range} onBrush={onBrush} onEmptyChange={handleEmptyChange} />
+                </div>
+              );
+            })}
           </div>
           {hiddenOverflowCount > 0 && (
             <button

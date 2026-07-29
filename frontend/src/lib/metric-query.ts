@@ -104,12 +104,22 @@ export function suggestFieldNames(input: string): MetricQueryField[] {
   return METRIC_QUERY_FIELDS.filter((f) => f.startsWith(word));
 }
 
-/** The field+partial-value currently being typed (e.g. "host:doc" → {field:"host", value:"doc"}), or null. */
+/**
+ * The field+partial-value currently being typed (e.g. "host:doc" →
+ * {field:"host", value:"doc"}), or null. This value drives autocomplete, so it
+ * must be exactly the substring the user has typed after the colon — NOT the
+ * whole `host:doc` word (feeding "host:doc" into a host search would match
+ * nothing). A leading/trailing quote of a still-open quoted value is stripped
+ * (`host:"docker-v` → "docker-v") so the suggestion prefix is the inner text.
+ */
 export function currentFieldDraft(input: string): { field: MetricQueryField; value: string } | null {
   const word = lastWord(input);
   const match = /^(host|group|component|key|unit):(.*)$/.exec(word);
   if (!match) return null;
   const field = match[1]!;
   if (!isMetricQueryField(field)) return null;
-  return { field, value: match[2] ?? "" };
+  let value = match[2] ?? "";
+  if (value.startsWith('"')) value = value.slice(1);
+  if (value.endsWith('"')) value = value.slice(0, -1);
+  return { field, value };
 }

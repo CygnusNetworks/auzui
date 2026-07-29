@@ -2,6 +2,33 @@ import { useEffect, useRef, useState } from "react";
 import uPlot from "uplot";
 import "uplot/dist/uPlot.min.css";
 import { formatAxisTick } from "../../lib/format-units";
+import { useLocale, type Locale } from "../../lib/i18n";
+
+function pad2(n: number): string {
+  return String(n).padStart(2, "0");
+}
+
+/**
+ * Locale-aware x-axis (date) tick labels. uPlot gives tick values in Unix
+ * seconds plus the chosen tick spacing (`foundIncr`, also seconds); spacing of
+ * a day or more → a date label, otherwise a time-of-day label.
+ *
+ * Only `de` overrides here — `en` keeps uPlot's built-in English defaults
+ * (axis gets no `values`, so this returns undefined for `en`).
+ */
+function xAxisTimeValues(
+  locale: Locale,
+): ((self: uPlot, splits: number[], axisIdx: number, foundSpace: number, foundIncr: number) => string[]) | undefined {
+  if (locale !== "de") return undefined;
+  return (_self, splits, _axisIdx, _foundSpace, foundIncr) =>
+    splits.map((sec) => {
+      const d = new Date(sec * 1000);
+      // ≥ 1 day between ticks → show the date (dd.MM.), else 24h time (HH:mm).
+      return foundIncr >= 86_400
+        ? `${pad2(d.getDate())}.${pad2(d.getMonth() + 1)}.`
+        : `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+    });
+}
 
 export interface TimeChartSeries {
   label: string;
@@ -79,6 +106,7 @@ function drawThresholds(thresholds: TimeChartThreshold[]) {
  * `setData` in place so the chart never unmounts/flashes a placeholder.
  */
 export function TimeChart({ series, unit, height = 220, thresholds = [], onBrush }: TimeChartProps) {
+  const { locale } = useLocale();
   const containerRef = useRef<HTMLDivElement>(null);
   const plotRef = useRef<uPlot | null>(null);
   const onBrushRef = useRef(onBrush);
@@ -102,6 +130,9 @@ export function TimeChart({ series, unit, height = 220, thresholds = [], onBrush
     height,
     thresholds,
     hasOnBrush: !!onBrush,
+    // Axis tick formatters (x date + y number) close over `locale`, so a
+    // language switch must trigger a full rebuild, not just a setData update.
+    locale,
   });
 
   useEffect(() => {
@@ -143,12 +174,17 @@ export function TimeChart({ series, unit, height = 220, thresholds = [], onBrush
           : [],
       },
       axes: [
-        { stroke: ink2, grid: { stroke: lineSoft }, ticks: { stroke: lineSoft } },
         {
           stroke: ink2,
           grid: { stroke: lineSoft },
           ticks: { stroke: lineSoft },
-          values: (_u, vals) => vals.map((v) => formatAxisTick(v, unit)),
+          values: xAxisTimeValues(locale),
+        },
+        {
+          stroke: ink2,
+          grid: { stroke: lineSoft },
+          ticks: { stroke: lineSoft },
+          values: (_u, vals) => vals.map((v) => formatAxisTick(v, unit, locale)),
         },
       ],
       legend: { show: series.length > 1 },
