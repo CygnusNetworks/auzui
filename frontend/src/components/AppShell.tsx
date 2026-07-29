@@ -79,8 +79,11 @@ export function AppShell({ children }: { children: ReactNode }) {
   return (
     <div className="min-h-screen bg-bg text-ink">
       <div ref={menuRef} className="sticky top-0 z-40 flex h-[52px] items-center gap-3.5 border-b border-line bg-surface px-4">
-        <span className="font-mono text-base font-bold tracking-tight">
-          au<em className="not-italic text-accent">z</em>ui
+        <span className="flex items-center gap-2">
+          <img src="/logo.svg" alt="" className="h-[22px] w-[22px]" />
+          <span className="text-base font-extrabold tracking-tight">
+            au<em className="not-italic text-accent">z</em>ui
+          </span>
         </span>
         <nav className="ml-2 hidden gap-0.5 rounded-lg bg-surface-3 p-0.5 min-[900px]:flex">
           {navLinks.map(

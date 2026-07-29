@@ -1,28 +1,30 @@
 @import "tailwindcss";
 
 /*
- * auzui design tokens — dark-first (see the approved design mock).
- * Cool steel ground, phosphor-teal accent, reserved severity semantics.
+ * auzui design tokens — dark-first, member of the cygnusnetworks
+ * "Cobalt Compact" family (tiqora): graphite ground, cobalt accent,
+ * Inter + mono. Severity ramp stays auzui's own (CVD-validated).
  * Theme switching: `dark` class on <html>.
  */
 @custom-variant dark (&:where(.dark, .dark *));
 
 @theme {
-  --font-mono: ui-monospace, "SF Mono", "Cascadia Code", Menlo, monospace;
+  --font-sans: "Inter", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", "Cascadia Code", Menlo, monospace;
 
   /* light theme (default tokens) */
-  --color-bg: #f2f5f6;
+  --color-bg: #f3f5fa;
   --color-surface: #ffffff;
-  --color-surface-2: #f7fafb;
-  --color-surface-3: #edf1f3;
-  --color-line: #d8e0e4;
-  --color-line-soft: #e4eaed;
-  --color-ink: #1b262e;
-  --color-ink-2: #52646f;
-  --color-ink-muted: #7e909b;
-  --color-accent: #12808c;
+  --color-surface-2: #f6f8fc;
+  --color-surface-3: #edf0f7;
+  --color-line: #e1e5ef;
+  --color-line-soft: #e9ecf4;
+  --color-ink: #1a1f2c;
+  --color-ink-2: #66708a;
+  --color-ink-muted: #8891a3;
+  --color-accent: #3b6be8;
   --color-accent-ink: #ffffff;
-  --color-accent-soft: rgba(18, 128, 140, 0.1);
+  --color-accent-soft: rgba(59, 107, 232, 0.1);
 
   --color-sev-disaster: #8c1620;
   --color-sev-high: #ce2c31;
@@ -31,26 +33,26 @@
   --color-sev-info: #2e6fd0;
   --color-sev-ok: #35784b;
 
-  --color-chart-1: #0795a6;
+  --color-chart-1: #3b6be8;
   --color-chart-2: #7050e0;
   --color-chart-3: #b96a0a;
-  --color-chart-4: #3d7db8;
+  --color-chart-4: #1f8a96;
 }
 
 @layer base {
   .dark {
-    --color-bg: #0e1317;
-    --color-surface: #151c22;
-    --color-surface-2: #1b242c;
-    --color-surface-3: #212c35;
-    --color-line: #26313b;
-    --color-line-soft: #1d262e;
-    --color-ink: #dee7ed;
-    --color-ink-2: #8fa1ad;
-    --color-ink-muted: #5c6e7a;
-    --color-accent: #3eb8c0;
-    --color-accent-ink: #0e1317;
-    --color-accent-soft: rgba(62, 184, 192, 0.12);
+    --color-bg: #0e1015;
+    --color-surface: #151821;
+    --color-surface-2: #1b1f2b;
+    --color-surface-3: #222738;
+    --color-line: #242a38;
+    --color-line-soft: #1c212e;
+    --color-ink: #e7eaf2;
+    --color-ink-2: #8891a3;
+    --color-ink-muted: #5f6880;
+    --color-accent: #5b8cff;
+    --color-accent-ink: #0e1015;
+    --color-accent-soft: rgba(91, 140, 255, 0.14);
 
     --color-sev-disaster: #b0202b;
     --color-sev-high: #e5484d;
@@ -59,10 +61,10 @@
     --color-sev-info: #6aa6f8;
     --color-sev-ok: #52a66c;
 
-    --color-chart-1: #17a0ac;
+    --color-chart-1: #5b8cff;
     --color-chart-2: #8e7aea;
     --color-chart-3: #c8802f;
-    --color-chart-4: #4c87c8;
+    --color-chart-4: #2ba8b5;
   }
 
   body {
