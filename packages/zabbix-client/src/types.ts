@@ -65,6 +65,7 @@ export interface ZabbixItem {
   tags?: ZabbixItemTag[];
   status?: "0" | "1";
   state?: "0" | "1";
+  hosts?: Pick<ZabbixHost, "hostid" | "host" | "name">[];
 }
 
 export type ZabbixSeverity = "0" | "1" | "2" | "3" | "4" | "5";

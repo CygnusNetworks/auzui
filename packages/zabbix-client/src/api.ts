@@ -66,6 +66,7 @@ export class ZabbixApi {
       groupids?: ZabbixId[];
       webitems?: boolean;
       selectTags?: "extend";
+      selectHosts?: "extend" | string[];
       tags?: { tag: string; value?: string; operator?: number }[];
       monitored?: boolean;
     } = {},

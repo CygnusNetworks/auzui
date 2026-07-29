@@ -15,6 +15,12 @@ import { LatestDataPage } from "./features/latest-data/LatestDataPage";
 import { validateLatestDataSearch } from "./features/latest-data/search-params";
 import { HostDetailPage } from "./features/host-detail/HostDetailPage";
 import { validateHostDetailSearch } from "./features/host-detail/search-params";
+import { ExplorerPage } from "./features/explorer/ExplorerPage";
+import { validateExplorerSearch } from "./features/explorer/search-params";
+import { MetricsPage } from "./features/metrics/MetricsPage";
+import { validateMetricsSearch } from "./features/metrics/search-params";
+import { LogsPage } from "./features/logs/LogsPage";
+import { validateLogsSearch } from "./features/logs/search-params";
 import { useAuthStore } from "./lib/auth/store";
 
 const rootRoute = createRootRoute({
@@ -81,6 +87,27 @@ const hostDetailRoute = createRoute({
   validateSearch: validateHostDetailSearch,
 });
 
+const explorerRoute = createRoute({
+  getParentRoute: () => appLayoutRoute,
+  path: "/explorer",
+  component: ExplorerPage,
+  validateSearch: validateExplorerSearch,
+});
+
+const metricsRoute = createRoute({
+  getParentRoute: () => appLayoutRoute,
+  path: "/metrics",
+  component: MetricsPage,
+  validateSearch: validateMetricsSearch,
+});
+
+const logsRoute = createRoute({
+  getParentRoute: () => appLayoutRoute,
+  path: "/logs",
+  component: LogsPage,
+  validateSearch: validateLogsSearch,
+});
+
 const routeTree = rootRoute.addChildren([
   loginRoute,
   appLayoutRoute.addChildren([
@@ -89,6 +116,9 @@ const routeTree = rootRoute.addChildren([
     latestDataRoute,
     maintenanceRoute,
     hostDetailRoute,
+    explorerRoute,
+    metricsRoute,
+    logsRoute,
   ]),
 ]);
 

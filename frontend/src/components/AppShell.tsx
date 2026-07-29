@@ -4,6 +4,7 @@ import { ThemeToggle } from "./ThemeToggle";
 import { CommandPalette } from "../features/command-palette/CommandPalette";
 import { useAuthStore } from "../lib/auth/store";
 import { markSsoSuppressed } from "../lib/auth/sso";
+import { useLogsEnabled } from "../lib/use-logs";
 import { BUNDLE_VERSION, useAppConfig } from "../lib/use-app-config";
 
 const navLinkClass =
@@ -16,6 +17,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
   const { data: config } = useAppConfig();
   const version = config?.version || BUNDLE_VERSION;
+  const { data: logsEnabled } = useLogsEnabled();
 
   // Reactive guard: a query/mutation can clear the token mid-session (401 /
   // expired session, see lib/auth/session-errors.ts) without a navigation —
@@ -48,9 +50,20 @@ export function AppShell({ children }: { children: ReactNode }) {
           <Link to="/hosts" className={navLinkClass}>
             Hosts
           </Link>
+          <Link to="/explorer" className={navLinkClass}>
+            Explorer
+          </Link>
+          <Link to="/metrics" className={navLinkClass}>
+            Metrics
+          </Link>
           <Link to="/latest-data" className={navLinkClass}>
             Latest Data
           </Link>
+          {logsEnabled && (
+            <Link to="/logs" className={navLinkClass}>
+              Logs
+            </Link>
+          )}
           <Link to="/maintenance" className={navLinkClass}>
             Maintenance
           </Link>
