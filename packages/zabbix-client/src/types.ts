@@ -154,6 +154,28 @@ export interface ZabbixMap {
   selements?: ZabbixMapElement[];
 }
 
+export interface ZabbixTimeperiod {
+  /** 0 = one-time only (the only kind auzui creates). */
+  timeperiod_type: string;
+  /** Unix seconds — one-time periods only. */
+  start_date?: string;
+  /** Duration in seconds. */
+  period: string;
+}
+
+export interface ZabbixMaintenance {
+  maintenanceid: ZabbixId;
+  name: string;
+  active_since: string;
+  active_till: string;
+  /** 0 = mit Datenerfassung, 1 = ohne. */
+  maintenance_type: "0" | "1";
+  description: string;
+  hosts?: Pick<ZabbixHost, "hostid" | "host" | "name">[];
+  hostgroups?: ZabbixHostGroup[];
+  timeperiods?: ZabbixTimeperiod[];
+}
+
 /** Common "get" parameter shapes (subset). */
 export interface GetParamsBase {
   output?: "extend" | string[];

@@ -10,6 +10,7 @@ import { LoginPage } from "./routes/LoginPage";
 import { ComingSoon } from "./routes/ComingSoon";
 import { ProblemsPage } from "./features/problems/ProblemsPage";
 import { validateProblemsSearch } from "./features/problems/search-params";
+import { MaintenancePage } from "./features/maintenance/MaintenancePage";
 import { useAuthStore } from "./lib/auth/store";
 
 const rootRoute = createRootRoute({
@@ -62,6 +63,12 @@ const latestDataRoute = createRoute({
   component: () => <ComingSoon title="Latest Data" />,
 });
 
+const maintenanceRoute = createRoute({
+  getParentRoute: () => appLayoutRoute,
+  path: "/maintenance",
+  component: MaintenancePage,
+});
+
 const hostDetailRoute = createRoute({
   getParentRoute: () => appLayoutRoute,
   path: "/hosts/$hostId",
@@ -70,7 +77,13 @@ const hostDetailRoute = createRoute({
 
 const routeTree = rootRoute.addChildren([
   loginRoute,
-  appLayoutRoute.addChildren([problemsRoute, hostsRoute, latestDataRoute, hostDetailRoute]),
+  appLayoutRoute.addChildren([
+    problemsRoute,
+    hostsRoute,
+    latestDataRoute,
+    maintenanceRoute,
+    hostDetailRoute,
+  ]),
 ]);
 
 export const router = createRouter({ routeTree });

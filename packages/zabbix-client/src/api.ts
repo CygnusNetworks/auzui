@@ -8,6 +8,7 @@ import type {
   ZabbixHostGroup,
   ZabbixId,
   ZabbixItem,
+  ZabbixMaintenance,
   ZabbixMap,
   ZabbixProblem,
   ZabbixTrendPoint,
@@ -159,5 +160,36 @@ export class ZabbixApi {
     params: GetParamsBase & { sysmapids?: ZabbixId[]; selectSelements?: "extend" } = {},
   ): Promise<ZabbixMap[]> {
     return this.client.call("map.get", params);
+  }
+
+  maintenanceGet(
+    params: GetParamsBase & {
+      maintenanceids?: ZabbixId[];
+      hostids?: ZabbixId[];
+      groupids?: ZabbixId[];
+      selectHosts?: "extend" | string[];
+      selectHostGroups?: "extend" | string[];
+      selectTimeperiods?: "extend";
+    } = {},
+  ): Promise<ZabbixMaintenance[]> {
+    return this.client.call("maintenance.get", params);
+  }
+
+  /** hosts/groups use Zabbix ≥6.0 object-array form, not hostids/groupids. */
+  maintenanceCreate(params: {
+    name: string;
+    active_since: number;
+    active_till: number;
+    hosts?: { hostid: ZabbixId }[];
+    groups?: { groupid: ZabbixId }[];
+    timeperiods: { timeperiod_type: number; period: number }[];
+    maintenance_type?: number;
+    description?: string;
+  }): Promise<{ maintenanceids: ZabbixId[] }> {
+    return this.client.call("maintenance.create", params);
+  }
+
+  maintenanceDelete(ids: ZabbixId[]): Promise<{ maintenanceids: ZabbixId[] }> {
+    return this.client.call("maintenance.delete", ids);
   }
 }

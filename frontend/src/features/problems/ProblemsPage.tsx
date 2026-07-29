@@ -1,8 +1,9 @@
 import { useMemo } from "react";
-import { useNavigate, useSearch } from "@tanstack/react-router";
+import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { ALL_SEVERITIES, type Severity } from "../../lib/severity";
 import { filterProblems, groupIntoLanes } from "../../lib/problems";
 import { useLocalStorageState } from "../../lib/use-local-storage-state";
+import { useHostsInMaintenance } from "../maintenance/use-maintenance";
 import { useProblems } from "./use-problems";
 import { useSparklines } from "./use-sparklines";
 import { FilterChips } from "./FilterChips";
@@ -30,6 +31,7 @@ export function ProblemsPage() {
   const navigate = useNavigate();
 
   const { problems, isLoading, isError, error, refetch } = useProblems();
+  const { data: hostsInMaintenance } = useHostsInMaintenance();
   const [mode, setMode] = useLocalStorageState<ViewMode>("auzui-problems-view-mode", "rows");
   const [laneOpen, setLaneOpen] = useLocalStorageState<Record<Severity, boolean>>(
     "auzui-problems-lane-open",
@@ -90,6 +92,14 @@ export function ProblemsPage() {
             {counts.total} aktiv · {counts.high} High · {counts.avg} Average · {counts.warn} Warning ·{" "}
             {counts.info} Info
           </span>
+        )}
+        {hostsInMaintenance && hostsInMaintenance.length > 0 && (
+          <Link
+            to="/maintenance"
+            className="rounded-full border border-sev-warn/40 bg-sev-warn/15 px-2.5 py-0.5 font-mono text-[11px] text-sev-warn"
+          >
+            🔧 {hostsInMaintenance.length} Hosts in Maintenance
+          </Link>
         )}
       </div>
 

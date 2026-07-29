@@ -4,6 +4,7 @@ import { ThemeToggle } from "./ThemeToggle";
 import { CommandPalette } from "../features/command-palette/CommandPalette";
 import { useAuthStore } from "../lib/auth/store";
 import { markSsoSuppressed } from "../lib/auth/sso";
+import { BUNDLE_VERSION, useAppConfig } from "../lib/use-app-config";
 
 const navLinkClass =
   "rounded-md px-3 py-1.5 text-[12.5px] text-ink-2 [&.active]:bg-surface [&.active]:font-semibold [&.active]:text-ink [&.active]:shadow-sm";
@@ -13,6 +14,8 @@ export function AppShell({ children }: { children: ReactNode }) {
   const logout = useAuthStore((s) => s.logout);
   const token = useAuthStore((s) => s.token);
   const navigate = useNavigate();
+  const { data: config } = useAppConfig();
+  const version = config?.version || BUNDLE_VERSION;
 
   // Reactive guard: a query/mutation can clear the token mid-session (401 /
   // expired session, see lib/auth/session-errors.ts) without a navigation —
@@ -48,8 +51,17 @@ export function AppShell({ children }: { children: ReactNode }) {
           <Link to="/latest-data" className={navLinkClass}>
             Latest Data
           </Link>
+          <Link to="/maintenance" className={navLinkClass}>
+            Maintenance
+          </Link>
         </nav>
         <div className="flex-1" />
+        <span
+          className="font-mono text-[10.5px] text-ink-muted"
+          title={config?.commit ? `Commit ${config.commit}` : undefined}
+        >
+          {version}
+        </span>
         <button
           type="button"
           onClick={() => setCmdkOpen(true)}
