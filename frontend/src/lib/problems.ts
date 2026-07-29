@@ -42,7 +42,9 @@ export function joinProblemsWithTriggers(
       severity: severityFromWire(p.severity),
       clock: Number(p.clock),
       acknowledged: p.acknowledged === "1",
-      tags: p.tags ?? [],
+      // "__"-Tags sind interne Marker von Alert-Integrationen
+      // (z. B. __message_ts_#zabbix) — nicht anzeigen.
+      tags: (p.tags ?? []).filter((t) => !t.tag.startsWith("__")),
       hostId: host?.hostid,
       hostName: host?.host,
       triggerExpression: trigger?.expression,

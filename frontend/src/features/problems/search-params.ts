@@ -4,7 +4,7 @@ import { ALL_SEVERITIES, parseSeverities, type Severity } from "../../lib/severi
 export interface ProblemsSearch {
   /** Comma-separated severities, e.g. "5,4,3". Absent = all severities. */
   sev?: string;
-  /** "1" = only unacknowledged problems. */
+  /** "0" = also show acknowledged problems; absent/"1" = only unacknowledged (default). */
   unack?: string;
   /** Selected eventid for the detail panel. */
   event?: string;

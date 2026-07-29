@@ -10,6 +10,10 @@ const POLL_INTERVAL_MS = 30_000;
  * expanded expression + first item, batched by triggerid). Polls every 30s,
  * paused while the tab is hidden (TanStack Query default for
  * refetchIntervalInBackground).
+ *
+ * Sichtbarkeit wie die Zabbix-UI: keine per Maintenance supprimierten
+ * Probleme, und nur Probleme, deren Trigger aktiv und Host monitored ist
+ * (problem.get liefert sonst auch Leichen deaktivierter Hosts/Trigger).
  */
 export function useProblems() {
   const problemsQuery = useQuery({
@@ -18,6 +22,7 @@ export function useProblems() {
       zabbixApi.problemGet({
         output: "extend",
         selectTags: "extend",
+        suppressed: false,
         sortfield: "eventid",
         sortorder: "DESC",
         limit: 1001,
@@ -39,6 +44,7 @@ export function useProblems() {
         selectHosts: "extend",
         selectItems: "extend",
         expandExpression: true,
+        monitored: true,
       }),
     enabled: triggerIds.length > 0,
     // Trigger metadata (host, expression, item) barely changes; avoid
@@ -48,7 +54,12 @@ export function useProblems() {
 
   const enriched: EnrichedProblem[] = useMemo(() => {
     if (!problemsQuery.data) return [];
-    return joinProblemsWithTriggers(problemsQuery.data, triggersQuery.data ?? []);
+    const joined = joinProblemsWithTriggers(problemsQuery.data, triggersQuery.data ?? []);
+    // trigger.get lief mit monitored:true — Probleme ohne Treffer gehören zu
+    // deaktivierten Triggern/unmonitored Hosts und sind in der Zabbix-UI
+    // ebenfalls unsichtbar. Erst filtern, wenn die Trigger geladen sind.
+    if (!triggersQuery.data) return joined;
+    return joined.filter((p) => p.hostId !== undefined);
   }, [problemsQuery.data, triggersQuery.data]);
 
   return {

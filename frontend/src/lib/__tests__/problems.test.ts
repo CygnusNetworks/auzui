@@ -68,6 +68,17 @@ describe("joinProblemsWithTriggers", () => {
     const joined = joinProblemsWithTriggers([problem({ acknowledged: "1" })], [trigger()]);
     expect(joined[0]?.acknowledged).toBe(true);
   });
+
+  it("drops internal __-prefixed tags (alert-integration markers)", () => {
+    const tagged = problem({
+      tags: [
+        { tag: "component", value: "system" },
+        { tag: "__message_ts_#zabbix", value: "123.456" },
+      ],
+    });
+    const joined = joinProblemsWithTriggers([tagged], [trigger()]);
+    expect(joined[0]?.tags).toEqual([{ tag: "component", value: "system" }]);
+  });
 });
 
 describe("filterProblems", () => {

@@ -37,7 +37,8 @@ export function ProblemsPage() {
   );
 
   const activeSeverities = useMemo(() => new Set(severitiesFromSearch(search)), [search]);
-  const unackOnly = search.unack === "1";
+  // Default: nur unbestätigte — Abschalten wird explizit als unack=0 kodiert.
+  const unackOnly = search.unack !== "0";
 
   const filtered = useMemo(
     () => filterProblems(problems, { severities: activeSeverities, unackOnly, host: search.host }),
@@ -122,7 +123,7 @@ export function ProblemsPage() {
               activeSeverities={activeSeverities}
               unackOnly={unackOnly}
               onToggleSeverity={toggleSeverity}
-              onToggleUnack={() => updateSearch({ unack: unackOnly ? undefined : "1" })}
+              onToggleUnack={() => updateSearch({ unack: unackOnly ? "0" : undefined })}
             />
             {search.host && (
               <div className="flex items-center gap-2 border-b border-line-soft px-3.5 py-2 text-xs text-ink-2">
