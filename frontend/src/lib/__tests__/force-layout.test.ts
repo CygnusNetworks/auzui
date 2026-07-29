@@ -59,6 +59,26 @@ describe("computeForceLayout", () => {
     ).not.toThrow();
   });
 
+  it("seeds nodes sharing a group closer together than nodes in different groups", () => {
+    const groupA = Array.from({ length: 5 }, (_, i) => ({ id: `a${i}`, group: "A" }));
+    const groupB = Array.from({ length: 5 }, (_, i) => ({ id: `b${i}`, group: "B" }));
+    const positions = computeForceLayout([...groupA, ...groupB], [], { iterations: 0 });
+    const avgPos = (ids: string[]) => {
+      const pts = ids.map((id) => positions.get(id)!);
+      return {
+        x: pts.reduce((s, p) => s + p.x, 0) / pts.length,
+        y: pts.reduce((s, p) => s + p.y, 0) / pts.length,
+      };
+    };
+    const centerA = avgPos(groupA.map((n) => n.id));
+    const centerB = avgPos(groupB.map((n) => n.id));
+    const maxSpreadWithinA = Math.max(
+      ...groupA.map((n) => Math.hypot(positions.get(n.id)!.x - centerA.x, positions.get(n.id)!.y - centerA.y)),
+    );
+    const distBetweenGroups = Math.hypot(centerA.x - centerB.x, centerA.y - centerB.y);
+    expect(distBetweenGroups).toBeGreaterThan(maxSpreadWithinA * 2);
+  });
+
   it("keeps fixed nodes pinned in place", () => {
     const nodes = [
       { id: "a", x: 50, y: 50, fixed: true },

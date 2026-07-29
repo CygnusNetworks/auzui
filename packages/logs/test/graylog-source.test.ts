@@ -46,6 +46,12 @@ describe("GraylogSource", () => {
     await expect(src.hostLogs("42", { from: 0, to: 1 })).rejects.toThrow("HTTP 403");
   });
 
+  it("surfaces the gateway's FastAPI error detail instead of a bare status code", async () => {
+    const fetchFn = vi.fn(async () => jsonResponse({ detail: "Graylog timeout" }, 504)) as unknown as typeof fetch;
+    const src = new GraylogSource({ getToken: () => "tok", fetchFn });
+    await expect(src.search({ from: 0, to: 1 })).rejects.toThrow("Graylog timeout");
+  });
+
   it("status() returns false when gateway unreachable", async () => {
     const fetchFn = vi.fn(async () => {
       throw new Error("ECONNREFUSED");

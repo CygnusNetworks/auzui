@@ -32,6 +32,8 @@ export interface TopologyNode {
   hostid?: string;
   /** Undefined = kein aktives Problem (bzw. kein Host-Knoten). */
   severity?: Severity;
+  /** First hostgroup id (host nodes only) — used to seed the force-layout so a group's hosts start out clustered. */
+  groupKey?: string;
 }
 
 export interface TopologyEdge {
@@ -101,6 +103,7 @@ export function buildTopology(
       kind: "host",
       hostid: host.hostid,
       severity: problemsByHost.get(host.hostid)?.maxSeverity,
+      groupKey: host.hostgroups?.[0]?.groupid,
     });
   }
 

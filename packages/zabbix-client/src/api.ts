@@ -189,7 +189,13 @@ export class ZabbixApi {
     active_till: number;
     hosts?: { hostid: ZabbixId }[];
     groups?: { groupid: ZabbixId }[];
-    timeperiods: { timeperiod_type: number; period: number }[];
+    timeperiods: {
+      timeperiod_type: number;
+      period: number;
+      every?: number;
+      dayofweek?: number;
+      start_time?: number;
+    }[];
     maintenance_type?: number;
     description?: string;
   }): Promise<{ maintenanceids: ZabbixId[] }> {

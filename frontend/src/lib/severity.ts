@@ -40,3 +40,22 @@ export function parseSeverities(csv: string | undefined): Severity[] {
     .map((s) => Number(s))
     .filter((n): n is Severity => n >= 0 && n <= 5);
 }
+
+/** Topology filter bar thresholds (PLAN.md: "Alle | Nur Probleme | ≥ Warning | ≥ High"). */
+export type SeverityFilter = "all" | "problems" | "warn" | "high";
+
+export const SEVERITY_FILTER_LABEL: Record<SeverityFilter, string> = {
+  all: "Alle",
+  problems: "Nur Probleme",
+  warn: "≥ Warning",
+  high: "≥ High",
+};
+
+/** `severity` undefined means "no active problem" — only "all" passes those through. */
+export function matchesSeverityFilter(severity: Severity | undefined, filter: SeverityFilter): boolean {
+  if (filter === "all") return true;
+  if (severity === undefined) return false;
+  if (filter === "warn") return severity >= 2;
+  if (filter === "high") return severity >= 4;
+  return true; // "problems": any defined severity
+}

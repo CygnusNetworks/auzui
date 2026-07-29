@@ -1,15 +1,43 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { rangeFromPreset } from "@auzui/timeseries";
 import { LogRows } from "../../components/LogRows";
 import { RangePicker, type RangeValue } from "../../components/RangePicker";
 import { useDebouncedValue } from "../../lib/use-debounced-value";
 import { useLogsEnabled, useLogSource } from "../../lib/use-logs";
-import { buildLevelQuery, messagesHaveLevelField, LOG_LEVEL_CHIPS } from "../../lib/log-level";
+import { buildLevelQuery, LOG_LEVEL_CHIPS } from "../../lib/log-level";
+import { zabbixApi } from "../../lib/auth/store";
 import { validateLogsSearch } from "./search-params";
 import { useLogSearch, useLogStreams } from "./use-logs-page";
 
 const DEBOUNCE_MS = 400;
+
+/** Parses the ?host= URL param ("web01,web02") into a list of host technical names. */
+function parseHostParam(host: string | undefined): string[] {
+  return host
+    ? host
+        .split(",")
+        .map((h) => h.trim())
+        .filter(Boolean)
+    : [];
+}
+
+/** `source:"web01" OR source:"web02"`, parenthesized when combined with the rest of the query. */
+function buildHostQuery(hostNames: string[]): string {
+  if (hostNames.length === 0) return "";
+  const clause = hostNames.map((h) => `source:"${h}"`).join(" OR ");
+  return hostNames.length > 1 ? `(${clause})` : clause;
+}
+
+/** AND-combines two already-complete query fragments, skipping empty ones. */
+function combineQueries(...parts: string[]): string {
+  return parts
+    .map((p) => p.trim())
+    .filter(Boolean)
+    .map((p) => (p.includes(" OR ") ? `(${p})` : p))
+    .join(" AND ");
+}
 
 /**
  * Graylog Stream-Browser (PLAN.md Abschnitt H, /logs) — nur relevant, wenn
@@ -50,15 +78,63 @@ function LogsBrowser() {
   const [range, setRange] = useState<RangeValue>(() => rangeFromPreset("1h"));
   const [live, setLive] = useState(true);
   const [maxLevel, setMaxLevel] = useState<number | undefined>(undefined);
+  const [hostQuery, setHostQuery] = useState("");
+  const [hostFocused, setHostFocused] = useState(false);
 
-  const effectiveQuery = useMemo(() => buildLevelQuery(debouncedQuery, maxLevel), [debouncedQuery, maxLevel]);
+  const selectedHosts = useMemo(() => parseHostParam(search.host), [search.host]);
+
+  // Beim ersten Laden ohne ?stream= den is_default-Stream vorauswählen, statt
+  // stillschweigend "alle Streams" zu durchsuchen (Nutzerbeschwerde: Default
+  // sollte ein Stream sein).
+  useEffect(() => {
+    if (search.stream === undefined && streams.length > 0) {
+      const defaultStream = streams.find((s) => s.isDefault && !s.disabled);
+      if (defaultStream) {
+        void navigate({
+          to: "/logs",
+          search: { stream: defaultStream.id, host: search.host },
+          replace: true,
+        });
+      }
+    }
+  }, [search.stream, search.host, streams, navigate]);
+
+  const allHostsQuery = useQuery({
+    queryKey: ["all-hosts"],
+    queryFn: () => zabbixApi.hostGet({ output: ["hostid", "host", "name"], sortfield: "name" }),
+    staleTime: 5 * 60_000,
+  });
+  const hostOptions = useMemo(
+    () =>
+      (allHostsQuery.data ?? [])
+        .filter((h) => !selectedHosts.includes(h.host))
+        .filter((h) => {
+          const q = hostQuery.trim().toLowerCase();
+          return q ? h.host.toLowerCase().includes(q) || h.name.toLowerCase().includes(q) : true;
+        })
+        .slice(0, 8),
+    [allHostsQuery.data, hostQuery, selectedHosts],
+  );
+
+  function setHosts(hosts: string[]) {
+    const host = hosts.length > 0 ? hosts.join(",") : undefined;
+    void navigate({ to: "/logs", search: { stream: search.stream, host } });
+  }
+
+  // Level-Chips sind ein Standard-Syslog-Feld und müssen immer wählbar sein —
+  // nicht nur, wenn das Feld zufällig schon in den aktuellen Ergebnissen
+  // auftaucht (das war der Grund, warum die Chips teils "verschwanden").
+  const hostClause = useMemo(() => buildHostQuery(selectedHosts), [selectedHosts]);
+  const effectiveQuery = useMemo(
+    () => combineQueries(buildLevelQuery(debouncedQuery, maxLevel), hostClause),
+    [debouncedQuery, maxLevel, hostClause],
+  );
 
   const resultQuery = useLogSearch(source, { streamId: search.stream, query: effectiveQuery, range });
   const messages = resultQuery.data?.messages ?? [];
-  const showLevelChips = messagesHaveLevelField(messages) || maxLevel !== undefined;
 
   function selectStream(streamId: string | undefined) {
-    void navigate({ to: "/logs", search: { stream: streamId } });
+    void navigate({ to: "/logs", search: { stream: streamId, host: search.host } });
   }
 
   return (
@@ -118,37 +194,88 @@ function LogsBrowser() {
                 type="text"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder='source:"host" AND level:<=3'
+                placeholder='level:<=3'
                 className="min-w-[260px] flex-1 rounded-md border border-line bg-surface-2 px-2.5 py-1.5 font-mono text-[12px] text-ink"
               />
               <RangePicker value={range} onChange={setRange} live={live} onLiveChange={setLive} />
             </div>
-            {showLevelChips && (
-              <div className="flex flex-wrap items-center gap-1.5">
-                <span className="font-mono text-[10.5px] text-ink-muted">Level:</span>
-                {LOG_LEVEL_CHIPS.map((chip) => (
+
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="font-mono text-[10.5px] text-ink-muted">Hosts:</span>
+              {selectedHosts.map((h) => (
+                <span
+                  key={h}
+                  className="inline-flex items-center gap-1 rounded bg-surface-3 px-1.5 py-0.5 font-mono text-[10.5px] text-ink-2"
+                >
+                  {h}
                   <button
-                    key={chip.maxLevel}
                     type="button"
-                    onClick={() => setMaxLevel(maxLevel === chip.maxLevel ? undefined : chip.maxLevel)}
-                    className={`rounded-full border px-2 py-0.5 font-mono text-[10.5px] ${
-                      maxLevel === chip.maxLevel
-                        ? "border-accent/40 bg-accent-soft text-accent"
-                        : "border-line text-ink-muted"
-                    }`}
+                    onClick={() => setHosts(selectedHosts.filter((x) => x !== h))}
+                    className="text-ink-muted"
+                    aria-label={`${h} entfernen`}
                   >
-                    ≤{chip.maxLevel} {chip.label}
+                    ✕
                   </button>
-                ))}
+                </span>
+              ))}
+              <div className="relative">
+                <input
+                  type="text"
+                  value={hostQuery}
+                  onChange={(e) => setHostQuery(e.target.value)}
+                  onFocus={() => setHostFocused(true)}
+                  onBlur={() => setHostFocused(false)}
+                  placeholder="Host hinzufügen…"
+                  className="w-40 rounded-md border border-line bg-surface-2 px-2 py-0.5 font-mono text-[10.5px] text-ink"
+                />
+                {hostFocused && hostOptions.length > 0 && (
+                  <ul className="absolute z-10 mt-1 max-h-48 w-56 overflow-y-auto rounded-md border border-line bg-surface shadow-md">
+                    {hostOptions.map((h) => (
+                      <li key={h.hostid}>
+                        <button
+                          type="button"
+                          onMouseDown={() => {
+                            setHosts([...selectedHosts, h.host]);
+                            setHostQuery("");
+                          }}
+                          className="block w-full px-2.5 py-1.5 text-left text-[12px] text-ink hover:bg-surface-2"
+                        >
+                          {h.name || h.host}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </div>
-            )}
+            </div>
+
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="font-mono text-[10.5px] text-ink-muted">Level:</span>
+              {LOG_LEVEL_CHIPS.map((chip) => (
+                <button
+                  key={chip.maxLevel}
+                  type="button"
+                  onClick={() => setMaxLevel(maxLevel === chip.maxLevel ? undefined : chip.maxLevel)}
+                  className={`rounded-full border px-2 py-0.5 font-mono text-[10.5px] ${
+                    maxLevel === chip.maxLevel
+                      ? "border-accent/40 bg-accent-soft text-accent"
+                      : "border-line text-ink-muted"
+                  }`}
+                >
+                  ≤{chip.maxLevel} {chip.label}
+                </button>
+              ))}
+            </div>
           </div>
 
           <div className="rounded-lg border border-line bg-surface">
             {resultQuery.isLoading ? (
               <div className="p-4 text-sm text-ink-2">Lade Logs…</div>
             ) : resultQuery.isError ? (
-              <div className="p-4 text-sm text-sev-warn">Logs konnten nicht geladen werden.</div>
+              <div className="p-4 text-sm text-sev-high">
+                Logs konnten nicht geladen werden:{" "}
+                {resultQuery.error instanceof Error ? resultQuery.error.message : "Unbekannter Fehler"}
+              </div>
             ) : messages.length === 0 ? (
               <div className="p-4 text-sm text-ink-2">Keine Logs im Zeitraum.</div>
             ) : (

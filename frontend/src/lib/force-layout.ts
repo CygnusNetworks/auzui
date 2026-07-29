@@ -17,6 +17,14 @@ export interface ForceLayoutNode {
   y?: number;
   /** Pinned nodes (user is dragging) don't move. */
   fixed?: boolean;
+  /**
+   * Cluster key for initial seeding (e.g. hostgroup id) — nodes sharing a
+   * group are seeded near each other (own point on a circle, per-node
+   * jitter) instead of spread evenly around the whole canvas. Only affects
+   * nodes without an explicit x/y seed (PLAN.md: "Hosts der gleichen
+   * Hostgruppe nahe beieinander seeden").
+   */
+  group?: string;
 }
 
 export interface ForceLayoutEdge {
@@ -57,6 +65,59 @@ function seedPosition(index: number, total: number, width: number, height: numbe
   };
 }
 
+/** Deterministic string hash (no Math.random — keeps seeding pure/testable). */
+function hashString(s: string): number {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
+  return h >>> 0;
+}
+
+/**
+ * Initial seed positions: nodes sharing a `group` are clustered near one
+ * point on a circle (own circle per group), each jittered by a deterministic
+ * hash of its id so members don't overlap; ungrouped nodes fall back to the
+ * plain spread-on-a-circle seeding (PLAN.md: "Hosts der gleichen Hostgruppe
+ * nahe beieinander seeden ... Hosts im Cluster jitter").
+ */
+function seedPositions(
+  nodes: ForceLayoutNode[],
+  width: number,
+  height: number,
+): Map<string, { x: number; y: number }> {
+  const groups = new Map<string, ForceLayoutNode[]>();
+  const ungrouped: ForceLayoutNode[] = [];
+  for (const n of nodes) {
+    if (n.group) {
+      const list = groups.get(n.group);
+      if (list) list.push(n);
+      else groups.set(n.group, [n]);
+    } else {
+      ungrouped.push(n);
+    }
+  }
+
+  const result = new Map<string, { x: number; y: number }>();
+  const groupKeys = [...groups.keys()];
+  const outerRadius = Math.min(width, height) / 3;
+  const jitterRadius = Math.min(width, height) / 12;
+  groupKeys.forEach((key, gi) => {
+    const angle = (gi / Math.max(groupKeys.length, 1)) * Math.PI * 2;
+    const cx = width / 2 + outerRadius * Math.cos(angle);
+    const cy = height / 2 + outerRadius * Math.sin(angle);
+    const members = groups.get(key)!;
+    members.forEach((n, mi) => {
+      const h = hashString(n.id);
+      const jitterAngle = ((h % 360) / 360) * Math.PI * 2 + (mi / Math.max(members.length, 1)) * 0.35;
+      const jitterR = jitterRadius * (0.25 + ((h >> 8) % 100) / 100) * 0.75;
+      result.set(n.id, { x: cx + jitterR * Math.cos(jitterAngle), y: cy + jitterR * Math.sin(jitterAngle) });
+    });
+  });
+  ungrouped.forEach((n, i) => {
+    result.set(n.id, seedPosition(i, nodes.length, width, height));
+  });
+  return result;
+}
+
 /**
  * Runs the simulation to convergence (fixed iteration count) and returns
  * final positions keyed by node id. Never produces NaN/Infinity: distances of
@@ -71,8 +132,9 @@ export function computeForceLayout(
   const MIN_DIST = 1;
 
   const pos = new Map<string, { x: number; y: number; fixed: boolean }>();
-  nodes.forEach((n, i) => {
-    const seed = seedPosition(i, nodes.length, o.width, o.height);
+  const seeds = seedPositions(nodes, o.width, o.height);
+  nodes.forEach((n) => {
+    const seed = seeds.get(n.id)!;
     pos.set(n.id, {
       x: Number.isFinite(n.x) ? (n.x as number) : seed.x,
       y: Number.isFinite(n.y) ? (n.y as number) : seed.y,

@@ -1,7 +1,7 @@
 import { useMemo, useState, type FormEvent } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { zabbixApi } from "../../lib/auth/store";
-import { buildMaintenancePayload } from "../../lib/maintenance";
+import { buildMaintenancePayload, dayOfWeekBit, WEEKDAY_LABELS } from "../../lib/maintenance";
 import { useCreateMaintenance } from "./use-maintenance-mutations";
 
 interface Option {
@@ -24,6 +24,7 @@ function nowLocalDateTime(): string {
 }
 
 export function CreateMaintenanceForm() {
+  const [recurrence, setRecurrence] = useState<"once" | "weekly">("once");
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [start, setStart] = useState(nowLocalDateTime());
@@ -35,6 +36,8 @@ export function CreateMaintenanceForm() {
   const [hostQuery, setHostQuery] = useState("");
   const [groupQuery, setGroupQuery] = useState("");
   const [formError, setFormError] = useState<string | undefined>();
+  const [weekdays, setWeekdays] = useState<Set<number>>(new Set());
+  const [weeklyTime, setWeeklyTime] = useState("09:00");
 
   const createMutation = useCreateMaintenance();
 
@@ -70,6 +73,7 @@ export function CreateMaintenanceForm() {
   ]);
 
   function reset() {
+    setRecurrence("once");
     setName("");
     setDescription("");
     setStart(nowLocalDateTime());
@@ -78,6 +82,17 @@ export function CreateMaintenanceForm() {
     setWithDataCollection(true);
     setHosts([]);
     setGroups([]);
+    setWeekdays(new Set());
+    setWeeklyTime("09:00");
+  }
+
+  function toggleWeekday(index: number) {
+    setWeekdays((prev) => {
+      const next = new Set(prev);
+      if (next.has(index)) next.delete(index);
+      else next.add(index);
+      return next;
+    });
   }
 
   function submit(e: FormEvent) {
@@ -87,15 +102,32 @@ export function CreateMaintenanceForm() {
     const hoursValue = customHours ? Number(customHours) : durationHours;
     let payload;
     try {
-      payload = buildMaintenancePayload({
-        name,
-        description,
-        hostids: hosts.map((h) => h.id),
-        groupids: groups.map((g) => g.id),
-        startSeconds,
-        durationSeconds: Math.round(hoursValue * 3600),
-        withDataCollection,
-      });
+      if (recurrence === "weekly") {
+        const dayofweek = [...weekdays].reduce((mask, i) => mask | dayOfWeekBit(i), 0);
+        const [hh, mm] = weeklyTime.split(":").map(Number);
+        payload = buildMaintenancePayload({
+          name,
+          description,
+          hostids: hosts.map((h) => h.id),
+          groupids: groups.map((g) => g.id),
+          startSeconds,
+          durationSeconds: Math.round(hoursValue * 3600),
+          withDataCollection,
+          recurrence: "weekly",
+          dayofweek,
+          startTimeSeconds: (hh || 0) * 3600 + (mm || 0) * 60,
+        });
+      } else {
+        payload = buildMaintenancePayload({
+          name,
+          description,
+          hostids: hosts.map((h) => h.id),
+          groupids: groups.map((g) => g.id),
+          startSeconds,
+          durationSeconds: Math.round(hoursValue * 3600),
+          withDataCollection,
+        });
+      }
     } catch (err) {
       setFormError(err instanceof Error ? err.message : "Ungültige Eingabe.");
       return;
@@ -109,6 +141,23 @@ export function CreateMaintenanceForm() {
   return (
     <form onSubmit={submit} className="flex flex-col gap-3 p-3.5">
       <h2 className="text-[13px] font-semibold text-ink">Wartungsfenster anlegen</h2>
+
+      <div className="flex gap-1.5 text-xs text-ink-2">
+        {(["once", "weekly"] as const).map((mode) => (
+          <button
+            key={mode}
+            type="button"
+            onClick={() => setRecurrence(mode)}
+            className={`flex-1 rounded-md border px-2.5 py-1.5 font-mono text-[11.5px] ${
+              recurrence === mode
+                ? "border-accent/50 bg-accent-soft font-semibold text-accent"
+                : "border-line text-ink-2"
+            }`}
+          >
+            {mode === "once" ? "Einmalig" : "Wöchentlich"}
+          </button>
+        ))}
+      </div>
 
       <label className="flex flex-col gap-1 text-xs text-ink-2">
         Name
@@ -158,7 +207,7 @@ export function CreateMaintenanceForm() {
       />
 
       <label className="flex flex-col gap-1 text-xs text-ink-2">
-        Start
+        {recurrence === "weekly" ? "Rahmen ab" : "Start"}
         <input
           type="datetime-local"
           value={start}
@@ -167,6 +216,41 @@ export function CreateMaintenanceForm() {
           className="rounded-md border border-line bg-surface-2 px-2.5 py-1.5 text-[12.5px] text-ink"
         />
       </label>
+
+      {recurrence === "weekly" && (
+        <>
+          <div className="flex flex-col gap-1.5 text-xs text-ink-2">
+            Wochentage
+            <div className="flex flex-wrap gap-1.5">
+              {WEEKDAY_LABELS.map((label, i) => (
+                <button
+                  key={label}
+                  type="button"
+                  onClick={() => toggleWeekday(i)}
+                  className={`rounded-full border px-2.5 py-1 font-mono text-[11px] ${
+                    weekdays.has(i)
+                      ? "border-accent/50 bg-accent-soft font-semibold text-accent"
+                      : "border-line text-ink-2"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <label className="flex flex-col gap-1 text-xs text-ink-2">
+            Uhrzeit
+            <input
+              type="time"
+              value={weeklyTime}
+              onChange={(e) => setWeeklyTime(e.target.value)}
+              required
+              className="rounded-md border border-line bg-surface-2 px-2.5 py-1.5 text-[12.5px] text-ink"
+            />
+          </label>
+        </>
+      )}
 
       <div className="flex flex-col gap-1.5 text-xs text-ink-2">
         Dauer

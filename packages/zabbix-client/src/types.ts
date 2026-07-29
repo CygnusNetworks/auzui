@@ -39,6 +39,8 @@ export interface ZabbixHost {
   name: string;
   status: "0" | "1";
   maintenance_status?: "0" | "1";
+  /** Set while maintenance_status is "1" — id of the currently active maintenance. */
+  maintenanceid?: ZabbixId;
   proxyid?: ZabbixId;
   interfaces?: ZabbixHostInterface[];
   parentTemplates?: ZabbixTemplate[];
@@ -166,12 +168,22 @@ export interface ZabbixMap {
 }
 
 export interface ZabbixTimeperiod {
-  /** 0 = one-time only (the only kind auzui creates). */
+  /** "0" one-time, "2" daily, "3" weekly, "4" monthly. */
   timeperiod_type: string;
   /** Unix seconds — one-time periods only. */
   start_date?: string;
   /** Duration in seconds. */
   period: string;
+  /** Repeat interval (every Nth day/week/month) — daily/weekly/monthly only. */
+  every?: string;
+  /** Bitmask, bit0=Mon…bit6=Sun — weekly, and monthly "day of week in month" mode. */
+  dayofweek?: string;
+  /** Seconds since midnight — daily/weekly/monthly. */
+  start_time?: string;
+  /** Bitmask of months, bit0=Jan…bit11=Dec — monthly. */
+  month?: string;
+  /** Day of month — monthly, when dayofweek is "0". */
+  day?: string;
 }
 
 export interface ZabbixMaintenance {

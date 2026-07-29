@@ -135,9 +135,19 @@ export class GraylogSource implements LogSource {
       signal,
     });
     if (!res.ok) {
-      throw new Error(`gateway ${path} failed: HTTP ${res.status}`);
+      throw new Error((await this.extractErrorDetail(res)) ?? `gateway ${path} failed: HTTP ${res.status}`);
     }
     return res;
+  }
+
+  /** FastAPI's HTTPException serializes as {"detail": "..."} — surface that text (e.g. "Graylog timeout", "Graylog returned HTTP 400") instead of a bare status code. */
+  private async extractErrorDetail(res: Response): Promise<string | undefined> {
+    try {
+      const body = (await res.clone().json()) as { detail?: unknown };
+      return typeof body.detail === "string" ? body.detail : undefined;
+    } catch {
+      return undefined;
+    }
   }
 
   private toResult(raw: GatewaySearchResult): LogSearchResult {

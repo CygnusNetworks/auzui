@@ -37,6 +37,9 @@
   --color-chart-2: #7050e0;
   --color-chart-3: #b96a0a;
   --color-chart-4: #1f8a96;
+
+  /* Geomap land-mass kulisse (Topology, world-land.json) — one shade darker than the map background. */
+  --color-map-land: #f6f8fc;
 }
 
 @layer base {
@@ -65,6 +68,8 @@
     --color-chart-2: #8e7aea;
     --color-chart-3: #c8802f;
     --color-chart-4: #2ba8b5;
+
+    --color-map-land: #222738;
   }
 
   body {

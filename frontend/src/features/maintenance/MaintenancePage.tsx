@@ -1,7 +1,13 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import type { ZabbixMaintenance } from "@auzui/zabbix-client";
-import { formatWindow, maintenanceStatus, type MaintenanceStatus } from "../../lib/maintenance";
-import { useMaintenance } from "./use-maintenance";
+import {
+  describeTimeperiod,
+  formatFrame,
+  formatWindow,
+  maintenanceStatus,
+  type MaintenanceStatus,
+} from "../../lib/maintenance";
+import { useHostsInMaintenance, useMaintenance } from "./use-maintenance";
 import { useDeleteMaintenance } from "./use-maintenance-mutations";
 import { CreateMaintenanceForm } from "./CreateMaintenanceForm";
 
@@ -9,10 +15,17 @@ const MAX_EXPIRED = 10;
 
 export function MaintenancePage() {
   const { data: maintenances, isLoading, isError, error, refetch } = useMaintenance();
+  const { data: hostsInMaintenance } = useHostsInMaintenance();
   const [expiredOpen, setExpiredOpen] = useState(false);
 
+  const activeMaintenanceIds = useMemo(
+    () =>
+      new Set((hostsInMaintenance ?? []).map((h) => h.maintenanceid).filter((id): id is string => Boolean(id))),
+    [hostsInMaintenance],
+  );
+
   const nowSeconds = Date.now() / 1000;
-  const grouped = groupByStatus(maintenances ?? [], nowSeconds);
+  const grouped = groupByStatus(maintenances ?? [], nowSeconds, activeMaintenanceIds);
 
   return (
     <div className="mx-auto max-w-[1400px] px-3 min-[700px]:px-5 pb-16 pt-4.5">
@@ -77,6 +90,7 @@ export function MaintenancePage() {
 function groupByStatus(
   maintenances: ZabbixMaintenance[],
   nowSeconds: number,
+  activeMaintenanceIds: ReadonlySet<string>,
 ): Record<MaintenanceStatus, ZabbixMaintenance[]> {
   const groups: Record<MaintenanceStatus, ZabbixMaintenance[]> = {
     active: [],
@@ -84,7 +98,7 @@ function groupByStatus(
     expired: [],
   };
   for (const m of maintenances) {
-    groups[maintenanceStatus(m, nowSeconds)].push(m);
+    groups[maintenanceStatus(m, nowSeconds, activeMaintenanceIds)].push(m);
   }
   groups.expired.sort((a, b) => Number(b.active_till) - Number(a.active_till));
   return groups;
@@ -130,14 +144,28 @@ function MaintenanceRow({
     deleteMutation.mutate(maintenance.maintenanceid);
   }
 
+  const firstTimeperiod = maintenance.timeperiods?.[0];
+  const isRecurring = firstTimeperiod !== undefined && firstTimeperiod.timeperiod_type !== "0";
+
   return (
     <div className={`flex flex-col gap-1.5 rounded-md border border-line border-l-[3px] bg-surface-2 p-2.5 ${accentClass}`}>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-[13px] font-semibold text-ink">{maintenance.name}</span>
-          <span className="font-mono text-[11px] text-ink-muted">
-            {formatWindow(Number(maintenance.active_since), Number(maintenance.active_till))}
-          </span>
+          {isRecurring ? (
+            <>
+              <span className="font-mono text-[11px] text-ink-2">
+                {describeTimeperiod(firstTimeperiod)}
+              </span>
+              <span className="font-mono text-[10px] text-ink-muted">
+                {formatFrame(Number(maintenance.active_since), Number(maintenance.active_till))}
+              </span>
+            </>
+          ) : (
+            <span className="font-mono text-[11px] text-ink-muted">
+              {formatWindow(Number(maintenance.active_since), Number(maintenance.active_till))}
+            </span>
+          )}
           {maintenance.maintenance_type === "1" && (
             <span className="rounded-full border border-line px-2 py-0.5 font-mono text-[10.5px] text-ink-2">
               ohne Datenerfassung
