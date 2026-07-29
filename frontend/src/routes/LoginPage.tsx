@@ -34,6 +34,20 @@ export function LoginPage() {
     // Runs once on mount only — attemptSso() guards against repeat attempts itself.
   }, []);
 
+  function onKerberosClick() {
+    setSsoUnavailable(false);
+    setCheckingSso(true);
+    void attemptSso({ force: true }).then((result) => {
+      if (result) {
+        loginWithSso(result.token, result.username);
+        void navigate({ to: "/" });
+        return;
+      }
+      setSsoUnavailable(true);
+      setCheckingSso(false);
+    });
+  }
+
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     try {
@@ -96,6 +110,13 @@ export function LoginPage() {
               className="w-full rounded-md bg-accent px-3 py-2 text-sm font-semibold text-accent-ink disabled:opacity-50"
             >
               {loggingIn ? "Anmelden…" : "Anmelden"}
+            </button>
+            <button
+              type="button"
+              onClick={onKerberosClick}
+              className="mt-2 w-full rounded-md border border-line bg-surface-2 px-3 py-2 text-sm text-ink-2"
+            >
+              Mit Kerberos anmelden
             </button>
           </form>
         )}

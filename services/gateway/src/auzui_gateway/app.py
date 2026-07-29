@@ -112,6 +112,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         logger.info("SPNEGO login: %s (%s)", username, principal)
         return JSONResponse({"token": sessionid, "username": username})
 
+    @app.get("/api/config")
+    async def ui_config(token: str = Depends(bearer_token)) -> dict[str, str]:
+        await zabbix.validate_session(token)
+        return {
+            "zabbix_ui_url": settings.effective_zabbix_ui_url,
+            "version": settings.auzui_version or __version__,
+            "commit": settings.auzui_git_sha[:10],
+        }
+
     @app.get("/health")
     async def health() -> dict[str, object]:
         return {

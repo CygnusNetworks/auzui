@@ -4,13 +4,13 @@ import { SeverityBadge } from "../../components/SeverityBadge";
 import { formatAge, type EnrichedProblem } from "../../lib/problems";
 import { useAcknowledge } from "./use-acknowledge";
 import { useEventTimeline } from "./use-event-timeline";
-
-const OLD_UI_BASE = "https://zabbix.example.com/tr_events.php";
+import { useAppConfig } from "../../lib/use-app-config";
 
 export function DetailPanel({ problem }: { problem: EnrichedProblem | undefined }) {
   const [comment, setComment] = useState("");
   const acknowledge = useAcknowledge();
   const timeline = useEventTimeline(problem?.eventid);
+  const { data: config } = useAppConfig();
 
   if (!problem) {
     return (
@@ -18,7 +18,9 @@ export function DetailPanel({ problem }: { problem: EnrichedProblem | undefined 
     );
   }
 
-  const oldUiUrl = `${OLD_UI_BASE}?triggerid=${encodeURIComponent(problem.objectid)}&eventid=${encodeURIComponent(problem.eventid)}`;
+  const oldUiUrl = config?.zabbix_ui_url
+    ? `${config.zabbix_ui_url}/tr_events.php?triggerid=${encodeURIComponent(problem.objectid)}&eventid=${encodeURIComponent(problem.eventid)}`
+    : undefined;
 
   function submitComment() {
     if (!problem || comment.trim().length === 0) return;
@@ -135,14 +137,16 @@ export function DetailPanel({ problem }: { problem: EnrichedProblem | undefined 
               Host Deep-Dive →
             </Link>
           )}
-          <a
-            href={oldUiUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="rounded-md border border-line bg-surface-2 px-2.5 py-1 text-xs text-ink-2"
-          >
-            im alten UI öffnen ↗
-          </a>
+          {oldUiUrl && (
+            <a
+              href={oldUiUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="rounded-md border border-line bg-surface-2 px-2.5 py-1 text-xs text-ink-2"
+            >
+              im alten UI öffnen ↗
+            </a>
+          )}
         </div>
       </div>
     </div>

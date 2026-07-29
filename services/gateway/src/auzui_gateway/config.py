@@ -14,6 +14,14 @@ class Settings(BaseSettings):
     # Base URL of the Zabbix web frontend for the HTTP-auth SSO exchange
     # (index_http.php). Empty = derive from zabbix_api_url.
     zabbix_web_url: str = ""
+    # User-facing Zabbix UI base URL ("open in old UI" links in the SPA).
+    # May differ from zabbix_web_url when the SSO exchange goes through a
+    # separate, IP-restricted vhost. Empty = derive from zabbix_api_url.
+    zabbix_ui_url: str = ""
+
+    # Build provenance, injected as Docker build args (see Dockerfile/CI).
+    auzui_version: str = ""
+    auzui_git_sha: str = ""
 
     # Kerberos SSO (SPNEGO): validate Negotiate tokens against the keytab,
     # then exchange the principal for a Zabbix session via index_http.php.
@@ -55,6 +63,12 @@ class Settings(BaseSettings):
     def effective_zabbix_web_url(self) -> str:
         if self.zabbix_web_url:
             return self.zabbix_web_url.rstrip("/")
+        return self.zabbix_api_url.rsplit("/", 1)[0].rstrip("/")
+
+    @property
+    def effective_zabbix_ui_url(self) -> str:
+        if self.zabbix_ui_url:
+            return self.zabbix_ui_url.rstrip("/")
         return self.zabbix_api_url.rsplit("/", 1)[0].rstrip("/")
 
     @property

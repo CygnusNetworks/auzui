@@ -193,7 +193,7 @@ Jede Kante trägt ihre Quelle sichtbar (Stil/Legende); Nutzer kann Ebenen ein-/a
 
 ### B. An echten Daten kalibriert (docker-zabbix.example.com, 23.07.2026)
 
-Über den netadmin-API-Token (`(intern)` → `[zabbix] token`, gegen `https://zabbix-api.example.com`) verifiziert — bestätigt die Heuristik:
+Über einen bestehenden API-Token (gegen `https://zabbix-api.example.com`) verifiziert — bestätigt die Heuristik:
 - **201 Hosts, 103.252 Items, 32 aktive Probleme** (6 High, 10 Average, 9 Warning, 7 Info).
 - **Rollen aus Templates** real: *Cygnus Linux by Zabbix agent* (84), *Brocade/Foundry Stackable by SNMP* (50), *SMART agent2* (34), *Chassis by IPMI* (24), *Docker agent2* (16), *Website certificate* (17), *MD RAID*, *APC UPS by SNMP*, *MySQL agent2*, *Synology*, *DVBStream* … → viele Geräteklassen, ideal für rollen­spezifische Auto-Dashboards.
 - **`component`-Tag liegt auf praktisch jedem Item** (in Stichprobe 8052/8000+): Werte `network, system, temperature, cpu, memory, power, fan, ssid, users, internal-process, health …`. → **Tag-basierte Klassifikation ist in dieser Umgebung die verlässlichste Signalquelle.**
