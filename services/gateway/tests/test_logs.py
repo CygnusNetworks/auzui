@@ -3,7 +3,13 @@ import json
 import respx
 from httpx import Response
 
-from auzui_gateway.graylog import LogFilter, apply_filters, build_filter_clause, escape_lucene_value
+from auzui_gateway.graylog import (
+    LogFilter,
+    apply_filters,
+    build_filter_clause,
+    escape_lucene_value,
+    parens_balanced,
+)
 
 from .conftest import AUTH, GRAYLOG_URL, ZABBIX_URL, zabbix_result
 
@@ -216,6 +222,37 @@ class TestFilterQueryConstruction:
 
     def test_apply_filters_falls_back_to_wildcard_without_any_query_or_filters(self):
         assert apply_filters("", [], [], "source") == "*"
+
+    def test_parens_balanced(self):
+        assert parens_balanced("(a OR b)")
+        assert parens_balanced("a AND b")
+        # Breakout attempt: closes the wrapper paren, then re-opens.
+        assert not parens_balanced("a) OR (b")
+        assert not parens_balanced("(a")
+        assert not parens_balanced(")a(")
+
+
+@respx.mock
+async def test_host_logs_rejects_extra_query_breakout(client):
+    respx.post(ZABBIX_URL).mock(
+        return_value=Response(
+            200,
+            json=zabbix_result(
+                [{"hostid": "42", "host": "acc-sw-b04", "name": "acc-sw-b04", "interfaces": []}]
+            ),
+        )
+    )
+    graylog_route = respx.get(f"{GRAYLOG_URL}/api/search/universal/absolute").mock(
+        return_value=Response(200, json=SEARCH_BODY)
+    )
+    res = await client.post(
+        "/api/logs/host/42",
+        json={"from": 0, "to": 100, "extra_query": "x) OR (source:*"},
+        headers=AUTH,
+    )
+    assert res.status_code == 422
+    # The scope-breaking query must never reach Graylog.
+    assert not graylog_route.called
 
 
 @respx.mock

@@ -47,6 +47,22 @@ class LogFilter:
     value: str
 
 
+def parens_balanced(query: str) -> bool:
+    """True if parentheses never close more than they opened at any prefix and
+    the totals match. Used to reject a host `extra_query` that would otherwise
+    break out of the mandatory host-source scope via a crafted `)... OR (...`
+    fragment (the extra query is wrapped as ``(host) AND (extra)``)."""
+    depth = 0
+    for ch in query:
+        if ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth -= 1
+            if depth < 0:
+                return False
+    return depth == 0
+
+
 def build_host_query(host: dict[str, Any], source_field: str) -> tuple[str, list[str]]:
     """OR-query over the host's likely syslog source aliases, in mapping
     priority order: technical name, visible name, interface DNS, interface IP."""

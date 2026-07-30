@@ -111,3 +111,13 @@ async def test_ts_query_validates_range(client):
         "/api/ts/query", json={"itemids": ["1"], "start": 100, "end": 100}, headers=AUTH
     )
     assert res.status_code == 422
+
+
+async def test_ts_query_rejects_non_numeric_itemids(client):
+    # Guards against Flux injection: non-numeric ids never reach build_flux.
+    res = await client.post(
+        "/api/ts/query",
+        json={"itemids": ['1" or r._value > "0'], "start": 0, "end": 60},
+        headers=AUTH,
+    )
+    assert res.status_code == 422

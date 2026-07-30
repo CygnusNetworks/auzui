@@ -45,10 +45,15 @@ class ZabbixClient:
         if "error" in body:
             err = body["error"]
             message = err.get("data") or err.get("message") or "Zabbix API error"
-            # Invalid/expired session token → the caller must re-login.
-            if "not authori" in message.lower() or "session" in message.lower():
-                raise HTTPException(401, message)
-            raise HTTPException(502, f"Zabbix API error: {message}")
+            # Log the upstream detail but do NOT echo it to the client — it can
+            # leak internal query structure/paths. Callers only need the status.
+            lowered = message.lower()
+            if "not authori" in lowered or "session" in lowered:
+                # Invalid/expired session token → the caller must re-login.
+                logger.info("Zabbix rejected session (method=%s): %s", method, message)
+                raise HTTPException(401, "Zabbix session invalid or expired")
+            logger.warning("Zabbix API error (method=%s): %s", method, message)
+            raise HTTPException(502, "Zabbix API error")
         return body.get("result")
 
     async def http_auth_session(self, settings_web_url: str, username: str) -> str:

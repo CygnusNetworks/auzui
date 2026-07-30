@@ -69,12 +69,31 @@ heuristic.
 ## nginx reverse-proxy pattern
 
 A typical deployment puts nginx in front, terminating TLS (and optionally
-SPNEGO/Kerberos, matching the existing Zabbix-web setup) and routing:
+SPNEGO/Kerberos, matching the existing Zabbix-web setup) and routing. The
+snippet below is a **hardened** starting point — the security headers are not
+optional in production:
 
 ```nginx
 server {
     listen 443 ssl;
     server_name auzui.example.de;
+
+    # --- Security headers -------------------------------------------------
+    # HSTS: force HTTPS for a year (add ; preload only once you are sure).
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+    # Clickjacking: auzui is never meant to be framed.
+    add_header X-Frame-Options "DENY" always;
+    add_header Content-Security-Policy "frame-ancestors 'none'" always;
+    # No MIME sniffing, minimal referrer leakage.
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+    # Content-Security-Policy is the most effective second line of defence for
+    # the session token (kept in sessionStorage). The SPA is self-contained; a
+    # strict policy works. Verify against your build, then tighten:
+    #   add_header Content-Security-Policy "default-src 'self'; \
+    #       script-src 'self'; style-src 'self' 'unsafe-inline'; \
+    #       img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; \
+    #       base-uri 'self'; object-src 'none'" always;
 
     # Static SPA (or proxied to auzui-gateway if AUZUI_SERVE_FRONTEND=true)
     location / {
@@ -97,6 +116,42 @@ server {
 If `auzui-gateway` serves the built frontend itself
 (`AUZUI_SERVE_FRONTEND=true`), nginx only needs a single `proxy_pass` to
 the gateway container and no separate static file server.
+
+## Security notes
+
+Read these before exposing auzui to users.
+
+### SPNEGO SSO: isolate `index_http.php`
+
+When `SPNEGO_ENABLED=true`, the gateway validates the browser's Kerberos
+ticket and then mints a Zabbix session by calling the Zabbix frontend's
+`index_http.php` with HTTP-Basic `username:x` — Zabbix trusts the
+web-server-provided user, so the password is irrelevant. This means anyone
+who can reach `index_http.php` directly can obtain a session for **any
+username**. Therefore:
+
+- `index_http.php` (the HTTP-auth vhost) **must not be reachable** from
+  untrusted networks — restrict it to the gateway's source IP / an internal
+  network segment. `ZABBIX_WEB_URL` may point at this restricted vhost while
+  `ZABBIX_UI_URL` points at the user-facing one.
+- Keep the gateway ↔ Zabbix hop on a trusted network; the Kerberos ticket
+  validation is the only thing standing between a caller and a minted session.
+
+### Log access is coarse-grained
+
+Any authenticated Zabbix session may free-text search **every configured
+Graylog stream** via `/api/logs/search` — Graylog streams are not mapped to
+Zabbix host permissions (the per-host and per-item paths *are* permission
+checked). Scope `GRAYLOG_DEFAULT_STREAMS` to the streams every auzui user is
+allowed to read; do not enable Graylog against streams containing logs that
+only a subset of your Zabbix users should see.
+
+### Session revocation lag
+
+The gateway caches "this token is a valid session" for
+`PERMISSION_CACHE_TTL` seconds (default 300). A session revoked in Zabbix is
+still accepted by the gateway for up to that window. Lower the TTL if you need
+tighter revocation.
 
 ## Planned Puppet deployment
 

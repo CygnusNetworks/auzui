@@ -7,12 +7,12 @@ from typing import Literal
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from . import __version__
 from .config import Settings, get_settings
 from .filter_sets import FilterSetStore
-from .graylog import GraylogService, LogFilter, apply_filters, build_host_query
+from .graylog import GraylogService, LogFilter, apply_filters, build_host_query, parens_balanced
 from .influx import VALID_FNS, InfluxClient
 from .spnego import SpnegoAuthFailed, SpnegoService, SpnegoUnavailable, principal_to_login
 from .zabbix import ZabbixClient
@@ -33,6 +33,17 @@ class TsQueryRequest(BaseModel):
     end: int
     points: int = Field(default=800, ge=10, le=4000)
     fn: str = "last"
+
+    @field_validator("itemids")
+    @classmethod
+    def _itemids_numeric(cls, v: list[str]) -> list[str]:
+        # Zabbix item ids are always numeric. Enforcing this here makes the
+        # Flux query builder (influx.build_flux interpolates itemids into the
+        # query string) injection-proof by construction, independent of the
+        # permission gate in ZabbixClient.check_items_visible.
+        if not all(i.isdigit() for i in v):
+            raise ValueError("itemids must be numeric")
+        return v
 
 
 class LogFilterModel(BaseModel):
@@ -103,12 +114,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     if settings.cors_origins:
         from fastapi.middleware.cors import CORSMiddleware
 
-        app.add_middleware(
-            CORSMiddleware,
-            allow_origins=[o.strip() for o in settings.cors_origins.split(",") if o.strip()],
-            allow_methods=["*"],
-            allow_headers=["*"],
-        )
+        origins = [o.strip() for o in settings.cors_origins.split(",") if o.strip()]
+        if "*" in origins:
+            # A wildcard origin turns the gateway into an open cross-origin
+            # endpoint for any site the victim visits. Refuse it and disable
+            # CORS entirely rather than honour a dangerous misconfiguration.
+            logger.warning(
+                "CORS_ORIGINS contains '*'; refusing the wildcard and leaving CORS disabled. "
+                "Set an explicit, comma-separated origin list instead."
+            )
+        else:
+            app.add_middleware(
+                CORSMiddleware,
+                allow_origins=origins,
+                allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+                allow_headers=["Authorization", "Content-Type"],
+            )
 
     # ---- auth (Kerberos SSO) --------------------------------------------
 
@@ -224,6 +245,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         req: LogsSearchRequest, token: str = Depends(bearer_token)
     ) -> dict[str, object]:
         require_graylog()
+        # AUTHORIZATION MODEL: log access is coarse-grained. Any live Zabbix
+        # session may free-text search every configured Graylog stream — unlike
+        # /api/ts (per-item) and /api/logs/host (per-host), Graylog streams do
+        # not map to Zabbix host permissions. Operators MUST scope
+        # GRAYLOG_DEFAULT_STREAMS to streams all auzui users are allowed to read
+        # (see docs/deployment.md). Per-host log authorization would require a
+        # stream↔permission mapping that does not exist here.
         await zabbix.validate_session(token)
         query = apply_filters(
             req.query,
@@ -243,6 +271,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         host = await zabbix.get_host_identity(token, hostid)
         query, aliases = build_host_query(host, settings.graylog_source_field)
         if req.extra_query:
+            # The host-source clause is a scope boundary; an unbalanced-prefix
+            # paren fragment could close the wrapper and OR the host filter away.
+            if not parens_balanced(req.extra_query):
+                raise HTTPException(422, "extra_query has unbalanced parentheses")
             query = f"({query}) AND ({req.extra_query})"
         query = apply_filters(
             query,
