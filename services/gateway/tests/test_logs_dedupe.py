@@ -215,3 +215,26 @@ async def test_search_dedupe_false_keeps_duplicates(multi_client):
     )
     assert res.status_code == 200
     assert len(res.json()["messages"]) == 2
+
+
+@respx.mock
+async def test_dedupe_overfetches_and_paginates_after_merge(multi_client):
+    """With dedup active, each server is fetched from offset 0 with headroom
+    (limit + offset + pad) and pagination happens on the deduped list —
+    otherwise per-server windows misalign and edge rows surface un-merged."""
+    respx.post(ZABBIX_URL).mock(return_value=Response(200, json=zabbix_result([{"userid": "1"}])))
+    route_a = respx.get(f"{GL_A}/api/search/universal/absolute").mock(
+        return_value=Response(200, json=_search_body("a1", "2026-07-29T10:00:00.000Z"))
+    )
+    respx.get(f"{GL_B}/api/search/universal/absolute").mock(
+        return_value=Response(200, json=_search_body("b1", "2026-07-29T10:00:00.002Z"))
+    )
+    res = await multi_client.post(
+        "/api/logs/search", json={"from": 0, "to": 1, "limit": 10, "offset": 20}, headers=AUTH
+    )
+    assert res.status_code == 200
+    params = route_a.calls.last.request.url.params
+    assert params["offset"] == "0"
+    assert int(params["limit"]) == 10 + 20 + 50  # limit + offset + DEDUP_FETCH_PAD
+    # offset 20 on a single deduped row -> empty page, not an unmerged repeat
+    assert res.json()["messages"] == []

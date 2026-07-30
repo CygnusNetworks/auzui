@@ -129,6 +129,12 @@ def _dedupe_key(m: dict[str, Any]) -> tuple[Any, ...]:
     )
 
 
+# Headroom per server when fetching for dedup (counterparts just outside the
+# page window), and a hard cap so deep pages can't request unbounded rows.
+DEDUP_FETCH_PAD = 50
+MAX_DEDUP_FETCH = 2000
+
+
 def dedupe_messages(messages: list[dict[str, Any]], window_seconds: float) -> list[dict[str, Any]]:
     """Collapse content-identical lines that arrived on DIFFERENT Graylog
     servers within `window_seconds` of each other into ONE row.
@@ -386,8 +392,21 @@ class GraylogService:
         stays the raw sum of per-server totals and is therefore approximate
         (an upper bound) once duplicates are collapsed."""
         clients = self._select(server_ids)
+        dedupe_active = self._s.log_dedup_enabled and dedupe and len(clients) > 1
+        # With dedup, per-server limit/offset windows misalign: the newest rows
+        # of server A can lack their counterpart because it sits just outside
+        # server B's window — those edge rows then surface un-merged. Fetch each
+        # server from 0 with headroom instead and paginate AFTER the dedup.
+        if dedupe_active:
+            fetch_limit = min(offset + limit + DEDUP_FETCH_PAD, MAX_DEDUP_FETCH)
+            fetch_offset = 0
+        else:
+            fetch_limit, fetch_offset = limit, offset
         results = await asyncio.gather(
-            *(c.search(query, time_from, time_to, limit, offset, stream_ids) for c in clients),
+            *(
+                c.search(query, time_from, time_to, fetch_limit, fetch_offset, stream_ids)
+                for c in clients
+            ),
             return_exceptions=True,
         )
         merged: list[dict[str, Any]] = []
@@ -408,6 +427,7 @@ class GraylogService:
             raise HTTPException(502, f"all Graylog servers failed: {errors}")
         # Cross-server content dedup: gated behind the feature flag, only makes
         # sense with >1 server queried, and can be turned off per-request.
-        if self._s.log_dedup_enabled and dedupe and len(clients) > 1:
+        if dedupe_active:
             merged = dedupe_messages(merged, self._s.log_dedup_window_seconds)
+            return {"messages": merged[offset : offset + limit], "total": total, "errors": errors}
         return {"messages": merged[:limit], "total": total, "errors": errors}
