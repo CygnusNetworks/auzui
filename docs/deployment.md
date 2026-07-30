@@ -5,10 +5,11 @@ auzui has two runtime pieces:
 - **`frontend/`** — a static Vite build (plain HTML/CSS/JS), served either
   by any static web server / CDN, or by `auzui-gateway` itself
   (`AUZUI_SERVE_FRONTEND`, see below).
-- **`services/gateway`** (`auzui-gateway`) — a small FastAPI service that is
-  only required once InfluxDB and/or Graylog are configured. Without it,
-  the SPA talks directly to the existing Zabbix `api_jsonrpc.php` endpoint
-  and everything except the Influx/Graylog fast paths works normally.
+- **`services/gateway`** (`auzui-gateway`) — a small FastAPI service that
+  provides the optional integrations: InfluxDB time-series, Graylog logs,
+  and Kerberos/SPNEGO SSO. Without it, the SPA talks directly to the
+  existing Zabbix `api_jsonrpc.php` endpoint with password login and
+  everything else works normally.
 
 ## Gateway environment variables
 
@@ -153,13 +154,3 @@ The gateway caches "this token is a valid session" for
 still accepted by the gateway for up to that window. Lower the TTL if you need
 tighter revocation.
 
-## Planned Puppet deployment
-
-A Puppet-managed deployment on **`docker-virt6`** under
-**`auzui.example.com`** is planned, mirroring how the existing Zabbix
-stack (and other Cygnus Networks services) are rolled out on that host:
-containerized `auzui-gateway` (+ optionally the SPA, via
-`AUZUI_SERVE_FRONTEND`) behind the shared nginx/SPNEGO front end, with
-Influx/Graylog variables sourced from the existing `docker-zabbix`
-credentials where applicable. Not yet implemented — tracked as a follow-up
-once the frontend/gateway reach a deployable milestone.

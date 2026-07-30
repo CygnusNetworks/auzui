@@ -46,10 +46,6 @@
             <a class="btn btn-ghost" href="https://github.com/cygnusnetworks/auzui">View on GitHub</a>
             <a class="btn btn-ghost" href="#deploy">Deploy with Docker</a>
           </div>
-          <p class="notice">
-            Early stage / pre-MVP. APIs, layouts, and scope may still change
-            significantly.
-          </p>
         </div>
       </section>
 
@@ -137,11 +133,9 @@
               <h3>Optional InfluxDB fast path</h3>
               <p>
                 Route time-series through a Flux <code>aggregateWindow</code>
-                query via <code>auzui-gateway</code> instead of
-                <code>history.get</code> — routinely
-                <strong>500–1000×</strong> faster on large instances, and
-                the only practical way to cover long ranges or dense
-                multi-item dashboards.
+                query via <code>auzui-gateway</code> — server-side
+                downsampling for long ranges and dense multi-item
+                dashboards, from an <code>effluence</code> export.
               </p>
             </article>
             <article class="feature">

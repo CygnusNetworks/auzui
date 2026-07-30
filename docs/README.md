@@ -3,9 +3,6 @@
 **Product site & live demo:** [cygnusnetworks.github.io/auzui](https://cygnusnetworks.github.io/auzui/)
 ([interactive demo](https://cygnusnetworks.github.io/auzui/demo/)).
 
-> **Early stage / pre-MVP.** auzui is under active design and initial
-> implementation. APIs, layouts, and scope may still change significantly.
-
 ## Getting started
 
 | Document | Content |
@@ -19,14 +16,14 @@
 | Document | Content |
 |---|---|
 | [configuration.md](configuration.md) | Full reference of every `auzui-gateway` environment variable |
-| [deployment.md](deployment.md) | nginx reverse-proxy pattern, TLS/security headers, security notes, planned Puppet rollout |
+| [deployment.md](deployment.md) | nginx reverse-proxy pattern, TLS/security headers, security notes |
 | [authentication.md](authentication.md) | Password login, SPNEGO/Kerberos SSO, session handling, authorization model |
 
 ## Feature deep-dives
 
 | Document | Content |
 |---|---|
-| [timeseries-sources.md](timeseries-sources.md) | Zabbix API vs. InfluxDB fast path: measured latency, when to bother with Influx |
+| [timeseries-sources.md](timeseries-sources.md) | Zabbix API vs. InfluxDB source selection, effluence schema, Flux query reference |
 | [logs.md](logs.md) | Graylog integration: multi-server fan-out, cross-server dedup, filter chips, saved filter sets |
 
 ## Reference

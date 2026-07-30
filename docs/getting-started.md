@@ -93,11 +93,11 @@ to `api_jsonrpc.php` and every core monitoring workflow works normally:
 | Feature | Without gateway / without Influx / without Graylog |
 |---|---|
 | Problems, Hosts, Latest Data, Explorer, Topology, Metrics, command palette | **Fully functional** — driven entirely by the Zabbix JSON-RPC API |
-| Chart time-series | Falls back to `history.get`/`trend.get` (see [timeseries-sources.md](timeseries-sources.md) for when this gets slow on large instances) |
+| Chart time-series | Falls back to `history.get`/`trend.get` (see [timeseries-sources.md](timeseries-sources.md)) |
 | Log panels (`/logs`, host-scoped log tab) | Hidden entirely — `/api/logs/status` reports `enabled: false` |
 | Kerberos/SPNEGO SSO | Falls back to the password login form — `/api/auth/methods` reports `spnego: false` |
 
-In other words: `auzui-gateway` unlocks the InfluxDB fast path and the
-Graylog log panels, and optionally serves the built SPA — it is never
-required for the core monitoring UI to work. Full variable-by-variable
+In other words: `auzui-gateway` unlocks the InfluxDB time-series source,
+the Graylog log panels, and Kerberos/SPNEGO SSO, and optionally serves
+the built SPA — it is never required for the core monitoring UI to work. Full variable-by-variable
 reference: [configuration.md](configuration.md).

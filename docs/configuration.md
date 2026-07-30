@@ -49,8 +49,8 @@ Full flow: [authentication.md](authentication.md).
 
 `INFLUX_URL`, `INFLUX_TOKEN`, and `INFLUX_ORG` must **all** be set for
 `influx_enabled` to be true and `/api/ts/status` to report `enabled: true`.
-See [timeseries-sources.md](timeseries-sources.md) for measured latency and
-when this path is worth setting up.
+See [timeseries-sources.md](timeseries-sources.md) for when this path is
+worth setting up.
 
 ## Graylog (optional — log panels)
 

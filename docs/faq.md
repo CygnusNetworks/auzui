@@ -15,12 +15,9 @@ Charts always work through the Zabbix API path (`history.get`/`trend.get`)
 by default — no configuration needed. If they're missing entirely, check
 `GET /health` on the gateway for `"influx": false` (expected without
 `INFLUX_URL`/`INFLUX_TOKEN`/`INFLUX_ORG` set) and confirm the frontend can
-reach `api_jsonrpc.php` at all. If charts are *slow* or time out on longer
-ranges, that's most likely the Zabbix history table falling out of the
-warm/cached path on a large instance — not a bug in auzui. See
-[timeseries-sources.md](timeseries-sources.md) for measured numbers and
-whether setting up the optional InfluxDB fast path is worth it for your
-instance size.
+reach `api_jsonrpc.php` at all. For long ranges and dense dashboards,
+consider configuring the optional InfluxDB source — see
+[timeseries-sources.md](timeseries-sources.md).
 
 ### Why is the Logs panel missing / empty?
 
@@ -95,8 +92,8 @@ path and Graylog log panels, and (if you were relying on it)
 `AUZUI_SERVE_FRONTEND`'s single-container serving. See
 [getting-started.md](getting-started.md#what-works-without-auzui-gateway).
 
-### Is this project production-ready?
+### How do I follow the project's direction?
 
-Not yet — auzui is explicitly **early stage / pre-MVP**: APIs, layouts, and
-scope may still change significantly. See the banner at the top of the
-[README](../README.md) and the current status in [PLAN.md](../PLAN.md).
+[PLAN.md](../PLAN.md) is the living design specification; releases are
+tagged (`v*`) and each tag publishes a multi-arch image to
+[ghcr.io/cygnusnetworks/auzui](https://github.com/cygnusnetworks/auzui/pkgs/container/auzui).

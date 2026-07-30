@@ -46,26 +46,24 @@ The frontend defines a `TimeseriesSource` interface with two
 implementations, selected automatically based on gateway configuration:
 
 - **`ZabbixApiSource`** (default, always available) — uses `history.get`
-  for short/recent ranges (within the "warm" history / value cache) and
-  `trend.get` for longer windows with coarser resolution. Point reduction
-  (LTTB) runs in a Web Worker. UI defaults stick to safe ranges, because
-  outside the warm history window large instances risk timeouts — see
-  [docs/timeseries-sources.md](./timeseries-sources.md) for the measured
-  cache-vs-cold-history hypothesis.
+  for short/recent ranges and `trend.get` for longer windows with coarser
+  resolution. Point reduction (LTTB) runs in a Web Worker. See
+  [docs/timeseries-sources.md](./timeseries-sources.md) for how the source
+  is selected.
 - **`InfluxSource`** (optional, primary when configured) — calls
   `auzui-gateway`, which runs a Flux `aggregateWindow` query server-side.
-  Server-side downsampling makes ranges up to 365 days practical, with
-  measured sub-100ms latency on the reference instance. Recommended
-  whenever charts get dense or ranges get long.
+  Server-side downsampling makes ranges up to 365 days practical.
+  Recommended whenever charts get dense or ranges get long.
 
 A similar `LogSource` abstraction exists in `packages/logs` for the
 optional Graylog integration (`GraylogSource` / `NullLogSource`).
 
 ## auzui-gateway
 
-`services/gateway` is only needed once InfluxDB and/or Graylog are
-configured — it exists to keep upstream tokens out of the browser and to
-enforce Zabbix permissions on data it proxies. It is deliberately minimal
+`services/gateway` provides the optional integrations (InfluxDB
+time-series, Graylog logs, Kerberos/SPNEGO SSO) — it exists to keep
+upstream tokens out of the browser and to enforce Zabbix permissions on
+data it proxies. It is deliberately minimal
 (FastAPI, Python) and is **not** a general API proxy: CRUD, Problems, and
 configuration traffic goes straight from the SPA to `api_jsonrpc.php`.
 

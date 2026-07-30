@@ -7,9 +7,6 @@
 [![Python 3.12](https://img.shields.io/badge/gateway-Python%203.12-3776AB?logo=python&logoColor=white)](./services/gateway)
 [![Live site](https://img.shields.io/badge/live%20site-cygnusnetworks.github.io%2Fauzui-24292E?logo=githubpages&logoColor=white)](https://cygnusnetworks.github.io/auzui/)
 
-> **Early stage / pre-MVP.** auzui is under active design and initial
-> implementation. APIs, layouts, and scope may still change significantly.
-
 **auzui** is a modern, self-hosted monitoring single-page application that
 runs **next to** your existing [Zabbix](https://www.zabbix.com/) web UI —
 not instead of it. Configuration and administration stay in the classic
@@ -97,10 +94,11 @@ fast triage.
 
 The existing Zabbix web UI is kept running as a **headless API backend**
 (its JSON-RPC layer lives in the PHP frontend, not the C server — auzui
-does not reimplement it). `auzui-gateway` is only needed once InfluxDB
-and/or Graylog are configured; without it, the SPA talks straight to
-`api_jsonrpc.php` and everything still works, just without the optional
-fast paths. Full breakdown: [docs/architecture.md](./docs/architecture.md).
+does not reimplement it). `auzui-gateway` is needed for the optional
+integrations — InfluxDB time-series, Graylog logs, and Kerberos/SPNEGO
+SSO; without it, the SPA talks straight to `api_jsonrpc.php` with
+password login and everything else still works. Full breakdown:
+[docs/architecture.md](./docs/architecture.md).
 
 ## Time-series sources
 
@@ -108,34 +106,16 @@ auzui reads time-series through a `TimeseriesSource` abstraction with two
 implementations:
 
 - **`ZabbixApiSource`** (default, always available) — `history.get` for
-  short/recent ranges, `trend.get` for longer windows. This works fine as
-  long as the query stays inside the **warm history / value-cache
-  window** — Latest Data, sparklines, short chart ranges.
+  short/recent ranges, `trend.get` for longer windows. Serves Latest
+  Data, sparklines, and chart ranges directly from the Zabbix API.
 - **`InfluxSource`** (optional, primary when configured) — routes through
   `auzui-gateway` to a Flux `aggregateWindow` query, downsampled
-  server-side. Substantially faster, and the only practical way to cover
-  long ranges or dense multi-item dashboards on a large instance.
+  server-side. Recommended for long ranges and dense multi-item
+  dashboards.
 
-The 50-second-plus `history.get` calls below are **not a Zabbix API
-defect** — they're the signature of a query falling out of the warm
-cache/history path and hitting a large history table/hypertable directly
-on a big instance. Measured on the same item (1-minute interval, ~103k
-items on the reference instance):
-
-| Range | Zabbix `history.get` | InfluxDB (effluence) | Factor |
-|---|---|---|---|
-| 1h   | **50,216 ms** (61 pts, 4 kB)     | **48 ms** (59 pts)   | ~1050× |
-| 6h   | **50,257 ms** (362 pts, 25 kB)   | **77 ms**            | ~650×  |
-| 24h  | **50,392 ms** (1,442 pts, 99 kB) | **82 ms** (@5m agg)  | ~615×  |
-| 7d   | timeout (>50 s)                  | **113 ms**           | —      |
-| 30d  | timeout                          | **119 ms**           | —      |
-| 365d | practically unusable             | **62 ms** (14 pts)   | —      |
-
-auzui stays **fully usable without InfluxDB** — conservative default
-ranges, `trend.get` fallback for long windows, graceful timeout handling —
-and gets noticeably faster and more capable **with** InfluxDB configured.
-Full cache-hypothesis writeup, the effluence Flux query, and an operator
-recommendation for when it's worth setting up:
+auzui is fully usable without InfluxDB; with an `effluence` export
+configured, charts cover arbitrary ranges with server-side downsampling.
+Details, the effluence schema, and the Flux query reference:
 [docs/timeseries-sources.md](./docs/timeseries-sources.md).
 
 ## Monorepo layout
@@ -180,7 +160,7 @@ just build
 ```
 
 Configuration reference (Zabbix/Influx/Graylog env vars, nginx pattern,
-planned deployment): [docs/deployment.md](./docs/deployment.md) and
+security notes): [docs/deployment.md](./docs/deployment.md) and
 [docs/configuration.md](./docs/configuration.md). Full documentation index:
 [docs/README.md](./docs/README.md).
 
