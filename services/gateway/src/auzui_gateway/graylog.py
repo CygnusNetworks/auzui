@@ -393,41 +393,69 @@ class GraylogService:
         (an upper bound) once duplicates are collapsed."""
         clients = self._select(server_ids)
         dedupe_active = self._s.log_dedup_enabled and dedupe and len(clients) > 1
-        # With dedup, per-server limit/offset windows misalign: the newest rows
-        # of server A can lack their counterpart because it sits just outside
-        # server B's window — those edge rows then surface un-merged. Fetch each
-        # server from 0 with headroom instead and paginate AFTER the dedup.
-        if dedupe_active:
-            fetch_limit = min(offset + limit + DEDUP_FETCH_PAD, MAX_DEDUP_FETCH)
-            fetch_offset = 0
-        else:
-            fetch_limit, fetch_offset = limit, offset
-        results = await asyncio.gather(
-            *(
-                c.search(query, time_from, time_to, fetch_limit, fetch_offset, stream_ids)
-                for c in clients
-            ),
-            return_exceptions=True,
-        )
-        merged: list[dict[str, Any]] = []
-        total = 0
-        errors: list[dict[str, str]] = []
-        for client, res in zip(clients, results, strict=True):
-            if isinstance(res, BaseException):
-                detail = res.detail if isinstance(res, HTTPException) else res.__class__.__name__
-                logger.warning("search on server %s failed: %r", client.server.id, res)
-                errors.append({"server_id": client.server.id, "error": str(detail)})
-                continue
-            merged.extend(res["messages"])
-            total += res["total"]
-        merged.sort(key=lambda m: m["timestamp"], reverse=True)
-        # If every selected server errored, surface it as an upstream failure
-        # rather than a misleading empty-but-ok result.
-        if errors and not any(not isinstance(r, BaseException) for r in results):
-            raise HTTPException(502, f"all Graylog servers failed: {errors}")
-        # Cross-server content dedup: gated behind the feature flag, only makes
-        # sense with >1 server queried, and can be turned off per-request.
-        if dedupe_active:
-            merged = dedupe_messages(merged, self._s.log_dedup_window_seconds)
-            return {"messages": merged[offset : offset + limit], "total": total, "errors": errors}
-        return {"messages": merged[:limit], "total": total, "errors": errors}
+
+        async def fetch(fetch_limit: int, fetch_offset: int):
+            results = await asyncio.gather(
+                *(
+                    c.search(query, time_from, time_to, fetch_limit, fetch_offset, stream_ids)
+                    for c in clients
+                ),
+                return_exceptions=True,
+            )
+            merged: list[dict[str, Any]] = []
+            total = 0
+            errors: list[dict[str, str]] = []
+            # Oldest timestamp per server whose window was TRUNCATED (returned
+            # exactly fetch_limit rows) — everything newer than the max of
+            # these is guaranteed present on every healthy server.
+            cutoffs: list[float] = []
+            for client, res in zip(clients, results, strict=True):
+                if isinstance(res, BaseException):
+                    detail = (
+                        res.detail if isinstance(res, HTTPException) else res.__class__.__name__
+                    )
+                    logger.warning("search on server %s failed: %r", client.server.id, res)
+                    errors.append({"server_id": client.server.id, "error": str(detail)})
+                    continue
+                msgs = res["messages"]
+                if len(msgs) >= fetch_limit and msgs:
+                    cutoffs.append(min(m["timestamp"] for m in msgs))
+                merged.extend(msgs)
+                total += res["total"]
+            merged.sort(key=lambda m: m["timestamp"], reverse=True)
+            # If every selected server errored, surface it as an upstream
+            # failure rather than a misleading empty-but-ok result.
+            if errors and all(isinstance(r, BaseException) for r in results):
+                raise HTTPException(502, f"all Graylog servers failed: {errors}")
+            return merged, total, errors, cutoffs
+
+        if not dedupe_active:
+            merged, total, errors, _ = await fetch(limit, offset)
+            return {"messages": merged[:limit], "total": total, "errors": errors}
+
+        # Cross-server dedup needs ALIGNED windows: dense bursts (many rows in
+        # the same millisecond) tie-break differently per server, so "the
+        # newest N" are different subsets and counterparts fall outside the
+        # window — such rows would surface un-merged. Only rows newer than the
+        # watermark (newest per-server cutoff + dedup window) are fully covered
+        # on every server; grow the fetch until the covered, deduped region
+        # fills the requested page (or the cap is hit).
+        window = self._s.log_dedup_window_seconds
+        fetch_limit = min(offset + limit + DEDUP_FETCH_PAD, MAX_DEDUP_FETCH)
+        while True:
+            merged, total, errors, cutoffs = await fetch(fetch_limit, 0)
+            if cutoffs:
+                watermark = max(cutoffs) + window
+                covered = [m for m in merged if m["timestamp"] >= watermark]
+            else:
+                covered = merged  # every server fully drained the time range
+            deduped = dedupe_messages(covered, window)
+            if len(deduped) >= offset + limit or not cutoffs or fetch_limit >= MAX_DEDUP_FETCH:
+                break
+            fetch_limit = min(fetch_limit * 2, MAX_DEDUP_FETCH)
+        if len(deduped) < offset + limit and cutoffs:
+            # Cap reached before the page filled: fall back to best-effort dedup
+            # over everything fetched — a few un-merged edge rows beat an
+            # arbitrarily truncated page.
+            deduped = dedupe_messages(merged, window)
+        return {"messages": deduped[offset : offset + limit], "total": total, "errors": errors}
