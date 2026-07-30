@@ -96,11 +96,10 @@ export function HostsPage() {
           </div>
         </div>
 
-        <div className="grid grid-cols-[20px_1fr_70px_24px] gap-2 border-b border-line-soft px-2.5 py-2 font-mono text-[10px] uppercase tracking-wider text-ink-muted min-[700px]:grid-cols-[24px_1.6fr_1.4fr_90px_28px] min-[700px]:px-3.5 min-[1000px]:grid-cols-[24px_1.6fr_1.4fr_1.2fr_1.2fr_90px_28px]">
+        <div className="grid grid-cols-[20px_1fr_70px_24px] gap-2 border-b border-line-soft px-2.5 py-2 font-mono text-[10px] uppercase tracking-wider text-ink-muted min-[700px]:grid-cols-[24px_1.6fr_1.4fr_90px_28px] min-[700px]:px-3.5 min-[1000px]:grid-cols-[24px_1.6fr_1.4fr_1.2fr_90px_28px]">
           <span />
           <span>{t("hosts.colHost")}</span>
           <span className="hidden min-[700px]:block">{t("hosts.colGroups")}</span>
-          <span className="hidden min-[1000px]:block">{t("hosts.colRole")}</span>
           <span className="hidden min-[1000px]:block">{t("hosts.colInterfaces")}</span>
           <span>{t("hosts.colProblems")}</span>
           <span />
@@ -175,10 +174,10 @@ function HostRow({
     <Link
       to="/hosts/$hostId"
       params={{ hostId: host.hostid }}
-      className="grid h-full grid-cols-[20px_1fr_70px_24px] items-center gap-2 border-b border-line-soft px-2.5 text-[12.5px] hover:bg-surface-2 min-[700px]:grid-cols-[24px_1.6fr_1.4fr_90px_28px] min-[700px]:px-3.5 min-[1000px]:grid-cols-[24px_1.6fr_1.4fr_1.2fr_1.2fr_90px_28px]"
+      className="grid h-full grid-cols-[20px_1fr_70px_24px] items-center gap-2 border-b border-line-soft px-2.5 text-[12.5px] hover:bg-surface-2 min-[700px]:grid-cols-[24px_1.6fr_1.4fr_90px_28px] min-[700px]:px-3.5 min-[1000px]:grid-cols-[24px_1.6fr_1.4fr_1.2fr_90px_28px]"
     >
       <span className={`h-2 w-2 rounded-sm ${statusColor}`} />
-      <span className="min-w-0">
+      <span className="min-w-0" title={roleNames.length > 0 ? `${t("hosts.colRole")}: ${roleText}` : undefined}>
         <div className="truncate font-medium text-ink">{host.name || host.host}</div>
         <div className="truncate font-mono text-[10.5px] text-ink-muted">{host.host}</div>
       </span>
@@ -199,12 +198,6 @@ function HostRow({
             +{groupSummary.extraCount}
           </span>
         )}
-      </span>
-      <span
-        className="hidden truncate text-ink-2 min-[1000px]:block"
-        title={roleNames.length > 0 ? roleText : undefined}
-      >
-        {roleText}
       </span>
       <span className="hidden truncate font-mono text-[11.5px] text-ink-2 min-[1000px]:block">
         {ifaceLabel}
