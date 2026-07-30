@@ -45,6 +45,18 @@ describe("formatUnitValue", () => {
     expect(formatUnitValue(15000, "req/s")).toBe("15.0 kreq/s");
   });
 
+  it("treats a leading '!' as a literal unit: no scaling, no duration conversion", () => {
+    // Zabbix "!"-units: keep the literal suffix and the raw value.
+    expect(formatUnitValue(1500, "!r/s")).toBe("1.500 r/s");
+    expect(formatUnitValue(250, "!ms")).toBe("250 ms");
+    expect(formatUnitValue(2500, "!ms")).toBe("2.500 ms");
+    expect(formatUnitValue(42.5, "!°C", 1, "en")).toBe("42.5 °C");
+  });
+
+  it("treats a bare '!' (no unit after it) as a plain number", () => {
+    expect(formatUnitValue(1500, "!")).toBe("1.500");
+  });
+
   it("returns a placeholder for non-finite values", () => {
     expect(formatUnitValue(NaN, "%")).toBe("–");
     expect(formatUnitValue(Infinity, "B")).toBe("–");

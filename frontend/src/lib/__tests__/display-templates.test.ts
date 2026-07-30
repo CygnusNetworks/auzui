@@ -148,6 +148,57 @@ describe("buildSections — family display roles", () => {
   });
 });
 
+describe("buildSections — net.if instance extraction (quoted keys + mode suffixes)", () => {
+  it("groups in/out/dropped/errors of a quoted interface into ONE family, stripping quotes", () => {
+    // The real Zabbix agent keys from the screenshot: the interface name is a
+    // quoted first parameter, dropped/errors are mode parameters after it.
+    const items = [
+      mkItem({ itemid: "1", key_: 'net.if.in["eth0"]' }),
+      mkItem({ itemid: "2", key_: 'net.if.out["eth0"]' }),
+      mkItem({ itemid: "3", key_: 'net.if.in["eth0",dropped]' }),
+      mkItem({ itemid: "4", key_: 'net.if.out["eth0",dropped]' }),
+      mkItem({ itemid: "5", key_: 'net.if.in["eth0",errors]' }),
+      mkItem({ itemid: "6", key_: 'net.if.out["eth0",errors]' }),
+    ];
+    const sections = buildSections(linuxTemplate, items);
+    const eth0 = sections.filter((s) => s.id.startsWith("family:net-if:"));
+    expect(eth0).toHaveLength(1);
+    expect(eth0[0]!.id).toBe("family:net-if:eth0");
+    expect(eth0[0]!.label).toBe("Interface eth0");
+    expect(eth0[0]!.items).toHaveLength(6);
+    expect(sections.some((s) => s.kind === "component")).toBe(false);
+  });
+
+  it("assigns roles/labels and renders dropped/errors as stat tiles", () => {
+    const items = [
+      mkItem({ itemid: "1", key_: 'net.if.in["eth0"]' }),
+      mkItem({ itemid: "2", key_: 'net.if.in["eth0",dropped]' }),
+      mkItem({ itemid: "3", key_: 'net.if.out["eth0",errors]' }),
+    ];
+    const eth0 = buildSections(linuxTemplate, items).find((s) => s.id === "family:net-if:eth0")!;
+    const byKey = new Map(eth0.items.map((si) => [si.item.key_, si]));
+    expect(byKey.get('net.if.in["eth0"]')!.seriesRole).toBe("in");
+    expect(byKey.get('net.if.in["eth0"]')!.displayRole).toBe("line");
+    expect(byKey.get('net.if.in["eth0",dropped]')!.seriesRole).toBe("dropped");
+    expect(byKey.get('net.if.in["eth0",dropped]')!.displayRole).toBe("stat");
+    expect(byKey.get('net.if.in["eth0",dropped]')!.seriesLabel).toBe("Dropped in");
+    expect(byKey.get('net.if.out["eth0",errors]')!.seriesRole).toBe("errors");
+    expect(byKey.get('net.if.out["eth0",errors]')!.displayRole).toBe("stat");
+    expect(byKey.get('net.if.out["eth0",errors]')!.seriesLabel).toBe("Errors out");
+  });
+
+  it("still handles unquoted interface names and status", () => {
+    const items = [
+      mkItem({ itemid: "1", key_: "net.if.in[eth0]" }),
+      mkItem({ itemid: "2", key_: "net.if.status[eth0]" }),
+    ];
+    const eth0 = buildSections(linuxTemplate, items).find((s) => s.id === "family:net-if:eth0")!;
+    expect(eth0.items).toHaveLength(2);
+    const status = eth0.items.find((si) => si.item.key_ === "net.if.status[eth0]")!;
+    expect(status.displayRole).toBe("status");
+  });
+});
+
 describe("buildSections — families", () => {
   it("groups net.if.* items by interface instance into their own sections", () => {
     const items = [

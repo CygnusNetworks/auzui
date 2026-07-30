@@ -180,6 +180,8 @@ export const en = {
       hide: "Hide",
       showMore: (n: number) => `Show ${n} more`,
       chartsCount: (n: number) => `${n} charts`,
+      facts: "Facts (constant)",
+      factMarker: "constant",
     },
     logs: {
       badge: "logs · graylog",
@@ -190,6 +192,7 @@ export const en = {
       loadError: "Logs could not be loaded.",
       noSource: "no log source found",
       noResults: "no logs in this range",
+      empty: "No logs in the selected range",
       loadingMore: "Loading…",
       loadMore: (loaded: number, total?: number) =>
         `Load more (${loaded}${total !== undefined ? ` / ${total}` : ""})`,

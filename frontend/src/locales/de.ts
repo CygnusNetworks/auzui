@@ -180,6 +180,8 @@ export const de = {
       hide: "Ausblenden",
       showMore: (n: number) => `${n} weitere anzeigen`,
       chartsCount: (n: number) => `${n} Charts`,
+      facts: "Fakten (konstant)",
+      factMarker: "konstant",
     },
     logs: {
       badge: "logs · graylog",
@@ -190,6 +192,7 @@ export const de = {
       loadError: "Logs konnten nicht geladen werden.",
       noSource: "keine Log-Quelle gefunden",
       noResults: "keine Logs im Zeitraum",
+      empty: "Keine Logs im gewählten Zeitraum",
       loadingMore: "Lädt…",
       loadMore: (loaded: number, total?: number) =>
         `Mehr laden (${loaded}${total !== undefined ? ` / ${total}` : ""})`,

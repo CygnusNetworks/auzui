@@ -54,7 +54,18 @@ export function formatUnitValue(
   locale: Locale = "de",
 ): string {
   if (!Number.isFinite(value)) return "–";
-  const unit = (units ?? "").trim();
+  const raw = (units ?? "").trim();
+
+  // Zabbix "!"-prefixed units mean "do NOT convert/scale — show the value with
+  // the literal unit as written" (e.g. "!r/s", "!ms" stay r/s and ms, never
+  // scaled to k/M or turned into a duration). Strip the "!" and print plainly.
+  if (raw.startsWith("!")) {
+    const literal = raw.slice(1).trim();
+    const num = value.toLocaleString(intlLocaleTag(locale), { maximumFractionDigits: digits });
+    return literal ? `${num} ${literal}` : num;
+  }
+
+  const unit = raw;
 
   if (unit === "%") return `${value.toFixed(digits)} %`;
   if (unit === "°C" || unit === "C") return `${value.toFixed(digits)} °C`;

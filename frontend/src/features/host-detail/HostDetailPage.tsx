@@ -110,11 +110,23 @@ export function HostDetailPage() {
         </div>
       )}
 
-      {logsEnabled && hasLogEntries && (
-        <div className="mb-4">
-          <LogsPanel source={logSource} hostId={hostId} range={range} />
-        </div>
-      )}
+      {/* Logs sit at the very top — directly under the header/problem badges and
+          before every graph section. When there are entries: the full (height-
+          capped) panel. When there are none: a compact one-liner instead of a
+          big empty panel. */}
+      {logsEnabled &&
+        (hasLogEntries ? (
+          <div className="mb-4">
+            <LogsPanel source={logSource} hostId={hostId} range={range} />
+          </div>
+        ) : (
+          <div className="mb-4 flex items-center gap-2 rounded-lg border border-line-soft bg-surface px-3.5 py-2">
+            <span className="font-mono text-[10px] uppercase tracking-wider text-ink-muted">
+              {t("hostDetail.logs.badge")}
+            </span>
+            <span className="text-[12.5px] text-ink-2">{t("hostDetail.logs.empty")}</span>
+          </div>
+        ))}
 
       <div className="mb-4 flex flex-wrap items-center gap-2.5">
         <span className="font-mono text-[10.5px] text-ink-muted">
@@ -144,10 +156,6 @@ export function HostDetailPage() {
               ))}
             </div>
           </div>
-        )}
-
-        {logsEnabled && !hasLogEntries && (
-          <LogsPanel source={logSource} hostId={hostId} range={range} />
         )}
       </div>
     </div>

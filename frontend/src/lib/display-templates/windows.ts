@@ -79,12 +79,17 @@ export const windowsTemplate: DisplayTemplate = {
       id: "net-if",
       labelPattern: "Interface {instance}",
       navGroup: "Netzwerk",
+      // Same agent-generic net.if key shape as linux.ts: the interface name is
+      // the first key parameter, direction/mode (dropped/errors) follow it —
+      // capture only the interface so all series group into one family.
       keyPatterns: [
-        { pattern: "^net\\.if\\.in\\[(.+)\\]$", seriesRole: "in" },
-        { pattern: "^net\\.if\\.out\\[(.+)\\]$", seriesRole: "out" },
-        { pattern: "^net\\.if\\.in\\.errors\\[(.+)\\]$", seriesRole: "errors", seriesLabel: "Errors in" },
-        { pattern: "^net\\.if\\.out\\.errors\\[(.+)\\]$", seriesRole: "errors", seriesLabel: "Errors out" },
-        { pattern: "^net\\.if\\.status\\[(.+)\\]$", seriesRole: "status" },
+        { pattern: '^net\\.if\\.in\\["?([^",\\]]+)"?\\]$', seriesRole: "in" },
+        { pattern: '^net\\.if\\.out\\["?([^",\\]]+)"?\\]$', seriesRole: "out" },
+        { pattern: '^net\\.if\\.in\\["?([^",\\]]+)"?,\\s*dropped\\]$', seriesRole: "dropped", seriesLabel: "Dropped in", displayRole: "stat" },
+        { pattern: '^net\\.if\\.out\\["?([^",\\]]+)"?,\\s*dropped\\]$', seriesRole: "dropped", seriesLabel: "Dropped out", displayRole: "stat" },
+        { pattern: '^net\\.if\\.in\\["?([^",\\]]+)"?,\\s*errors\\]$', seriesRole: "errors", seriesLabel: "Errors in", displayRole: "stat" },
+        { pattern: '^net\\.if\\.out\\["?([^",\\]]+)"?,\\s*errors\\]$', seriesRole: "errors", seriesLabel: "Errors out", displayRole: "stat" },
+        { pattern: '^net\\.if\\.status\\["?([^",\\]]+)"?\\]$', seriesRole: "status" },
       ],
     },
     {

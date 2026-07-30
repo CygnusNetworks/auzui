@@ -1,3 +1,25 @@
+import type { Point } from "@auzui/timeseries";
+import { classifyConstancy } from "../../lib/constant-items";
+
+/**
+ * Whether a chart's loaded data is entirely flat — every (non-empty) series is
+ * constant (min == max) and at least one series has points. Such a chart is a
+ * useless flatline ("logged-in users: 0", "agent availability: 1") and is
+ * shown as a *fact* (name + value) instead of a graph. Reuses the Latest-Data
+ * `classifyConstancy` so both surfaces judge constancy identically.
+ *
+ * This is a state SEPARATE from "empty": a constant chart HAS data, so
+ * isChartEmpty stays false. And because it is recomputed from the currently
+ * loaded series on every render (not latched), a range change that makes a
+ * previously flat series vary flips it straight back to a graph — no one-way
+ * trap like the old empty-card unmount bug.
+ */
+export function isSeriesConstant(seriesPoints: readonly (readonly Point[])[]): boolean {
+  const nonEmpty = seriesPoints.filter((pts) => pts.length > 0);
+  if (nonEmpty.length === 0) return false;
+  return nonEmpty.every((pts) => classifyConstancy({ value_type: "0" }, pts).kind === "constant");
+}
+
 export interface ChartEmptyInput {
   /** Counter/"uptime" cards render a single last value — a time series (and thus "no data points in range") never applies. */
   isCounter: boolean;

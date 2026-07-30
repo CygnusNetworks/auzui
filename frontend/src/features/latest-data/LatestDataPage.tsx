@@ -8,8 +8,8 @@ import { formatUnitValue } from "../../lib/format-units";
 import { formatAge } from "../../lib/problems";
 import { isNumericItem, resolveItemName } from "../../lib/latest-items";
 import { useTimeseries } from "../../lib/use-timeseries";
-import { nowSeconds, rangeFromPreset } from "@auzui/timeseries";
-import { classifyConstancy, type Constancy } from "../../lib/constant-items";
+import { rangeFromPreset } from "@auzui/timeseries";
+import { classifyConstancy, type Constancy, type ConstancyRange } from "../../lib/constant-items";
 import {
   buildSections,
   resolveTemplate,
@@ -61,23 +61,43 @@ export function LatestDataPage() {
     return set;
   }, [rawSections]);
 
-  // Free items whose lastvalue/prevvalue never differ (cheap, from item.get
-  // alone) are unconditionally facts. Free items shown in a component section
-  // additionally promote into facts once their loaded series proves min==max
-  // (or exactly one change) over the current range — see onFactDetected.
+  // The currently viewed range, in the shape classifyConstancy wants for its
+  // text-item age heuristic. Deriving it here (rather than inside the memo)
+  // keeps baseFactIds reactive to range changes → the fact classification is
+  // reversible when the range widens/shifts.
+  const constancyRange = useMemo<ConstancyRange>(
+    () => ({ now: range.to, rangeSeconds: Math.max(1, range.to - range.from) }),
+    [range],
+  );
+
+  // Free items whose lastvalue/prevvalue never differ — or, for text items,
+  // whose value is older than half the viewed range (cheap, from item.get
+  // alone) — are unconditionally facts. Free items shown in a component
+  // section additionally promote into facts once their loaded series proves
+  // min==max (or exactly one change) over the current range — see onClassified.
   const baseFactIds = useMemo(() => {
     const set = new Set<string>();
     for (const item of items) {
       if (matchedIds.has(item.itemid)) continue;
-      if (classifyConstancy(item).kind === "constant") set.add(item.itemid);
+      if (classifyConstancy(item, undefined, constancyRange).kind === "constant") set.add(item.itemid);
     }
     return set;
-  }, [items, matchedIds]);
+  }, [items, matchedIds, constancyRange]);
   const [promoted, setPromoted] = useState<Map<string, Constancy>>(new Map());
 
-  const onFactDetected = useCallback((itemid: string, constancy: Constancy) => {
+  // Records a series-based classification for a free (component-section) item.
+  // A "variable" verdict REMOVES any prior promotion so an item does not get
+  // trapped in the facts rubric once a widened range reveals it does vary —
+  // the promotion is fully reversible.
+  const onClassified = useCallback((itemid: string, constancy: Constancy) => {
     setPromoted((prev) => {
       const existing = prev.get(itemid);
+      if (constancy.kind === "variable") {
+        if (!existing) return prev;
+        const next = new Map(prev);
+        next.delete(itemid);
+        return next;
+      }
       if (existing && JSON.stringify(existing) === JSON.stringify(constancy)) return prev;
       const next = new Map(prev);
       next.set(itemid, constancy);
@@ -176,8 +196,10 @@ export function LatestDataPage() {
               selectedSection.kind === "component" ? (
                 <LegacySectionView
                   section={selectedSection}
+                  range={range}
+                  constancyRange={constancyRange}
                   onSelectItem={setSelectedItem}
-                  onFactDetected={onFactDetected}
+                  onClassified={onClassified}
                 />
               ) : (
                 <ConsolidatedSectionView
@@ -197,7 +219,15 @@ export function LatestDataPage() {
       )}
 
       {selectedItem && (
-        <ItemChartModal item={selectedItem} onClose={() => setSelectedItem(undefined)} />
+        <ItemChartModal
+          // Re-key per item so the modal re-seeds its local range/live from the
+          // page state when the user opens a different item without closing.
+          key={selectedItem.itemid}
+          item={selectedItem}
+          initialRange={range}
+          initialLive={live}
+          onClose={() => setSelectedItem(undefined)}
+        />
       )}
       {templateDialogOpen && (
         <TemplateDialog template={template} onClose={() => setTemplateDialogOpen(false)} />
@@ -457,14 +487,32 @@ function percentTone(value: number): { text: string; bg: string } {
   return { text: "text-sev-high", bg: "bg-sev-high/15" };
 }
 
-/** Compact value tile for a "stat"-role bundle item (e.g. ICMP packet loss %). */
+/** Severity tone for a count-style "stat" value (errors/dropped): 0 = ok, anything > 0 = high. */
+function countTone(value: number): { text: string; bg: string } {
+  return value > 0
+    ? { text: "text-sev-high", bg: "bg-sev-high/15" }
+    : { text: "text-sev-ok", bg: "bg-sev-ok/15" };
+}
+
+/**
+ * Compact value tile for a "stat"-role item: a percentage (e.g. ICMP packet
+ * loss %) or an interface errors/dropped counter. Errors/dropped are absolute
+ * counts, so they use the count tone (0 ok, >0 high) instead of the percent
+ * warn/high bands, and are not forced into a "%" unit.
+ */
 function StatTile({ bound, onClick }: { bound: SectionSeriesItem; onClick: () => void }) {
   const t = useT();
   const { locale } = useLocale();
-  const { item, seriesLabel } = bound;
+  const { item, seriesLabel, seriesRole } = bound;
+  const isCount = seriesRole === "errors" || seriesRole === "dropped";
   const has = item.lastvalue !== undefined && item.lastvalue !== "";
   const numValue = has ? Number(item.lastvalue) : Number.NaN;
-  const tone = has && Number.isFinite(numValue) ? percentTone(numValue) : { text: "text-ink-2", bg: "bg-surface-2" };
+  const tone =
+    has && Number.isFinite(numValue)
+      ? isCount
+        ? countTone(numValue)
+        : percentTone(numValue)
+      : { text: "text-ink-2", bg: "bg-surface-2" };
   return (
     <button
       type="button"
@@ -474,7 +522,7 @@ function StatTile({ bound, onClick }: { bound: SectionSeriesItem; onClick: () =>
       <span className="font-mono text-[10px] uppercase tracking-wider text-ink-muted">{seriesLabel}</span>
       <span className={`font-mono text-[15px] font-semibold ${tone.text}`}>
         {has && Number.isFinite(numValue)
-          ? formatUnitValue(numValue, item.units || "%", 1, locale)
+          ? formatUnitValue(numValue, isCount ? item.units : item.units || "%", 1, locale)
           : t("latestData.noValue")}
       </span>
     </button>
@@ -518,35 +566,43 @@ function isStatusUp(lastvalue: string | undefined): boolean {
 
 /**
  * Old-style per-item-sparkline rendering, kept for leftover component-tag
- * ("free") sections. This is the only place constancy promotion runs: a free
- * numeric item whose loaded series proves constant (or changed exactly once)
- * is promoted into the Facts rubric via onFactDetected.
+ * ("free") sections. This is the only place series-based constancy promotion
+ * runs: once a free numeric item's series (loaded over the page's current
+ * range) proves constant / changed-once, it is promoted into the Facts rubric;
+ * once it proves variable it is demoted again — the classification tracks the
+ * range and is reversible (onClassified handles both directions).
  */
 function LegacySectionView({
   section,
+  range,
+  constancyRange,
   onSelectItem,
-  onFactDetected,
+  onClassified,
 }: {
   section: TemplateSection;
+  range: RangeValue;
+  constancyRange: ConstancyRange;
   onSelectItem: (item: ZabbixItem) => void;
-  onFactDetected: (itemid: string, constancy: Constancy) => void;
+  onClassified: (itemid: string, constancy: Constancy) => void;
 }) {
   const items = useMemo(() => section.items.map((si) => si.item), [section.items]);
   const numericItems = useMemo(() => items.filter(isNumericItem), [items]);
   const { seriesByItem } = useTimeseries(
     numericItems.map((i) => ({ itemid: i.itemid, valueType: Number(i.value_type) as 0 | 3 })),
-    useMemo(() => ({ from: nowSeconds() - 2 * 3600, to: nowSeconds() }), []),
+    range,
     { points: 40 },
   );
 
   useEffect(() => {
     for (const item of numericItems) {
       const series = seriesByItem.get(item.itemid);
-      if (!series) continue;
-      const constancy = classifyConstancy(item, series.points);
-      if (constancy.kind !== "variable") onFactDetected(item.itemid, constancy);
+      // Wait for the series to actually load before flipping an item between
+      // section and facts — an empty/absent series must not cause a spurious
+      // (and visually jarring) demotion on every range change.
+      if (!series || series.points.length === 0) continue;
+      onClassified(item.itemid, classifyConstancy(item, series.points, constancyRange));
     }
-  }, [numericItems, seriesByItem, onFactDetected]);
+  }, [numericItems, seriesByItem, onClassified, constancyRange]);
 
   return (
     <div>
@@ -740,10 +796,23 @@ function ItemRow({
   );
 }
 
-function ItemChartModal({ item, onClose }: { item: ZabbixItem; onClose: () => void }) {
+function ItemChartModal({
+  item,
+  initialRange,
+  initialLive,
+  onClose,
+}: {
+  item: ZabbixItem;
+  initialRange: RangeValue;
+  initialLive: boolean;
+  onClose: () => void;
+}) {
   const t = useT();
-  const [range, setRange] = useState<RangeValue>(() => rangeFromPreset("1h"));
-  const [live, setLive] = useState(true);
+  // Seed from the page's current range/live (custom brush ranges included, as
+  // RangeValue carries the exact from/to) so the detail modal opens on the same
+  // window the user is looking at; changes here stay local to the modal.
+  const [range, setRange] = useState<RangeValue>(initialRange);
+  const [live, setLive] = useState(initialLive);
   const numeric = isNumericItem(item);
 
   const { seriesByItem, isLoading, isFetching, slow, refetch } = useTimeseries(

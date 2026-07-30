@@ -79,4 +79,52 @@ describe("classifyConstancy", () => {
     const item = mkItem({ value_type: "0", lastvalue: "1", prevvalue: "1" });
     expect(classifyConstancy(item, [])).toEqual({ kind: "constant" });
   });
+
+  it("treats an empty-string prevvalue (Zabbix's 'only one value' marker) as constant", () => {
+    // Screenshot case: vfs.file.contents[...] returns a text value 65534 that
+    // has only ever been recorded once, so Zabbix reports prevvalue as "".
+    // "" !== "65534" must NOT classify it as variable.
+    const item = mkItem({
+      value_type: "4",
+      key_: 'vfs.file.contents["/sys/class/net/wg0/type"]',
+      lastvalue: "65534",
+      prevvalue: "",
+    });
+    expect(classifyConstancy(item)).toEqual({ kind: "constant" });
+  });
+
+  it("treats a stale text item (last change older than half the range) as constant via the age heuristic", () => {
+    // Value differs from prevvalue but the last value arrived 21h ago, well
+    // before a 1h window — constant within everything the user is viewing.
+    const now = 1_000_000;
+    const item = mkItem({
+      value_type: "4",
+      lastvalue: "65534",
+      prevvalue: "0",
+      lastclock: String(now - 21 * 3600),
+    });
+    expect(classifyConstancy(item, undefined, { now, rangeSeconds: 3600 })).toEqual({ kind: "constant" });
+  });
+
+  it("keeps a recently-changed text item variable when its change falls inside the range", () => {
+    const now = 1_000_000;
+    const item = mkItem({
+      value_type: "4",
+      lastvalue: "up",
+      prevvalue: "down",
+      lastclock: String(now - 600), // 10 min ago, inside a 1h window
+    });
+    expect(classifyConstancy(item, undefined, { now, rangeSeconds: 3600 })).toEqual({ kind: "variable" });
+  });
+
+  it("does not apply the age heuristic to numeric items (they use their series)", () => {
+    const now = 1_000_000;
+    const item = mkItem({
+      value_type: "3",
+      lastvalue: "5",
+      prevvalue: "4",
+      lastclock: String(now - 21 * 3600),
+    });
+    expect(classifyConstancy(item, undefined, { now, rangeSeconds: 3600 })).toEqual({ kind: "variable" });
+  });
 });

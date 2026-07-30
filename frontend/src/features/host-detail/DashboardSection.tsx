@@ -1,9 +1,12 @@
 import { useCallback, useState } from "react";
 import type { TimeRange } from "@auzui/timeseries";
-import type { DashboardSection as DashboardSectionData } from "../../lib/auto-dashboard";
+import type { ZabbixItem } from "@auzui/zabbix-client";
+import type { DashboardChart, DashboardSection as DashboardSectionData } from "../../lib/auto-dashboard";
 import { MAX_CHARTS_PER_SECTION } from "../../lib/auto-dashboard";
+import { isNumericItem } from "../../lib/latest-items";
+import { formatUnitValue } from "../../lib/format-units";
 import { ChartCard } from "./ChartCard";
-import { useT } from "../../lib/i18n";
+import { useLocale, useT } from "../../lib/i18n";
 
 /**
  * One einklappbare Sektion des Auto-Dashboards. Charts jenseits von
@@ -31,16 +34,27 @@ export function DashboardSection({
   onBrush: (fromSec: number, toSec: number) => void;
 }) {
   const t = useT();
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(!section.defaultCollapsed);
   const [showAll, setShowAll] = useState(false);
   const [showEmpty, setShowEmpty] = useState(false);
   const [emptyIds, setEmptyIds] = useState<Set<string>>(() => new Set());
+  const [constantIds, setConstantIds] = useState<Set<string>>(() => new Set());
 
   const handleEmptyChange = useCallback((chartId: string, empty: boolean) => {
     setEmptyIds((prev) => {
       if (prev.has(chartId) === empty) return prev;
       const next = new Set(prev);
       if (empty) next.add(chartId);
+      else next.delete(chartId);
+      return next;
+    });
+  }, []);
+
+  const handleConstantChange = useCallback((chartId: string, constant: boolean) => {
+    setConstantIds((prev) => {
+      if (prev.has(chartId) === constant) return prev;
+      const next = new Set(prev);
+      if (constant) next.add(chartId);
       else next.delete(chartId);
       return next;
     });
@@ -94,14 +108,24 @@ export function DashboardSection({
 
       {open && (
         <div className="p-3.5">
+          <FactsBar charts={mountedCharts.filter((c) => constantIds.has(c.id))} />
           <div className="grid grid-cols-2 gap-3 max-[1100px]:grid-cols-1">
             {mountedCharts.map((chart) => {
               // Kept mounted so it keeps its query alive and can re-report
-              // non-empty; `hidden` (display:none) just drops it from the grid.
-              const hide = emptyIds.has(chart.id) && !showEmpty;
+              // non-empty / non-constant; `hidden` (display:none) just drops it
+              // from the grid. Constant charts are always hidden here — they
+              // surface in the FactsBar instead — but stay mounted so a range
+              // change can flip them back to a real graph.
+              const hide = (emptyIds.has(chart.id) && !showEmpty) || constantIds.has(chart.id);
               return (
                 <div key={chart.id} className={hide ? "hidden" : undefined}>
-                  <ChartCard chart={chart} range={range} onBrush={onBrush} onEmptyChange={handleEmptyChange} />
+                  <ChartCard
+                    chart={chart}
+                    range={range}
+                    onBrush={onBrush}
+                    onEmptyChange={handleEmptyChange}
+                    onConstantChange={handleConstantChange}
+                  />
                 </div>
               );
             })}
@@ -127,4 +151,51 @@ export function DashboardSection({
       )}
     </div>
   );
+}
+
+/**
+ * Compact facts strip for charts whose series turned out flat (constant) in
+ * the selected range — rendered in place of the useless flatline graphs, like
+ * the Latest-Data "Fakten" rubric: item name, current value (formatUnitValue),
+ * and a "konstant" marker. Each constant multi-series chart contributes one
+ * row per series item.
+ */
+function FactsBar({ charts }: { charts: DashboardChart[] }) {
+  const t = useT();
+  const { locale } = useLocale();
+  if (charts.length === 0) return null;
+
+  const facts = charts.flatMap((chart) =>
+    chart.items.map((item, i) => ({
+      key: `${chart.id}:${item.itemid}`,
+      label: chart.items.length > 1 ? `${chart.title} · ${chart.seriesLabels[i] ?? item.name}` : item.name,
+      value: factValue(item, locale),
+    })),
+  );
+
+  return (
+    <div className="mb-3 rounded-md border border-line-soft bg-surface-2 px-3 py-2">
+      <div className="mb-1 font-mono text-[10px] uppercase tracking-wider text-ink-muted">
+        {t("hostDetail.dashboard.facts")}
+      </div>
+      <div className="grid grid-cols-2 gap-x-4 gap-y-1 max-[700px]:grid-cols-1">
+        {facts.map((f) => (
+          <div key={f.key} className="flex items-baseline justify-between gap-2 text-[12px]">
+            <span className="truncate text-ink-2">{f.label}</span>
+            <span className="flex items-baseline gap-1.5 whitespace-nowrap">
+              <span className="font-mono text-ink">{f.value}</span>
+              <span className="font-mono text-[9.5px] uppercase text-ink-muted">
+                {t("hostDetail.dashboard.factMarker")}
+              </span>
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function factValue(item: ZabbixItem, locale: ReturnType<typeof useLocale>["locale"]): string {
+  if (item.lastvalue === undefined || item.lastvalue === "") return "–";
+  return isNumericItem(item) ? formatUnitValue(Number(item.lastvalue), item.units, 1, locale) : item.lastvalue;
 }

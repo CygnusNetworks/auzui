@@ -20,6 +20,7 @@ const roleLabels: Record<SeriesRole, string> = {
   in: "In",
   out: "Out",
   errors: "Errors",
+  dropped: "Dropped",
   status: "Status",
   value: "Value",
 };
@@ -120,15 +121,21 @@ export function buildSections(template: DisplayTemplate | undefined, items: Zabb
         for (const kp of compiled) {
           const m = kp.re?.exec(item.key_);
           if (!m) continue;
-          const instance = m[1] ?? "";
+          // Instance = capture group 1, with any surrounding double quotes
+          // stripped so a quoted Zabbix key parameter (e.g. net.if.in["eth0"])
+          // groups under the same instance ("eth0") as an unquoted one. All of
+          // an interface's series (in/out × bytes/dropped/errors) capture the
+          // same bare interface name and thus land in ONE family section.
+          const instance = (m[1] ?? "").replace(/^"+|"+$/g, "");
           const list = byInstance.get(instance) ?? [];
           list.push({
             item,
             seriesLabel: kp.seriesLabel ?? roleLabels[kp.seriesRole],
             seriesRole: kp.seriesRole,
-            // Generic: an interface/oper-status series renders as an up/down
-            // badge, everything else (in/out/errors/value) as a chart line.
-            displayRole: kp.seriesRole === "status" ? "status" : "line",
+            // Per-pattern override (e.g. errors/dropped counters as a "stat"
+            // tile); otherwise an oper-status series renders as an up/down
+            // badge and everything else (in/out/value) as a chart line.
+            displayRole: kp.displayRole ?? (kp.seriesRole === "status" ? "status" : "line"),
           });
           byInstance.set(instance, list);
           claimed.add(item.itemid);

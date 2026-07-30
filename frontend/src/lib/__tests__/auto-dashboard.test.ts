@@ -7,7 +7,9 @@ import {
   directionLabel,
   extractThresholds,
   isBooleanStateItem,
+  isContainerItem,
   MAX_CHARTS_PER_SECTION,
+  orderSections,
   pairKey,
   parseItemKey,
 } from "../auto-dashboard";
@@ -159,11 +161,11 @@ describe("buildInstanceFamilyCharts", () => {
     expect(charts[0]!.seriesLabels).toEqual(["rx", "tx"]);
   });
 
-  it("groups same-base/same-unit items with different LLD params into one instance family", () => {
+  it("merges same-base/same-unit NON-split instances (per-core CPU) into one family chart", () => {
     const items = [
-      mkItem({ itemid: "1", name: "c1: CPU", key_: "docker.container_info.cpu.usage[/c1]", units: "%" }),
-      mkItem({ itemid: "2", name: "c2: CPU", key_: "docker.container_info.cpu.usage[/c2]", units: "%" }),
-      mkItem({ itemid: "3", name: "c3: CPU", key_: "docker.container_info.cpu.usage[/c3]", units: "%" }),
+      mkItem({ itemid: "1", name: "CPU 1", key_: "system.cpu.util[1]", units: "%" }),
+      mkItem({ itemid: "2", name: "CPU 2", key_: "system.cpu.util[2]", units: "%" }),
+      mkItem({ itemid: "3", name: "CPU 3", key_: "system.cpu.util[3]", units: "%" }),
     ];
     const charts = buildInstanceFamilyCharts(items, []);
     expect(charts).toHaveLength(1);
@@ -171,23 +173,79 @@ describe("buildInstanceFamilyCharts", () => {
     expect(charts[0]!.id).toMatch(/^family:/);
   });
 
-  it("caps an instance family at MAX_CHARTS_PER_SECTION instances by lastvalue, noting the rest in the title", () => {
+  it("caps a non-split instance family at MAX_CHARTS_PER_SECTION instances by lastvalue, noting the rest in the title", () => {
     const items = Array.from({ length: 10 }, (_, i) =>
       mkItem({
         itemid: String(i),
-        name: `c${i}: CPU`,
-        key_: `docker.container_info.cpu.usage[/c${i}]`,
+        name: `CPU ${i}`,
+        key_: `system.cpu.util[${i}]`,
         units: "%",
-        lastvalue: String(i), // c9 highest, c0 lowest
+        lastvalue: String(i), // core 9 highest, core 0 lowest
       }),
     );
     const charts = buildInstanceFamilyCharts(items, []);
     expect(charts).toHaveLength(1);
     expect(charts[0]!.items).toHaveLength(MAX_CHARTS_PER_SECTION);
     expect(charts[0]!.title).toContain("+2 weitere");
-    // Highest lastvalues (c9, c8, ...) are kept, lowest (c0, c1) dropped.
+    // Highest lastvalues (9, 8, ...) are kept, lowest (0, 1) dropped.
     expect(charts[0]!.items.map((i) => i.itemid)).not.toContain("0");
     expect(charts[0]!.items.map((i) => i.itemid)).not.toContain("1");
+  });
+
+  it("gives each filesystem mountpoint its OWN chart with the full mountpoint in the title (root '/' not lost)", () => {
+    // Root cause of the "FS [" truncation + merged-mountpoints bug: different
+    // LLD instances (mountpoints) must not share one common-prefix-titled chart.
+    const items = [
+      mkItem({ itemid: "1", name: "FS [/]: Used space", key_: "vfs.fs.size[/,used]", units: "B", lastvalue: "100" }),
+      mkItem({
+        itemid: "2",
+        name: "FS [/var/lib/krb5kdc]: Used space",
+        key_: "vfs.fs.size[/var/lib/krb5kdc,used]",
+        units: "B",
+        lastvalue: "50",
+      }),
+    ];
+    const charts = buildInstanceFamilyCharts(items, []);
+    expect(charts).toHaveLength(2);
+    expect(charts.map((c) => c.title).sort()).toEqual(["FS [/]", "FS [/var/lib/krb5kdc]"]);
+    charts.forEach((c) => expect(c.items).toHaveLength(1));
+  });
+
+  it("keeps used+total of the SAME mountpoint together as one 2-series chart", () => {
+    const items = [
+      mkItem({ itemid: "1", name: "FS [/]: Used", key_: "vfs.fs.size[/,used]", units: "B" }),
+      mkItem({ itemid: "2", name: "FS [/]: Total", key_: "vfs.fs.size[/,total]", units: "B" }),
+    ];
+    const charts = buildInstanceFamilyCharts(items, []);
+    expect(charts).toHaveLength(1);
+    expect(charts[0]!.title).toBe("FS [/]");
+    expect(charts[0]!.items).toHaveLength(2);
+    expect([...charts[0]!.seriesLabels].sort()).toEqual(["total", "used"]);
+  });
+
+  it("gives each disk its own read/write chart titled 'Disk <dev>' (sda/sdb not merged to 'sd')", () => {
+    const items = [
+      mkItem({ itemid: "1", name: "sda read", key_: "vfs.dev.read[sda,ops]", units: "!ops/s" }),
+      mkItem({ itemid: "2", name: "sda write", key_: "vfs.dev.write[sda,ops]", units: "!ops/s" }),
+      mkItem({ itemid: "3", name: "sdb read", key_: "vfs.dev.read[sdb,ops]", units: "!ops/s" }),
+      mkItem({ itemid: "4", name: "sdb write", key_: "vfs.dev.write[sdb,ops]", units: "!ops/s" }),
+    ];
+    const charts = buildInstanceFamilyCharts(items, []);
+    expect(charts.map((c) => c.title).sort()).toEqual(["Disk sda", "Disk sdb"]);
+    const sda = charts.find((c) => c.title === "Disk sda")!;
+    expect(sda.items).toHaveLength(2);
+    expect([...sda.seriesLabels].sort()).toEqual(["read", "write"]);
+  });
+
+  it("splits docker container items into one chart per container, titled by item name", () => {
+    const items = [
+      mkItem({ itemid: "1", name: "Container /app1: CPU", key_: "docker.container_stats.cpu[/app1]", units: "%" }),
+      mkItem({ itemid: "2", name: "Container /app2: CPU", key_: "docker.container_stats.cpu[/app2]", units: "%" }),
+    ];
+    const charts = buildInstanceFamilyCharts(items, []);
+    expect(charts).toHaveLength(2);
+    expect(charts.map((c) => c.title).sort()).toEqual(["Container /app1: CPU", "Container /app2: CPU"]);
+    charts.forEach((c) => expect(c.items).toHaveLength(1));
   });
 
   it("renders a single, non-paired item as its own chart unchanged", () => {
@@ -338,7 +396,7 @@ describe("buildDashboard", () => {
     expect(dashboard.sections.flatMap((s) => s.charts.map((c) => c.id))).toEqual(["1"]);
   });
 
-  it("orders sections network-first for switch/SNMP roles", () => {
+  it("orders core sections cpu/memory/network/storage first regardless of host role", () => {
     const items: ZabbixItem[] = [
       mkItem({ itemid: "1", key_: "system.cpu.util", name: "CPU" }),
       mkItem({ itemid: "2", key_: "net.if.in[1]", name: "Net", units: "bps" }),
@@ -348,7 +406,8 @@ describe("buildDashboard", () => {
       items,
       [],
     );
-    expect(dashboard.sections.map((s) => s.section)).toEqual(["network", "cpu"]);
+    // Fixed order (cpu before network), no longer role-dependent.
+    expect(dashboard.sections.map((s) => s.section)).toEqual(["cpu", "network"]);
   });
 
   it("orders sections cpu/memory/storage/network first for Linux roles, Sonstige last", () => {
@@ -382,5 +441,52 @@ describe("buildDashboard", () => {
 
   it("exposes MAX_CHARTS_PER_SECTION as 8 for the UI's collapse threshold", () => {
     expect(MAX_CHARTS_PER_SECTION).toBe(8);
+  });
+
+  it("moves container items into one collapsed 'container' section after the core sections", () => {
+    const items: ZabbixItem[] = [
+      mkItem({ itemid: "1", key_: "system.cpu.util", name: "CPU", units: "%" }),
+      mkItem({ itemid: "2", key_: "docker.container_stats.cpu[/app1]", name: "Container /app1: CPU", units: "%" }),
+      mkItem({ itemid: "3", key_: "docker.container_stats.cpu[/app2]", name: "Container /app2: CPU", units: "%" }),
+    ];
+    const dashboard = buildDashboard({}, items, []);
+    const container = dashboard.sections.find((s) => s.section === "container");
+    expect(container).toBeDefined();
+    expect(container!.defaultCollapsed).toBe(true);
+    expect(container!.charts).toHaveLength(2);
+    // Core (cpu) section is NOT polluted by container items and comes first.
+    const cpu = dashboard.sections.find((s) => s.section === "cpu")!;
+    expect(cpu.charts).toHaveLength(1);
+    const names = dashboard.sections.map((s) => s.section);
+    expect(names.indexOf("cpu")).toBeLessThan(names.indexOf("container"));
+  });
+});
+
+describe("orderSections", () => {
+  it("puts cpu, memory, network, storage first in that fixed order, rest alphabetical, Sonstige last", () => {
+    expect(
+      orderSections(["storage", "zeta", "network", "cpu", "alpha", "memory", NO_COMPONENT_SECTION]),
+    ).toEqual(["cpu", "memory", "network", "storage", "alpha", "zeta", NO_COMPONENT_SECTION]);
+  });
+
+  it("canonicalizes aliases (net→network, disk→storage) for ordering, keeping the original names", () => {
+    expect(orderSections(["disk", "net", "cpu"])).toEqual(["cpu", "net", "disk"]);
+  });
+});
+
+describe("isContainerItem", () => {
+  it("flags docker.container* keys", () => {
+    expect(isContainerItem(mkItem({ key_: "docker.container_stats.cpu[/x]" }))).toBe(true);
+    expect(isContainerItem(mkItem({ key_: "docker.container_info[/x]" }))).toBe(true);
+  });
+
+  it("flags a container(s) component tag and 'Container <name>' item names", () => {
+    expect(isContainerItem(mkItem({ key_: "custom.k", tags: [{ tag: "component", value: "containers" }] }))).toBe(true);
+    expect(isContainerItem(mkItem({ key_: "custom.k", name: "Container /web: memory" }))).toBe(true);
+  });
+
+  it("does not flag host-level docker items or unrelated items", () => {
+    expect(isContainerItem(mkItem({ key_: "docker.info" }))).toBe(false);
+    expect(isContainerItem(mkItem({ key_: "system.cpu.util", name: "CPU" }))).toBe(false);
   });
 });

@@ -8,7 +8,7 @@
  */
 
 /** What a family key-pattern's matched series represents, for chart/legend styling. */
-export type SeriesRole = "in" | "out" | "errors" | "status" | "value";
+export type SeriesRole = "in" | "out" | "errors" | "dropped" | "status" | "value";
 
 /**
  * How a bound item is rendered inside a consolidated panel:
@@ -43,6 +43,13 @@ export interface DisplayFamilyKeyPattern {
   seriesRole: SeriesRole;
   /** Overrides the default role-based series label (e.g. "Free" instead of the generic "Value"). */
   seriesLabel?: string;
+  /**
+   * Overrides the panel rendering role. Defaults (in the engine) to "status"
+   * for seriesRole "status", "line" otherwise. Set e.g. "stat" for
+   * errors/dropped counters that are almost always 0 and are more useful as a
+   * compact color-coded tile than as a flat line in the interface's chart.
+   */
+  displayRole?: DisplayRole;
 }
 
 export interface DisplayFamily {

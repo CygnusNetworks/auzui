@@ -72,12 +72,22 @@ export const linuxTemplate: DisplayTemplate = {
       id: "net-if",
       labelPattern: "Interface {instance}",
       navGroup: "Netzwerk",
+      // The Zabbix agent net.if keys carry the traffic direction/mode as key
+      // PARAMETERS, e.g. net.if.in["eth0"] (bytes), net.if.in["eth0",dropped],
+      // net.if.out["eth0",errors]. Capture only the first parameter (the
+      // interface name, quoted or not) as the instance — [^",\]]+ stops before
+      // the closing quote/comma/bracket — so every direction/mode of the same
+      // interface groups into ONE "Interface eth0" family. dropped/errors
+      // counters render as compact stat tiles (almost always 0) rather than
+      // flat chart lines.
       keyPatterns: [
-        { pattern: "^net\\.if\\.in\\[(.+)\\]$", seriesRole: "in" },
-        { pattern: "^net\\.if\\.out\\[(.+)\\]$", seriesRole: "out" },
-        { pattern: "^net\\.if\\.in\\.errors\\[(.+)\\]$", seriesRole: "errors", seriesLabel: "Errors in" },
-        { pattern: "^net\\.if\\.out\\.errors\\[(.+)\\]$", seriesRole: "errors", seriesLabel: "Errors out" },
-        { pattern: "^net\\.if\\.status\\[(.+)\\]$", seriesRole: "status" },
+        { pattern: '^net\\.if\\.in\\["?([^",\\]]+)"?\\]$', seriesRole: "in" },
+        { pattern: '^net\\.if\\.out\\["?([^",\\]]+)"?\\]$', seriesRole: "out" },
+        { pattern: '^net\\.if\\.in\\["?([^",\\]]+)"?,\\s*dropped\\]$', seriesRole: "dropped", seriesLabel: "Dropped in", displayRole: "stat" },
+        { pattern: '^net\\.if\\.out\\["?([^",\\]]+)"?,\\s*dropped\\]$', seriesRole: "dropped", seriesLabel: "Dropped out", displayRole: "stat" },
+        { pattern: '^net\\.if\\.in\\["?([^",\\]]+)"?,\\s*errors\\]$', seriesRole: "errors", seriesLabel: "Errors in", displayRole: "stat" },
+        { pattern: '^net\\.if\\.out\\["?([^",\\]]+)"?,\\s*errors\\]$', seriesRole: "errors", seriesLabel: "Errors out", displayRole: "stat" },
+        { pattern: '^net\\.if\\.status\\["?([^",\\]]+)"?\\]$', seriesRole: "status" },
       ],
     },
     {

@@ -34,15 +34,22 @@ export const MAX_CHARTS_PER_SECTION = 8;
 const KEY_PATTERN_SECTIONS: { re: RegExp; section: string; viz: ItemViz }[] = [
   { re: /^net\.if\./, section: "network", viz: "area" },
   { re: /^vfs\.fs\./, section: "storage", viz: "capacity" },
+  { re: /^vfs\.dev\./, section: "storage", viz: "line" },
   { re: /^system\.cpu\./, section: "cpu", viz: "line" },
   { re: /^vm\.memory\./, section: "memory", viz: "line" },
   { re: /^proc\./, section: "process", viz: "line" },
   { re: /^sensor\./, section: "sensor", viz: "line" },
 ];
 
+/** Strips a Zabbix "!" literal-unit prefix so classification sees the real unit. */
+function bareUnit(units: string | undefined): string {
+  const u = (units ?? "").trim();
+  return u.startsWith("!") ? u.slice(1).trim() : u;
+}
+
 /** units → viz, PLAN.md D.2: bps/Bps→area, %→line (0-100), B→capacity, s→line, °C→line, uptime→counter. */
 function vizFromUnit(units: string | undefined): ItemViz | undefined {
-  const unit = (units ?? "").trim();
+  const unit = bareUnit(units);
   if (unit === "bps" || unit === "Bps") return "area";
   if (unit === "%") return "line";
   if (unit === "B") return "capacity";
@@ -54,7 +61,7 @@ function vizFromUnit(units: string | undefined): ItemViz | undefined {
 
 /** units → ein sektionsartiger Fallback-Name, falls nichts anderes vorliegt. */
 function sectionFromUnit(units: string | undefined): string | undefined {
-  const unit = (units ?? "").trim();
+  const unit = bareUnit(units);
   if (unit === "°C" || unit === "C") return "temperature";
   if (unit === "uptime") return "system";
   return undefined;
@@ -136,6 +143,8 @@ export interface DashboardChart {
 export interface DashboardSection {
   section: string;
   charts: DashboardChart[];
+  /** Sections that should render collapsed on first paint (the noisy "container" section). */
+  defaultCollapsed?: boolean;
 }
 
 export interface Dashboard {
@@ -432,22 +441,94 @@ function instanceLastValue(inst: Instance): number {
 }
 
 function instanceLabel(inst: Instance): string {
-  const parts = inst.params.filter(Boolean).map((p) => p.replace(/^\//, ""));
+  // Keep the raw params verbatim — do NOT strip a leading "/", or the root
+  // mountpoint "/" (vfs.fs.size[/,used]) collapses to an empty label and the
+  // instance visually merges with others. Empty params (e.g. an unspecified
+  // first CSV field) are dropped, "/" is not empty and stays.
+  const parts = inst.params.filter((p) => p.trim() !== "");
   return parts.join(" ") || inst.items[0]!.name;
 }
 
-/** Longest common prefix across names, trimmed of trailing separators; falls back to the first name. */
+/**
+ * Longest common prefix across names, but never cut mid-token. A raw common
+ * prefix produces garbage titles like "FS [" (from "FS [/]" + "FS [/var]") or
+ * "sd" (from "sda" + "sdb"); when the cut lands inside an alphanumeric run
+ * (alnum on both sides of the boundary) the prefix is meaningless, so we fall
+ * back to the first full name. Otherwise the prefix is trimmed of trailing
+ * separators/brackets. Only used for genuine multi-series family charts —
+ * split-per-instance families (filesystems, disks) build their titles from the
+ * instance token instead and never reach this.
+ */
 function commonStem(names: string[]): string {
   if (names.length === 0) return "";
-  let stem = names[0]!;
+  let len = names[0]!.length;
   for (const name of names.slice(1)) {
     let i = 0;
-    while (i < stem.length && i < name.length && stem[i] === name[i]) i++;
-    stem = stem.slice(0, i);
+    while (i < len && i < name.length && names[0]![i] === name[i]) i++;
+    len = i;
   }
-  stem = stem.replace(/[\s\-:/_]+$/, "");
-  return stem || names[0]!;
+  const prefix = names[0]!.slice(0, len);
+  const before = prefix.slice(-1);
+  const after = names.find((n) => n.length > len)?.[len] ?? "";
+  const midWord = /[A-Za-z0-9]/.test(before) && /[A-Za-z0-9]/.test(after);
+  const trimmed = prefix.replace(/[\s\-:/_[\]().]+$/, "");
+  if (midWord || trimmed === "") return names[0]!;
+  return trimmed;
 }
+
+/**
+ * LLD families whose instances are independent resources (each with its own
+ * scale and identity) and therefore must get their OWN chart with the full
+ * instance name in the title — instead of being overlaid as many series in one
+ * shared family chart, which is what produced the "FS ["/"sd" truncated titles
+ * and the "/" mountpoint getting merged into a neighbour. `title` builds the
+ * chart title from the instance token (the LLD key param, e.g. "/var/lib/x" or
+ * "sda"). Deliberately data-not-code so the heuristic is easy to extend.
+ */
+interface SplitFamily {
+  re: RegExp;
+  title: (instanceToken: string, repItem: ZabbixItem) => string;
+}
+
+const SPLIT_FAMILIES: SplitFamily[] = [
+  // Filesystems: keep the mountpoint verbatim (incl. the leading "/").
+  { re: /^vfs\.fs\./, title: (tok) => `FS [${tok}]` },
+  // Block devices: "vfs.dev.read[sda,…]" → pairBase "vfs.dev.⇄"; drop the "/".
+  { re: /^vfs\.dev\./, title: (tok) => `Disk ${tok.replace(/^\//, "")}` },
+  // Docker per-container items: the item name ("Container /x: CPU usage") is
+  // the clearest title and, sorted, groups all of one container's charts.
+  { re: /^docker\.container/, title: (_tok, item) => item.name },
+];
+
+function splitFamilyFor(pairBase: string): SplitFamily | undefined {
+  return SPLIT_FAMILIES.find((f) => f.re.test(pairBase));
+}
+
+/** The LLD instance token of a key's params — the first non-empty param (mountpoint/device/container). */
+function instanceToken(params: string[]): string {
+  return params.find((p) => p.trim() !== "") ?? "";
+}
+
+/** Zabbix Docker-template container items (docker.container_info/_stats[...]) plus tag/name fallbacks. */
+const CONTAINER_TAG_VALUES = new Set(["container", "containers"]);
+
+/**
+ * Whether an item belongs to a container (Docker) rather than the host itself.
+ * On Docker hosts these items number in the hundreds and otherwise flood the
+ * core sections; buildDashboard corrals them into one collapsed "container"
+ * section. Heuristic (easy to tweak): a `docker.container*` key, or a
+ * component tag of container(s), or a "Container <name>" item name.
+ */
+export function isContainerItem(item: Pick<ZabbixItem, "key_" | "name" | "tags">): boolean {
+  const { base } = parseItemKey(item.key_);
+  if (/^docker\.container/.test(base)) return true;
+  const component = item.tags?.find((t) => t.tag === "component")?.value?.toLowerCase();
+  if (component && CONTAINER_TAG_VALUES.has(component)) return true;
+  return /\bcontainer\s+\S/i.test(item.name ?? "");
+}
+
+/** Section that holds every container chart; ordered after the core sections and collapsed by default. */
+export const CONTAINER_SECTION = "container";
 
 /**
  * Groups items that share a base after direction-pair normalization
@@ -485,6 +566,43 @@ export function buildInstanceFamilyCharts(items: ZabbixItem[], triggers: ZabbixT
 
   const charts: DashboardChart[] = [];
   for (const [famKey, instances] of byFamilyKey) {
+    // Split families (filesystems, disks, containers): one chart per LLD
+    // instance (grouped by instance token so a direction pair or a used/total
+    // pair on the SAME mountpoint stays together), each with its full name in
+    // the title — never overlaid into one truncated-title family chart.
+    const split = splitFamilyFor(instances[0]!.pairBase);
+    if (split) {
+      const byToken = new Map<string, Instance[]>();
+      for (const inst of instances) {
+        const tok = instanceToken(inst.params);
+        const list = byToken.get(tok);
+        if (list) list.push(inst);
+        else byToken.set(tok, [inst]);
+      }
+      for (const [tok, tokInstances] of byToken) {
+        const chartItems: ZabbixItem[] = [];
+        const seriesLabels: string[] = [];
+        for (const inst of tokInstances) {
+          const paired = inst.items.length > 1;
+          const rest = inst.params.filter((p) => p.trim() !== "" && p !== tok);
+          inst.items.forEach((it, i) => {
+            chartItems.push(it);
+            seriesLabels.push(paired ? inst.directionLabels[i]! : rest.join(" ") || it.name);
+          });
+        }
+        const rep = chartItems[0]!;
+        charts.push({
+          id: `split:${famKey}:${tok}`,
+          title: split.title(tok, rep),
+          viz: classifyItem(rep).viz,
+          items: chartItems,
+          seriesLabels,
+          thresholds: chartItems.flatMap((it) => extractThresholds(triggers, it.itemid)),
+        });
+      }
+      continue;
+    }
+
     if (instances.length === 1) {
       const inst = instances[0]!;
       const first = inst.items[0]!;
@@ -584,18 +702,56 @@ function sortSectionCharts(charts: DashboardChart[]): DashboardChart[] {
   return [...ifaceCharts, ...otherCharts];
 }
 
-function rolePriority(host: Pick<ZabbixHost, "parentTemplates">): string[] {
-  const names = (host.parentTemplates ?? []).map((t) => t.name).join(" ").toLowerCase();
-  if (/docker/.test(names)) return ["container"];
-  if (/switch|snmp/.test(names)) return ["network"];
-  if (/linux/.test(names)) return ["cpu", "memory", "storage", "network"];
-  return [];
+/** Fixed lead order for the core sections, independent of host role (PLAN feedback #4). */
+const SECTION_PRIORITY = ["cpu", "memory", "network", "storage"];
+
+/**
+ * Maps assorted component-tag / key-derived section names onto the canonical
+ * core-section names so the priority order is robust against de/en and
+ * abbreviated tag values (net→network, disk/fs→storage, ram→memory, …). Only
+ * affects ORDERING; the section keeps its original display name.
+ */
+const SECTION_ALIASES: Record<string, string> = {
+  cpu: "cpu",
+  processor: "cpu",
+  prozessor: "cpu",
+  memory: "memory",
+  mem: "memory",
+  ram: "memory",
+  arbeitsspeicher: "memory",
+  network: "network",
+  net: "network",
+  networking: "network",
+  netzwerk: "network",
+  storage: "storage",
+  disk: "storage",
+  disks: "storage",
+  fs: "storage",
+  filesystem: "storage",
+  datentraeger: "storage",
+};
+
+function canonicalSection(name: string): string {
+  return SECTION_ALIASES[name.toLowerCase()] ?? name.toLowerCase();
 }
 
-function orderSections(sectionNames: string[], priority: string[]): string[] {
-  const rest = sectionNames.filter((s) => s !== NO_COMPONENT_SECTION && !priority.includes(s)).sort();
-  const prioritized = priority.filter((s) => sectionNames.includes(s));
-  const ordered = [...prioritized, ...rest];
+/**
+ * Deterministic section order (PLAN feedback #4): the core sections cpu,
+ * memory, network, storage first — always, in that fixed order regardless of
+ * host role — then every other section alphabetically (the collapsed
+ * "container" section sorts in here by name), with NO_COMPONENT_SECTION
+ * ("Sonstige") always pinned last.
+ */
+export function orderSections(sectionNames: string[]): string[] {
+  const rank = new Map(SECTION_PRIORITY.map((s, i) => [s, i]));
+  const ordered = sectionNames
+    .filter((s) => s !== NO_COMPONENT_SECTION)
+    .sort((a, b) => {
+      const ra = rank.get(canonicalSection(a)) ?? Number.POSITIVE_INFINITY;
+      const rb = rank.get(canonicalSection(b)) ?? Number.POSITIVE_INFINITY;
+      if (ra !== rb) return ra - rb;
+      return a.localeCompare(b);
+    });
   if (sectionNames.includes(NO_COMPONENT_SECTION)) ordered.push(NO_COMPONENT_SECTION);
   return ordered;
 }
@@ -605,22 +761,29 @@ function orderSections(sectionNames: string[], priority: string[]): string[] {
  * Status-Sektion, Interface-Items je Port zu einem 2-Serien-Chart,
  * semantische Bündel (CPU/Load/Memory) vorab konsumiert, alles übrige durch
  * die generische Instanz-Familien-Bildung (Richtungspaare + LLD-Instanzen).
- * Sektionen folgen dem Rollen-Preset aus den Host-Templates; Charts je
- * Sektion sind sortiert (Interfaces zuerst, bei vielen davon nach Traffic),
+ * Container-Items werden in eine eigene, standardmäßig eingeklappte
+ * "container"-Sektion ausgelagert. Sektionen folgen der festen Ordnung
+ * cpu/memory/network/storage zuerst, dann alphabetisch (orderSections); Charts
+ * je Sektion sind sortiert (Interfaces zuerst, bei vielen davon nach Traffic),
  * max MAX_CHARTS_PER_SECTION sichtbar (Rest bleibt in `charts`, die UI
  * blendet ab dem Limit ein "N weitere anzeigen" ein statt hier schon zu
  * kappen — reine Funktion, keine UI-Zustände).
  */
 export function buildDashboard(
-  host: Pick<ZabbixHost, "parentTemplates">,
+  _host: Pick<ZabbixHost, "parentTemplates">,
   items: ZabbixItem[],
   triggers: ZabbixTrigger[],
 ): Dashboard {
   const textItems = items.filter((i) => isTextItem(i) || isBooleanStateItem(i));
   const numericItems = items.filter((i) => isNumericItem(i) && !isBooleanStateItem(i));
 
-  const ifaceItems = numericItems.filter((i) => i.tags?.some((t) => t.tag === "interface"));
-  const restItems = numericItems.filter((i) => !i.tags?.some((t) => t.tag === "interface"));
+  // Container (Docker) items never mix into the core sections — they get their
+  // own collapsed "container" section below, built from the same pipeline.
+  const containerItems = numericItems.filter(isContainerItem);
+  const hostItems = numericItems.filter((i) => !isContainerItem(i));
+
+  const ifaceItems = hostItems.filter((i) => i.tags?.some((t) => t.tag === "interface"));
+  const restItems = hostItems.filter((i) => !i.tags?.some((t) => t.tag === "interface"));
 
   const { chartsBySection: bundleChartsBySection, consumedIds } = applySemanticBundles(restItems, triggers);
   const plainItems = restItems.filter((i) => !consumedIds.has(i.itemid));
@@ -665,12 +828,18 @@ export function buildDashboard(
     for (const chart of buildInstanceFamilyCharts(sectionItems, triggers)) pushChart(section, chart);
   }
 
-  const priority = rolePriority(host);
-  const orderedSectionNames = orderSections([...bySection.keys()], priority);
+  // All container charts land in one section, grouped/sorted by title (which,
+  // for docker items, starts with the container name — see SPLIT_FAMILIES).
+  for (const chart of buildInstanceFamilyCharts(containerItems, triggers)) {
+    pushChart(CONTAINER_SECTION, chart);
+  }
+
+  const orderedSectionNames = orderSections([...bySection.keys()]);
 
   const sections: DashboardSection[] = orderedSectionNames.map((section) => ({
     section,
     charts: sortSectionCharts(bySection.get(section)!),
+    ...(section === CONTAINER_SECTION ? { defaultCollapsed: true } : {}),
   }));
 
   return {

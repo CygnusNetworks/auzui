@@ -7,7 +7,7 @@ import { formatUnitValue } from "../../lib/format-units";
 import { useTimeseries } from "../../lib/use-timeseries";
 import type { DashboardChart } from "../../lib/auto-dashboard";
 import { useLocale } from "../../lib/i18n";
-import { isChartEmpty } from "./chart-empty";
+import { isChartEmpty, isSeriesConstant } from "./chart-empty";
 
 const CHART_POINTS = 300;
 
@@ -22,12 +22,15 @@ export function ChartCard({
   range,
   onBrush,
   onEmptyChange,
+  onConstantChange,
 }: {
   chart: DashboardChart;
   range: TimeRange;
   onBrush: (fromSec: number, toSec: number) => void;
   /** Reports whether this chart has no data points for `range` once loading has settled, so the section can hide it. */
   onEmptyChange?: (chartId: string, empty: boolean) => void;
+  /** Reports whether this chart's data is entirely flat once loaded, so the section can show it as a fact instead. */
+  onConstantChange?: (chartId: string, constant: boolean) => void;
 }) {
   const isCounter = chart.viz === "counter";
 
@@ -47,10 +50,21 @@ export function ChartCard({
   // re-announce "not empty" as soon as data arrives, because the section keeps
   // it mounted (hidden via CSS) rather than unmounting hidden cards.
   const isEmpty = isChartEmpty({ isCounter, isSuccess, hasData });
+  // A flat chart (all series constant) is not empty — it becomes a "fact".
+  // Recomputed from the current series every render, so a range change that
+  // reveals variation flips it back to a graph (no latched one-way state).
+  const isConstant =
+    !isCounter &&
+    isSuccess &&
+    isSeriesConstant(chart.items.map((item) => seriesByItem.get(item.itemid)?.points ?? []));
 
   useEffect(() => {
     onEmptyChange?.(chart.id, isEmpty);
   }, [chart.id, isEmpty, onEmptyChange]);
+
+  useEffect(() => {
+    onConstantChange?.(chart.id, isConstant);
+  }, [chart.id, isConstant, onConstantChange]);
 
   if (isCounter) {
     return <CounterCard item={chart.items[0]!} title={chart.title} />;
