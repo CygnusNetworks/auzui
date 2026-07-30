@@ -98,18 +98,29 @@ class ZabbixClient:
 
     async def get_username(self, token: str) -> str:
         """The login name behind the session token — used as the `owner` of
-        saved filter sets. Zabbix 6.0+ calls it `username`; older releases use
-        `alias`. 401 if the session is invalid. Cached for the session TTL."""
+        saved filter sets. user.checkAuthentication is the only call that
+        identifies the *current* user (an unfiltered user.get returns the
+        whole user list — first row is typically "guest"); it only accepts
+        session ids, so API tokens fall back to user.get, which for a plain
+        user is scoped to themselves. 401 if the session is invalid."""
         cached = self._username_cache.get(token)
         if cached is not None:
             return cached
-        result = await self._call(
-            token, "user.get", {"output": ["userid", "username", "alias"], "limit": 1}
-        )
-        if not result:
-            raise HTTPException(401, "session token resolves to no user")
-        row = result[0]
-        username = str(row.get("username") or row.get("alias") or f"userid:{row.get('userid')}")
+        row: dict = {}
+        try:
+            auth = await self._call(token, "user.checkAuthentication", {"sessionid": token})
+            if isinstance(auth, dict):
+                row = auth
+        except HTTPException:
+            pass  # API tokens are not session ids — fall back below
+        if not row.get("username"):
+            result = await self._call(
+                token, "user.get", {"output": ["userid", "username"], "limit": 1}
+            )
+            if not result:
+                raise HTTPException(401, "session token resolves to no user")
+            row = result[0]
+        username = str(row.get("username") or f"userid:{row.get('userid')}")
         self._username_cache.set(token, username)
         # A resolved username also proves the session is live.
         self._perm_cache.set(f"session:{token}", True)

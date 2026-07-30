@@ -134,3 +134,27 @@ async def test_read_only_storage_degrades_without_crash(tmp_path):
     with pytest.raises(HTTPException) as exc:
         await store.create("alice", "x", False, {})
     assert exc.value.status_code == 503
+
+
+@respx.mock
+async def test_username_via_check_authentication(fs_client):
+    """Session ids resolve via user.checkAuthentication (dict result) — an
+    unfiltered user.get would return the whole user list (first row: guest)."""
+
+    def by_method(request):
+        import json as _json
+
+        body = _json.loads(request.content)
+        if body["method"] == "user.checkAuthentication":
+            return Response(200, json=zabbix_result({"userid": "6", "username": "valerius"}))
+        # user.get fallback would misreport the first listed user:
+        return Response(200, json=zabbix_result([{"userid": "2", "username": "guest"}]))
+
+    respx.post(ZABBIX_URL).mock(side_effect=by_method)
+    created = await fs_client.post(
+        "/api/logs/filter-sets",
+        headers={"Authorization": "Bearer session-id"},
+        json={"name": "s", "shared": False, "filters": {"include": [], "exclude": []}},
+    )
+    assert created.status_code == 200 or created.status_code == 201
+    assert created.json()["owner"] == "valerius"
