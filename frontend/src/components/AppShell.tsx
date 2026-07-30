@@ -85,6 +85,11 @@ export function AppShell({ children }: { children: ReactNode }) {
             au<em className="not-italic text-accent">z</em>ui
           </span>
         </span>
+        {import.meta.env.VITE_DEMO === "1" && (
+          <span className="rounded-full bg-accent/15 px-2 py-0.5 text-[10.5px] font-semibold uppercase tracking-wide text-accent">
+            Demo
+          </span>
+        )}
         <nav className="ml-2 hidden gap-0.5 rounded-lg bg-surface-3 p-0.5 min-[900px]:flex">
           {navLinks.map(
             (link) =>

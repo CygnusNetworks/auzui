@@ -34,12 +34,29 @@ if (storedTheme === "dark" || (storedTheme === null && !prefersLight)) {
   document.documentElement.classList.add("dark");
 }
 
-createRoot(document.getElementById("root")!).render(
-  <StrictMode>
-    <QueryClientProvider client={queryClient}>
-      <I18nProvider>
-        <RouterProvider router={router} />
-      </I18nProvider>
-    </QueryClientProvider>
-  </StrictMode>,
-);
+async function bootstrap() {
+  // Public demo build only: install the fetch shim and auto-login before the
+  // router's beforeLoad guards run, so a visitor lands straight in the app
+  // instead of the login screen. Dynamic import + env guard keeps this whole
+  // module (and its mock data) out of the normal production bundle.
+  if (import.meta.env.VITE_DEMO === "1") {
+    const [{ startDemo }, { DEMO_TOKEN, DEMO_USERNAME }] = await Promise.all([
+      import("./demo/start"),
+      import("./demo/mockData"),
+    ]);
+    await startDemo();
+    useAuthStore.getState().loginWithSso(DEMO_TOKEN, DEMO_USERNAME);
+  }
+
+  createRoot(document.getElementById("root")!).render(
+    <StrictMode>
+      <QueryClientProvider client={queryClient}>
+        <I18nProvider>
+          <RouterProvider router={router} />
+        </I18nProvider>
+      </QueryClientProvider>
+    </StrictMode>,
+  );
+}
+
+void bootstrap();

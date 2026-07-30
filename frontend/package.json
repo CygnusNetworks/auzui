@@ -7,10 +7,13 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "lint": "eslint src",
+    "lint": "eslint src e2e",
     "build": "tsc --noEmit && vite build",
+    "build:demo": "tsc --noEmit && VITE_DEMO=1 vite build && cp dist/index.html dist/404.html",
     "test": "vitest run",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "e2e": "playwright test",
+    "e2e:ui": "playwright test --ui"
   },
   "dependencies": {
     "@auzui/logs": "workspace:*",
@@ -31,6 +34,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.19.0",
+    "@playwright/test": "^1.62.0",
     "@tailwindcss/vite": "^4.0.3",
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.2.0",

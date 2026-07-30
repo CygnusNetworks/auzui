@@ -1,125 +1,400 @@
 <!doctype html>
 <html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>auzui — A Usable Zabbix UI</title>
-  <meta name="description" content="auzui is a modern, self-hosted monitoring SPA for Zabbix — coming soon." />
-  <style>
-    :root {
-      color-scheme: dark;
-      --bg: #0a0d12;
-      --bg-glow: #10151d;
-      --fg: #e6e9ee;
-      --muted: #8b97a8;
-      --accent: #5fd0ff;
-      --accent-2: #7c8cff;
-      --border: #1f2733;
-    }
-    * { box-sizing: border-box; }
-    html, body {
-      margin: 0;
-      padding: 0;
-      height: 100%;
-    }
-    body {
-      background:
-        radial-gradient(1200px 600px at 15% -10%, rgba(95, 208, 255, 0.12), transparent 60%),
-        radial-gradient(900px 500px at 110% 10%, rgba(124, 140, 255, 0.10), transparent 60%),
-        var(--bg);
-      color: var(--fg);
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, Helvetica, Arial, sans-serif;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      min-height: 100vh;
-      padding: 2rem;
-    }
-    main {
-      max-width: 640px;
-      width: 100%;
-      text-align: center;
-    }
-    .badge {
-      display: inline-flex;
-      align-items: center;
-      gap: 0.4rem;
-      font-size: 0.78rem;
-      letter-spacing: 0.06em;
-      text-transform: uppercase;
-      color: var(--muted);
-      border: 1px solid var(--border);
-      background: rgba(255, 255, 255, 0.02);
-      border-radius: 999px;
-      padding: 0.3rem 0.75rem;
-      margin-bottom: 1.75rem;
-    }
-    .badge::before {
-      content: "";
-      width: 0.5rem;
-      height: 0.5rem;
-      border-radius: 50%;
-      background: var(--accent);
-      box-shadow: 0 0 8px var(--accent);
-    }
-    h1 {
-      font-size: clamp(2.2rem, 6vw, 3.2rem);
-      line-height: 1.1;
-      margin: 0 0 0.75rem;
-      background: linear-gradient(120deg, var(--fg), var(--accent) 60%, var(--accent-2));
-      -webkit-background-clip: text;
-      background-clip: text;
-      color: transparent;
-      font-weight: 700;
-    }
-    p.tagline {
-      color: var(--muted);
-      font-size: 1.05rem;
-      line-height: 1.6;
-      margin: 0 auto 2.25rem;
-      max-width: 520px;
-    }
-    .cta {
-      display: inline-flex;
-      align-items: center;
-      gap: 0.5rem;
-      background: linear-gradient(120deg, var(--accent), var(--accent-2));
-      color: #0a0d12;
-      font-weight: 600;
-      text-decoration: none;
-      padding: 0.75rem 1.4rem;
-      border-radius: 0.6rem;
-      transition: filter 0.15s ease, transform 0.15s ease;
-    }
-    .cta:hover {
-      filter: brightness(1.08);
-      transform: translateY(-1px);
-    }
-    footer {
-      margin-top: 3rem;
-      color: var(--muted);
-      font-size: 0.8rem;
-    }
-    footer a {
-      color: var(--muted);
-    }
-  </style>
-</head>
-<body>
-  <main>
-    <span class="badge">Coming soon</span>
-    <h1>auzui</h1>
-    <p class="tagline">
-      A Usable Zabbix UI — a modern, dark-mode-first monitoring SPA that runs
-      alongside your existing Zabbix installation, with zero-config deep
-      observability built in.
-    </p>
-    <a class="cta" href="https://github.com/cygnusnetworks/auzui">
-      View the project on GitHub →
-    </a>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="auzui — A Usable Zabbix UI. A modern, self-hosted monitoring SPA that runs alongside your existing Zabbix installation: a live Problems triage board, auto-generated host dashboards, an Infrastructure Explorer, auto-topology, and a command palette. Zero-config deep observability."
+    />
+    <meta name="theme-color" content="#0a0d12" />
+    <link rel="icon" type="image/svg+xml" href="./assets/favicon.svg" />
+    <link rel="stylesheet" href="./styles.css" />
+    <title>auzui — A Usable Zabbix UI</title>
+  </head>
+  <body>
+    <header class="nav">
+      <div class="wrap nav-inner">
+        <a class="brand" href="./">
+          <img src="./assets/logo.svg" alt="" width="28" height="28" />
+          auzui
+        </a>
+        <ul class="nav-links">
+          <li><a href="#features">Features</a></li>
+          <li><a href="#screenshots">Screenshots</a></li>
+          <li><a href="#deploy">Deploy</a></li>
+          <li><a href="https://github.com/cygnusnetworks/auzui">GitHub</a></li>
+          <li><a class="btn btn-primary" href="./demo/">Live demo</a></li>
+        </ul>
+      </div>
+    </header>
+
+    <main>
+      <section class="hero">
+        <div class="wrap">
+          <div class="eyebrow">Self-hosted · AGPL-3.0 · React + TypeScript</div>
+          <h1>A usable Zabbix UI. Finally.</h1>
+          <p class="lede">
+            auzui is a modern, dark-mode-first monitoring single-page
+            application that runs <strong>next to</strong> your existing
+            Zabbix web UI — not instead of it. Configuration stays in
+            classic Zabbix; auzui rebuilds the monitoring workflows that
+            benefit most from a fast, dense, zero-config interface.
+          </p>
+          <div class="btn-row">
+            <a class="btn btn-primary" href="./demo/">Try the live demo</a>
+            <a class="btn btn-ghost" href="https://github.com/cygnusnetworks/auzui">View on GitHub</a>
+            <a class="btn btn-ghost" href="#deploy">Deploy with Docker</a>
+          </div>
+          <p class="notice">
+            Early stage / pre-MVP. APIs, layouts, and scope may still change
+            significantly.
+          </p>
+        </div>
+      </section>
+
+      <section id="features">
+        <div class="wrap">
+          <div class="section-head">
+            <h2>Zero-Config Deep Observability</h2>
+            <p>
+              auzui derives as much as it can automatically from what
+              Zabbix already knows — item tags, units, templates, trigger
+              expressions, LLD, inventory — instead of asking operators to
+              configure dashboards, panels, or thresholds by hand.
+            </p>
+          </div>
+          <div class="feature-grid">
+            <article class="feature">
+              <div class="icon">◧</div>
+              <h3>Problems as a live triage board</h3>
+              <p>
+                Virtualized list, inline acknowledge/comment without modal
+                cascades, severity filter chips, bulk actions, and a
+                URL-addressable side panel instead of a popup — filters are
+                shareable links.
+              </p>
+            </article>
+            <article class="feature">
+              <div class="icon">▤</div>
+              <h3>Host Deep-Dive auto-dashboards</h3>
+              <p>
+                A fully generated per-host dashboard: sections by component
+                class, trigger thresholds rendered as chart zones, an
+                interface/port matrix, storage &amp; certificate forecasts,
+                7-day ghost lines — with zero manual configuration.
+              </p>
+            </article>
+            <article class="feature">
+              <div class="icon">▦</div>
+              <h3>Infrastructure Explorer</h3>
+              <p>
+                Heatmap drill-down from host groups → host tiles →
+                component tiles → item, colored by status or utilization,
+                with a "top movers" sidebar at every level.
+              </p>
+            </article>
+            <article class="feature">
+              <div class="icon">◈</div>
+              <h3>Auto-Topology</h3>
+              <p>
+                A force-directed dependency graph built from trigger
+                dependencies, LLDP/CDP neighbors, shared subnets, and
+                statistical event correlation — each edge tagged with its
+                evidence layer and confidence.
+              </p>
+            </article>
+            <article class="feature">
+              <div class="icon">▥</div>
+              <h3>Metric Browser</h3>
+              <p>
+                Faceted search across every item (component tag, unit,
+                template, group), a small-multiples wall sortable by
+                deviation from baseline, with multi-select overlay
+                comparison across hosts.
+              </p>
+            </article>
+            <article class="feature">
+              <div class="icon">⌘</div>
+              <h3>⌘K command palette</h3>
+              <p>
+                Global search over hosts/items/triggers/dashboards plus
+                actions ("Ack problem…", "Go to host…"), replacing deep
+                menu navigation.
+              </p>
+            </article>
+            <article class="feature">
+              <div class="icon">◐</div>
+              <h3>Dark-mode first</h3>
+              <p>
+                High information density, consistent severity color
+                semantics, and skeleton loading instead of spinners —
+                built for daily on-call use.
+              </p>
+            </article>
+            <article class="feature">
+              <div class="icon">⚡</div>
+              <h3>Optional InfluxDB fast path</h3>
+              <p>
+                Route time-series through a Flux <code>aggregateWindow</code>
+                query via <code>auzui-gateway</code> instead of
+                <code>history.get</code> — routinely
+                <strong>500–1000×</strong> faster on large instances, and
+                the only practical way to cover long ranges or dense
+                multi-item dashboards.
+              </p>
+            </article>
+            <article class="feature">
+              <div class="icon">≡</div>
+              <h3>Optional Graylog logs</h3>
+              <p>
+                A stream browser and host-scoped log panel synced to the
+                same time range as the charts — entirely feature-gated, no
+                Graylog configured means the panel simply doesn't appear.
+              </p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section id="screenshots">
+        <div class="wrap">
+          <div class="section-head">
+            <h2>See it in action</h2>
+            <p>Problems triage, host dashboards, exploration, topology, metrics, and logs.</p>
+          </div>
+          <div class="shots">
+            <figure class="shot shot-wide">
+              <div class="shot-toggle" role="group" aria-label="Screenshot theme">
+                <button type="button" data-theme-btn="light" class="is-active">Light</button>
+                <button type="button" data-theme-btn="dark">Dark</button>
+              </div>
+              <img data-shot="problems"
+                src="./assets/screenshots/problems.png"
+                alt="auzui Problems triage board"
+                width="1440"
+                height="900"
+                loading="lazy"
+              />
+              <figcaption>Problems — virtualized triage board with inline acknowledge and severity filters</figcaption>
+            </figure>
+            <figure class="shot shot-wide">
+              <div class="shot-toggle" role="group" aria-label="Screenshot theme">
+                <button type="button" data-theme-btn="light" class="is-active">Light</button>
+                <button type="button" data-theme-btn="dark">Dark</button>
+              </div>
+              <img data-shot="host-detail"
+                src="./assets/screenshots/host-detail.png"
+                alt="auzui host deep-dive auto-dashboard"
+                width="1440"
+                height="900"
+                loading="lazy"
+              />
+              <figcaption>Host Deep-Dive — auto-generated dashboard, zero manual configuration</figcaption>
+            </figure>
+            <figure class="shot">
+              <div class="shot-toggle" role="group" aria-label="Screenshot theme">
+                <button type="button" data-theme-btn="light" class="is-active">Light</button>
+                <button type="button" data-theme-btn="dark">Dark</button>
+              </div>
+              <img data-shot="latest-data"
+                src="./assets/screenshots/latest-data.png"
+                alt="auzui Latest Data view"
+                width="1440"
+                height="900"
+                loading="lazy"
+              />
+              <figcaption>Latest Data — fast item browsing across hosts</figcaption>
+            </figure>
+            <figure class="shot">
+              <div class="shot-toggle" role="group" aria-label="Screenshot theme">
+                <button type="button" data-theme-btn="light" class="is-active">Light</button>
+                <button type="button" data-theme-btn="dark">Dark</button>
+              </div>
+              <img data-shot="explorer"
+                src="./assets/screenshots/explorer.png"
+                alt="Infrastructure Explorer heatmap"
+                width="1440"
+                height="900"
+                loading="lazy"
+              />
+              <figcaption>Infrastructure Explorer — heatmap drill-down with top movers</figcaption>
+            </figure>
+            <figure class="shot">
+              <div class="shot-toggle" role="group" aria-label="Screenshot theme">
+                <button type="button" data-theme-btn="light" class="is-active">Light</button>
+                <button type="button" data-theme-btn="dark">Dark</button>
+              </div>
+              <img data-shot="topology"
+                src="./assets/screenshots/topology.png"
+                alt="Auto-Topology dependency graph"
+                width="1440"
+                height="900"
+                loading="lazy"
+              />
+              <figcaption>Auto-Topology — force-directed dependency graph with confidence-tagged edges</figcaption>
+            </figure>
+            <figure class="shot">
+              <div class="shot-toggle" role="group" aria-label="Screenshot theme">
+                <button type="button" data-theme-btn="light" class="is-active">Light</button>
+                <button type="button" data-theme-btn="dark">Dark</button>
+              </div>
+              <img data-shot="metrics"
+                src="./assets/screenshots/metrics.png"
+                alt="Metric Browser small multiples"
+                width="1440"
+                height="900"
+                loading="lazy"
+              />
+              <figcaption>Metric Browser — faceted search and small-multiples comparison</figcaption>
+            </figure>
+            <figure class="shot">
+              <div class="shot-toggle" role="group" aria-label="Screenshot theme">
+                <button type="button" data-theme-btn="light" class="is-active">Light</button>
+                <button type="button" data-theme-btn="dark">Dark</button>
+              </div>
+              <img data-shot="logs"
+                src="./assets/screenshots/logs.png"
+                alt="Graylog-backed log panel"
+                width="1440"
+                height="900"
+                loading="lazy"
+              />
+              <figcaption>Logs — optional Graylog panel synced to the chart time range</figcaption>
+            </figure>
+            <figure class="shot">
+              <div class="shot-toggle" role="group" aria-label="Screenshot theme">
+                <button type="button" data-theme-btn="light" class="is-active">Light</button>
+                <button type="button" data-theme-btn="dark">Dark</button>
+              </div>
+              <img data-shot="command-palette"
+                src="./assets/screenshots/command-palette.png"
+                alt="Command palette"
+                width="1440"
+                height="900"
+                loading="lazy"
+              />
+              <figcaption>⌘K command palette — global search and actions</figcaption>
+            </figure>
+          </div>
+        </div>
+      </section>
+
+      <section id="deploy">
+        <div class="wrap">
+          <div class="section-head">
+            <h2>Deploy alongside Zabbix</h2>
+            <p>
+              One container — the <code>auzui-gateway</code> (FastAPI) and
+              the built SPA. Only <code>ZABBIX_API_URL</code> is required;
+              InfluxDB and Graylog are optional and feature-gated. Full
+              reference:
+              <a href="https://github.com/cygnusnetworks/auzui/blob/main/docs/deployment.md">docs/deployment.md</a>.
+            </p>
+          </div>
+          <pre class="code-block"><code>services:
+  auzui:
+    image: ghcr.io/cygnusnetworks/auzui:latest
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8080:8000"
+    environment:
+      # Required: the Zabbix JSON-RPC endpoint for permission checks.
+      ZABBIX_API_URL: "https://zabbix.example.com/api_jsonrpc.php"
+
+      # Optional: InfluxDB fast path for time-series (all three enable it).
+      # INFLUX_URL: "http://influxdb:8086"
+      # INFLUX_TOKEN: "changeme"
+      # INFLUX_ORG: "example.com"
+
+      # Optional: Graylog log panels (both enable it).
+      # GRAYLOG_URL: "https://graylog.example.com/api"
+      # GRAYLOG_TOKEN: "changeme"
+    healthcheck:
+      test: ["CMD", "curl", "-fs", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3</code></pre>
+          <div class="chips" aria-label="Tech stack">
+            <span class="chip">React 19 · TypeScript · Vite</span>
+            <span class="chip">TanStack Router/Query</span>
+            <span class="chip">shadcn/ui · uPlot</span>
+            <span class="chip">Python · FastAPI</span>
+            <span class="chip">Zabbix JSON-RPC</span>
+            <span class="chip">InfluxDB (optional)</span>
+            <span class="chip">Graylog (optional)</span>
+            <span class="chip">Docker · AGPL-3.0</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="cta">
+        <div class="wrap">
+          <h2>Explore the interactive demo</h2>
+          <p>
+            The full monitoring UI in your browser — mock data only,
+            nothing is saved, no Zabbix instance required.
+          </p>
+          <div class="btn-row">
+            <a class="btn btn-primary" href="./demo/">Launch demo</a>
+            <a class="btn btn-ghost" href="https://github.com/cygnusnetworks/auzui">Star on GitHub</a>
+          </div>
+        </div>
+      </section>
+    </main>
+
     <footer>
-      <a href="https://github.com/cygnusnetworks/auzui">github.com/cygnusnetworks/auzui</a>
+      <div class="wrap">
+        <div class="footer-grid">
+          <div>
+            <strong style="color: var(--ink)">auzui</strong>
+            · Copyright © 2026 Cygnus Networks GmbH
+          </div>
+          <div class="footer-links">
+            <a href="https://github.com/cygnusnetworks/auzui">GitHub</a>
+            <a href="https://github.com/cygnusnetworks/auzui/blob/main/LICENSE">License</a>
+            <a href="https://github.com/cygnusnetworks/auzui/blob/main/docs/architecture.md">Architecture</a>
+            <a href="./demo/">Demo</a>
+          </div>
+        </div>
+        <p class="legal">
+          auzui is licensed under the GNU Affero General Public License
+          v3.0 (AGPL-3.0-only). It is an independent, clean-room
+          implementation built purely against Zabbix's documented JSON-RPC
+          API and contains no Zabbix source code. "Zabbix" is a trademark
+          of Zabbix LLC / SIA Zabbix; "Graylog" and "InfluxDB" are
+          trademarks of their respective owners. auzui is not affiliated
+          with, endorsed by, or sponsored by any of them — the names are
+          used solely to describe factual interoperability.
+        </p>
+      </div>
     </footer>
-  </main>
-</body>
+    <script>
+      // Screenshot gallery light/dark switch: swaps every `[data-shot]` image
+      // between `NAME.png` and `NAME-dark.png`. Defaults to the visitor's OS
+      // theme; no-JS visitors keep the light `src` in the markup.
+      (function () {
+        var imgs = document.querySelectorAll("img[data-shot]");
+        var btns = document.querySelectorAll("[data-theme-btn]");
+        function apply(theme) {
+          imgs.forEach(function (img) {
+            var base = img.getAttribute("data-shot");
+            img.src =
+              "./assets/screenshots/" + base + (theme === "dark" ? "-dark" : "") + ".png";
+          });
+          btns.forEach(function (b) {
+            b.classList.toggle("is-active", b.getAttribute("data-theme-btn") === theme);
+          });
+        }
+        btns.forEach(function (b) {
+          b.addEventListener("click", function () {
+            apply(b.getAttribute("data-theme-btn"));
+          });
+        });
+        var prefersDark =
+          window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+        apply(prefersDark ? "dark" : "light");
+      })();
+    </script>
+  </body>
 </html>

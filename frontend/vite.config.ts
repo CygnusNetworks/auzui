@@ -1,7 +1,7 @@
-/// <reference types="vitest/config" />
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
+import { configDefaults } from "vitest/config";
 
 export default defineConfig({
   base: process.env.VITE_BASE ?? "/",
@@ -24,5 +24,7 @@ export default defineConfig({
     environment: "jsdom",
     globals: true,
     setupFiles: ["./src/test-setup.ts"],
+    // Playwright specs (e2e/) are a separate runner (playwright.config.ts), not vitest.
+    exclude: [...configDefaults.exclude, "e2e/**"],
   },
 });

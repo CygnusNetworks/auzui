@@ -1,10 +1,11 @@
 name: Product site (GitHub Pages)
 
-# Builds and deploys the static "coming soon" landing page under site/.
+# Builds the static product landing page + interactive demo and deploys both
+# to GitHub Pages.
 #
-#   https://cygnusnetworks.github.io/auzui/
+#   https://cygnusnetworks.github.io/auzui/       → marketing landing
+#   https://cygnusnetworks.github.io/auzui/demo/  → interactive demo
 #
-# Minimal for now: no interactive demo build yet (see site/index.html).
 # Runs on release tags (v*) and manual dispatch — not on every main push.
 
 on:
@@ -23,14 +24,53 @@ concurrency:
 
 jobs:
   build:
-    name: Build site
+    name: Build landing + demo
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+      - name: Install
+        run: pnpm install --frozen-lockfile
+      - name: Build demo (base = /auzui/demo/)
+        run: VITE_BASE=/auzui/demo/ pnpm --filter auzui-frontend build:demo
+      - name: Assemble Pages site
+        run: |
+          set -euo pipefail
+          rm -rf _site
+          mkdir -p _site/assets/screenshots _site/demo
+
+          # Landing
+          cp site/index.html site/styles.css _site/
+          cp frontend/public/logo.svg frontend/public/logo-wordmark.svg frontend/public/favicon.svg _site/assets/
+
+          # Screenshots used by the landing gallery.
+          # Both light and dark variants (the landing gallery has a switch).
+          for f in \
+            problems host-detail latest-data explorer topology metrics logs \
+            command-palette
+          do
+            cp "docs/images/$f.png" "_site/assets/screenshots/$f.png"
+            cp "docs/images/$f-dark.png" "_site/assets/screenshots/$f-dark.png"
+          done
+
+          # Interactive demo under /demo/
+          cp -a frontend/dist/. _site/demo/
+
+          # SPA fallback for demo deep-links under project pages
+          if [ -f _site/demo/index.html ]; then
+            cp _site/demo/index.html _site/demo/404.html
+          fi
+
+          ls -la _site _site/demo _site/assets/screenshots | head -80
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: site
+          path: _site
 
   deploy:
     name: Deploy to Pages

@@ -1,0 +1,65 @@
+name: Screenshots (release tags)
+
+# Regenerate the README / docs screenshots from the mock-driven UI and commit
+# them back to main. No backend needed — the generator drives the built SPA
+# with Playwright and intercepts the Zabbix/gateway API via page.route.
+#
+# Runs on version tags (v*) and manual dispatch only — not on every push.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+concurrency:
+  group: screenshots
+  cancel-in-progress: false
+
+jobs:
+  screenshots:
+    name: Generate & commit screenshots
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # A tag is not a branch — check out main and commit the results there.
+          # Version tags are normally cut from main HEAD, so this reflects the
+          # released UI. NOTE: if main is a protected branch, allow the Actions
+          # bot to push (or switch the final step to open a PR).
+          ref: main
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+      - name: Install
+        run: pnpm install --frozen-lockfile
+      - name: Build frontend (served by Playwright's vite preview)
+        run: pnpm --filter auzui-frontend build:demo
+      - name: Install Playwright chromium
+        run: pnpm --filter auzui-frontend exec playwright install --with-deps chromium
+      - name: Generate screenshots (light)
+        env:
+          SCREENSHOTS: "1"
+        run: pnpm --filter auzui-frontend exec playwright test screenshots --project=chromium
+      - name: Generate screenshots (dark)
+        env:
+          SCREENSHOTS: "1"
+          THEME: "dark"
+        run: pnpm --filter auzui-frontend exec playwright test screenshots --project=chromium
+      - name: Commit regenerated screenshots to main
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/images/*.png
+          if git diff --cached --quiet; then
+            echo "No screenshot changes to commit."
+            exit 0
+          fi
+          git commit -m "docs(screenshots): regenerate for ${GITHUB_REF_NAME} [skip ci]"
+          git push origin HEAD:main

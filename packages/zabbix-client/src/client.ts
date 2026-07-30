@@ -60,7 +60,13 @@ export class ZabbixClient {
     this.url = opts.url;
     this.token = opts.token;
     this.timeoutMs = opts.timeoutMs ?? 30_000;
-    this.fetchFn = opts.fetchFn ?? globalThis.fetch.bind(globalThis);
+    // Not bound eagerly: resolving `globalThis.fetch` at call time (rather
+    // than snapshotting it here) lets a module-level singleton (e.g. the
+    // shared `zabbixClient` in lib/auth/store.ts) keep working if something
+    // legitimately replaces globalThis.fetch after this constructor has
+    // already run — e.g. the demo build's mock-backend shim, installed
+    // dynamically after the singleton is constructed (src/demo/start.ts).
+    this.fetchFn = opts.fetchFn ?? ((input, init) => globalThis.fetch(input, init));
   }
 
   setToken(token: string | undefined): void {

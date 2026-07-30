@@ -4,6 +4,8 @@
 [![CI](https://github.com/cygnusnetworks/auzui/actions/workflows/ci.yml/badge.svg)](https://github.com/cygnusnetworks/auzui/actions/workflows/ci.yml)
 [![Docker](https://img.shields.io/badge/ghcr.io-cygnusnetworks%2Fauzui-2496ED?logo=docker&logoColor=white)](https://github.com/cygnusnetworks/auzui/pkgs/container/auzui)
 [![React 19 + TypeScript](https://img.shields.io/badge/React%2019-TypeScript-61DAFB?logo=react&logoColor=black)](./frontend)
+[![Python 3.12](https://img.shields.io/badge/gateway-Python%203.12-3776AB?logo=python&logoColor=white)](./services/gateway)
+[![Live site](https://img.shields.io/badge/live%20site-cygnusnetworks.github.io%2Fauzui-24292E?logo=githubpages&logoColor=white)](https://cygnusnetworks.github.io/auzui/)
 
 > **Early stage / pre-MVP.** auzui is under active design and initial
 > implementation. APIs, layouts, and scope may still change significantly.
@@ -21,6 +23,18 @@ The guiding principle is **Zero-Config Deep Observability**: auzui derives
 as much as it can automatically from what Zabbix already knows (item tags,
 units, templates, trigger expressions, LLD, inventory) instead of asking
 operators to configure dashboards, panels, or thresholds by hand.
+
+## Screenshots
+
+Live, click-through demo (mocked data, no backend required):
+**[cygnusnetworks.github.io/auzui/demo](https://cygnusnetworks.github.io/auzui/demo/)**.
+
+| | |
+|---|---|
+| ![Problems triage board](./docs/images/problems.png) **Problems** — live triage board | ![Host deep-dive dashboard](./docs/images/host-detail.png) **Host detail** — auto-generated dashboard |
+| ![Latest Data view](./docs/images/latest-data.png) **Latest Data** | ![Infrastructure Explorer heatmap](./docs/images/explorer.png) **Explorer** — heatmap drill-down |
+| ![Auto-Topology graph](./docs/images/topology.png) **Topology** — dependency graph | ![Metric Browser](./docs/images/metrics.png) **Metrics** — faceted metric browser |
+| ![Log panel](./docs/images/logs.png) **Logs** — Graylog-backed log panel (optional) | ![Command palette](./docs/images/command-palette.png) **⌘K** — command palette |
 
 ## Why auzui
 
@@ -166,7 +180,16 @@ just build
 ```
 
 Configuration reference (Zabbix/Influx/Graylog env vars, nginx pattern,
-planned deployment): [docs/deployment.md](./docs/deployment.md).
+planned deployment): [docs/deployment.md](./docs/deployment.md) and
+[docs/configuration.md](./docs/configuration.md). Full documentation index:
+[docs/README.md](./docs/README.md).
+
+## Links
+
+- **Product site:** [cygnusnetworks.github.io/auzui](https://cygnusnetworks.github.io/auzui/)
+- **Live demo:** [cygnusnetworks.github.io/auzui/demo](https://cygnusnetworks.github.io/auzui/demo/)
+  (mocked data, no Zabbix/gateway required)
+- **Documentation index:** [docs/README.md](./docs/README.md)
 
 ## Clean-room statement
 
