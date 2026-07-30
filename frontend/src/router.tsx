@@ -132,7 +132,12 @@ const routeTree = rootRoute.addChildren([
   ]),
 ]);
 
-export const router = createRouter({ routeTree });
+// basepath follows Vite's `base` so the app also works when served from a
+// sub-path (e.g. the GitHub Pages demo under /auzui/demo/).
+export const router = createRouter({
+  routeTree,
+  basepath: import.meta.env.BASE_URL,
+});
 
 declare module "@tanstack/react-router" {
   interface Register {

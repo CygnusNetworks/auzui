@@ -80,7 +80,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     <div className="min-h-screen bg-bg text-ink">
       <div ref={menuRef} className="sticky top-0 z-40 flex h-[52px] items-center gap-3.5 border-b border-line bg-surface px-4">
         <span className="flex items-center gap-2">
-          <img src="/logo.svg" alt="" className="h-[22px] w-[22px]" />
+          <img src={`${import.meta.env.BASE_URL}logo.svg`} alt="" className="h-[22px] w-[22px]" />
           <span className="text-base font-extrabold tracking-tight">
             au<em className="not-italic text-accent">z</em>ui
           </span>
