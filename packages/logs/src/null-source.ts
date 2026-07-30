@@ -1,7 +1,7 @@
 import type {
   LogFilterSet,
   LogSearchResult,
-  LogServer,
+  LogServersResult,
   LogSource,
   LogStream,
 } from "./source";
@@ -10,8 +10,8 @@ import type {
 export class NullLogSource implements LogSource {
   readonly enabled = false;
 
-  async servers(): Promise<LogServer[]> {
-    return [];
+  async servers(): Promise<LogServersResult> {
+    return { servers: [], dedupEnabled: false };
   }
 
   async streams(): Promise<LogStream[]> {

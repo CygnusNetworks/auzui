@@ -20,6 +20,7 @@ import {
   readLogFilters,
   writeLogFilters,
 } from "../../lib/log-filter-storage";
+import { isStreamSort, sortLogStreams, STREAM_SORTS, type StreamSort } from "../../lib/log-streams";
 import { useAuthStore, zabbixApi } from "../../lib/auth/store";
 import {
   filtersFromSearch,
@@ -105,8 +106,11 @@ function LogsBrowser() {
   const streamsQuery = useLogStreams(source);
   const streams = streamsQuery.data ?? [];
   const serversQuery = useLogServers(source);
-  const allServers = useMemo(() => serversQuery.data ?? [], [serversQuery.data]);
+  const allServers = useMemo(() => serversQuery.data?.servers ?? [], [serversQuery.data]);
   const multiServer = allServers.length > 1;
+  // Dedup toggle only exists when the server-side feature flag is on AND there
+  // is more than one server to deduplicate across.
+  const dedupConfigured = (serversQuery.data?.dedupEnabled ?? false) && multiServer;
 
   const [query, setQuery] = useState("");
   const debouncedQuery = useDebouncedValue(query, DEBOUNCE_MS);
@@ -115,6 +119,10 @@ function LogsBrowser() {
   const [maxLevel, setMaxLevel] = useState<number | undefined>(undefined);
   const [hostQuery, setHostQuery] = useState("");
   const [hostFocused, setHostFocused] = useState(false);
+  // Stream-Picker-Sortierung: rein clientseitig, per-User in localStorage
+  // gemerkt (kein URL-Param). Default "name".
+  const [streamSort, setStreamSort] = useState<StreamSort>("name");
+  const sortedStreams = useMemo(() => sortLogStreams(streams, streamSort), [streams, streamSort]);
 
   const username = useAuthStore((s) => s.username);
 
@@ -152,12 +160,30 @@ function LogsBrowser() {
       !search.exclude &&
       !search.host &&
       !search.stream &&
-      !search.servers
+      !search.servers &&
+      !search.dedupe
     ) {
       const stored = readLogFilters(username);
       if (stored && hasStoredValues(stored)) {
-        void navigate({ to: "/logs", search: { ...stored }, replace: true });
+        // streamSort ist kein URL-Param → nicht in die Router-Suche übernehmen.
+        void navigate({
+          to: "/logs",
+          search: {
+            stream: stored.stream,
+            host: stored.host,
+            include: stored.include,
+            exclude: stored.exclude,
+            servers: stored.servers,
+            dedupe: stored.dedupe,
+          },
+          replace: true,
+        });
       }
+    }
+    // streamSort ist kein URL-Param → immer direkt aus dem Speicher übernehmen.
+    if (username) {
+      const stored = readLogFilters(username);
+      if (stored && isStreamSort(stored.streamSort)) setStreamSort(stored.streamSort);
     }
     setHydrated(true);
   }, []);
@@ -169,8 +195,20 @@ function LogsBrowser() {
       include: search.include,
       exclude: search.exclude,
       servers: search.servers,
+      dedupe: search.dedupe,
+      streamSort,
     });
-  }, [hydrated, username, search.stream, search.host, search.include, search.exclude, search.servers]);
+  }, [
+    hydrated,
+    username,
+    search.stream,
+    search.host,
+    search.include,
+    search.exclude,
+    search.servers,
+    search.dedupe,
+    streamSort,
+  ]);
 
   // Beim ersten Laden ohne ?stream= den is_default-Stream vorauswählen.
   useEffect(() => {
@@ -276,6 +314,10 @@ function LogsBrowser() {
     [debouncedQuery, maxLevel, hostClause],
   );
 
+  // Duplikate zusammenfassen: standardmäßig an; nur „aus" wird als ?dedupe=0
+  // persistiert. Wirkt nur bei >1 Server (Gateway ignoriert es sonst).
+  const dedupeEnabled = search.dedupe !== "0";
+
   const resultQuery = useLogSearch(source, {
     streamId: search.stream,
     servers: selectedServerIds,
@@ -285,6 +327,7 @@ function LogsBrowser() {
     exclude: excludeFilters,
     page,
     live,
+    dedupe: dedupeEnabled,
   });
   const messages = resultQuery.data?.messages ?? [];
   const total = resultQuery.data?.total ?? 0;
@@ -308,8 +351,30 @@ function LogsBrowser() {
 
       <div className="grid grid-cols-[260px_1fr] items-start gap-3.5 max-[980px]:grid-cols-1">
         <aside className="rounded-lg border border-line bg-surface">
-          <div className="border-b border-line-soft px-3.5 py-2.5 font-mono text-[10px] uppercase tracking-wider text-ink-muted">
+          <div className="flex items-center gap-2 border-b border-line-soft px-3.5 py-2.5 font-mono text-[10px] uppercase tracking-wider text-ink-muted">
             {t("logs.streams")}
+            {multiServer && (
+              <div className="ml-auto flex items-center gap-1 normal-case">
+                <span className="text-ink-muted">{t("logs.streamSortLabel")}</span>
+                <div className="flex overflow-hidden rounded border border-line">
+                  {STREAM_SORTS.map((mode) => (
+                    <button
+                      key={mode}
+                      type="button"
+                      onClick={() => setStreamSort(mode)}
+                      aria-pressed={streamSort === mode}
+                      className={`px-1.5 py-0.5 text-[10px] ${
+                        streamSort === mode
+                          ? "bg-accent-soft text-accent"
+                          : "text-ink-muted hover:bg-surface-2"
+                      }`}
+                    >
+                      {t(`logs.streamSort.${mode}`)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
           <button
             type="button"
@@ -325,7 +390,7 @@ function LogsBrowser() {
           ) : streams.length === 0 ? (
             <div className="p-3.5 text-sm text-ink-2">{t("logs.noStreams")}</div>
           ) : (
-            streams.map((s) => (
+            sortedStreams.map((s) => (
               <button
                 key={`${s.serverId ?? ""}:${s.id}`}
                 type="button"
@@ -402,6 +467,26 @@ function LogsBrowser() {
                     </button>
                   );
                 })}
+                {dedupConfigured && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      patchSearch(
+                        { dedupe: dedupeEnabled ? "0" : undefined },
+                        { keepPage: true },
+                      )
+                    }
+                    aria-pressed={dedupeEnabled}
+                    title={t("logs.dedupeToggleHint")}
+                    className={`ml-auto rounded-full border px-2 py-0.5 font-mono text-[10.5px] ${
+                      dedupeEnabled
+                        ? "border-accent/40 bg-accent-soft text-accent"
+                        : "border-line text-ink-muted"
+                    }`}
+                  >
+                    {t("logs.dedupeToggle")} {dedupeEnabled ? "✓" : ""}
+                  </button>
+                )}
               </div>
             )}
 

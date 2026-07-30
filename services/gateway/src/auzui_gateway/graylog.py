@@ -115,6 +115,75 @@ def apply_filters(
     return " AND ".join(parts) if parts else "*"
 
 
+def _dedupe_key(m: dict[str, Any]) -> tuple[Any, ...]:
+    """Content identity of a log line, independent of arrival time and of which
+    server delivered it: (source, application_name, facility_num, level,
+    message text). `application_name` lives in the passthrough `fields` bag."""
+    fields = m.get("fields") or {}
+    return (
+        m.get("source"),
+        fields.get("application_name"),
+        m.get("facility_num"),
+        m.get("level"),
+        m.get("message"),
+    )
+
+
+def dedupe_messages(messages: list[dict[str, Any]], window_seconds: float) -> list[dict[str, Any]]:
+    """Collapse content-identical lines that arrived on DIFFERENT Graylog
+    servers within `window_seconds` of each other into ONE row.
+
+    A host may ship the same syslog line to several Graylog servers at once, so
+    it comes back 2-3 times with near-identical arrival timestamps (millisecond
+    spread) and different internal ids. We group by `_dedupe_key` and merge
+    members from distinct servers whose timestamps fall inside a window anchored
+    on the newest member of the group.
+
+    Deliberately NOT merged:
+      * repeats from the SAME server (a server_id never merges with itself) —
+        those are genuine duplicate lines, not a cross-server fan-out artefact;
+      * repeats OUTSIDE the window (e.g. an identical cron line every 60 s) —
+        keep the window small (default 2 s) so real periodic repeats survive.
+
+    Input MUST be sorted timestamp-descending (as produced by the merge step).
+    The earliest member of each group becomes the representative (its
+    timestamp/id/fields are kept for compatibility) and is annotated with
+    `server_ids`/`server_labels` listing every origin server. O(n·k) with
+    k = groups currently inside the window (a sliding window over the sorted
+    list, no n²): once a group's anchor is older than the current message by
+    more than the window it can never gain another member and is dropped.
+    """
+    active: list[dict[str, Any]] = []
+    groups: list[dict[str, Any]] = []
+    for m in messages:
+        ts = m["timestamp"]
+        key = _dedupe_key(m)
+        sid = m.get("server_id")
+        # Descending order: every later message has a smaller ts, so a group
+        # whose anchor is already more than `window_seconds` newer than `ts`
+        # can never be joined again → drop it from the active set.
+        active = [g for g in active if g["anchor"] - ts <= window_seconds]
+        match = next((g for g in active if g["key"] == key and sid not in g["servers"]), None)
+        if match is None:
+            group = {"anchor": ts, "key": key, "servers": {sid: m.get("server_label")}, "rep": m}
+            active.append(group)
+            groups.append(group)
+        else:
+            match["servers"].setdefault(sid, m.get("server_label"))
+            match["rep"] = m  # descending order → this is the earliest seen so far
+    out: list[dict[str, Any]] = []
+    for g in groups:
+        rep = dict(g["rep"])
+        server_ids = sorted(g["servers"], key=lambda s: (s is None, s))
+        rep["server_ids"] = server_ids
+        rep["server_labels"] = [g["servers"][sid] for sid in server_ids]
+        out.append(rep)
+    # The representative is the earliest member, so its timestamp may sit below
+    # the group's anchor position; re-sort to keep the list strictly desc.
+    out.sort(key=lambda m: m["timestamp"], reverse=True)
+    return out
+
+
 class GraylogClient:
     """Read-only client for ONE Graylog server. The multi-server orchestration
     (parallel fan-out, timestamp merge, partial-failure handling) lives in
@@ -302,13 +371,20 @@ class GraylogService:
         offset: int = 0,
         stream_ids: list[str] | None = None,
         server_ids: list[str] | None = None,
+        dedupe: bool = True,
     ) -> dict[str, Any]:
         """Query every selected server with the same limit+offset, then merge
         all returned messages by timestamp (descending) and cap the merged list
         to `limit`. `total` is the sum of the per-server totals. Pagination is
         therefore approximate across servers (each page pulls limit rows per
         server and keeps the newest `limit` of the union) — documented, simple
-        and correct enough for log triage; deep offsets stay monotonic."""
+        and correct enough for log triage; deep offsets stay monotonic.
+
+        When more than one server was actually queried and `dedupe` is set, the
+        merged list is content-deduplicated (see `dedupe_messages`) BEFORE the
+        `limit` cap, so a page returns up to `limit` distinct rows. `total`
+        stays the raw sum of per-server totals and is therefore approximate
+        (an upper bound) once duplicates are collapsed."""
         clients = self._select(server_ids)
         results = await asyncio.gather(
             *(c.search(query, time_from, time_to, limit, offset, stream_ids) for c in clients),
@@ -330,4 +406,8 @@ class GraylogService:
         # rather than a misleading empty-but-ok result.
         if errors and not any(not isinstance(r, BaseException) for r in results):
             raise HTTPException(502, f"all Graylog servers failed: {errors}")
+        # Cross-server content dedup: gated behind the feature flag, only makes
+        # sense with >1 server queried, and can be turned off per-request.
+        if self._s.log_dedup_enabled and dedupe and len(clients) > 1:
+            merged = dedupe_messages(merged, self._s.log_dedup_window_seconds)
         return {"messages": merged[:limit], "total": total, "errors": errors}

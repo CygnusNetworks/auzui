@@ -71,6 +71,20 @@ class Settings(BaseSettings):
     # Graylog API tokens authenticate as Basic token:token; some setups sit
     # behind a proxy that wants Bearer instead.
     graylog_bearer_auth: bool = False
+    # Cross-server log deduplication feature flag. Off by default; only when
+    # enabled does the gateway collapse duplicates AND does the frontend show
+    # the "merge duplicates" toggle (exposed via GET /api/logs/servers →
+    # dedup_enabled). Env: LOG_DEDUP_ENABLED.
+    log_dedup_enabled: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("LOG_DEDUP_ENABLED", "log_dedup_enabled"),
+    )
+    # When dedup is enabled: a host logging to several Graylog servers at once
+    # produces the same line once per server with a few milliseconds of
+    # arrival-time spread. Messages with identical content from DIFFERENT
+    # servers within this window (seconds) collapse into one row. Keep it small
+    # so genuine periodic repeats (e.g. a cron line every 60 s) survive.
+    log_dedup_window_seconds: float = 2.0
 
     # Persistence for team-wide saved filter sets (JSON file on disk). The
     # container runs read_only, so this MUST point at a writable mount (a

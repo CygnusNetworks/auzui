@@ -52,6 +52,9 @@ class LogsSearchRequest(BaseModel):
     offset: int = Field(default=0, ge=0)
     include: list[LogFilterModel] = Field(default_factory=list)
     exclude: list[LogFilterModel] = Field(default_factory=list)
+    # Collapse content-identical lines that arrived on different Graylog servers
+    # (only takes effect when >1 server is queried). Default on.
+    dedupe: bool = True
 
     model_config = {"populate_by_name": True}
 
@@ -204,7 +207,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def logs_servers(token: str = Depends(bearer_token)) -> dict[str, object]:
         require_graylog()
         await zabbix.validate_session(token)
-        return {"servers": graylog.server_list()}
+        return {"servers": graylog.server_list(), "dedup_enabled": settings.log_dedup_enabled}
 
     @app.get("/api/logs/streams")
     async def logs_streams(
@@ -229,7 +232,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             settings.graylog_source_field,
         )
         return await graylog.search(
-            query, req.from_, req.to, req.limit, req.offset, req.stream_ids, req.servers
+            query, req.from_, req.to, req.limit, req.offset, req.stream_ids, req.servers, req.dedupe
         )
 
     @app.post("/api/logs/host/{hostid}")

@@ -15,6 +15,11 @@ export interface LogsSearch {
   page?: number;
   /** Id of the currently active saved filter set, if any. */
   set?: string;
+  /**
+   * Cross-server duplicate merging. On by default; only `"0"` (explicitly off)
+   * is persisted so the shareable URL stays clean in the common case.
+   */
+  dedupe?: string;
 }
 
 /** Mirrors features/latest-data/search-params.ts's style: a defensive validator for router search state. */
@@ -34,6 +39,7 @@ export function validateLogsSearch(search: Record<string, unknown>): LogsSearch 
     servers: typeof search.servers === "string" ? search.servers : undefined,
     page,
     set: typeof search.set === "string" ? search.set : undefined,
+    dedupe: search.dedupe === "0" ? "0" : undefined,
   };
 }
 

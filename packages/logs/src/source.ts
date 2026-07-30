@@ -15,6 +15,14 @@ export interface LogServer {
   label: string;
 }
 
+/** GET /api/logs/servers response: the configured backends plus the
+ * cross-server dedup feature flag (drives whether the "merge duplicates"
+ * toggle is shown at all). */
+export interface LogServersResult {
+  servers: LogServer[];
+  dedupEnabled: boolean;
+}
+
 /** The fixed set of fields a log row can be include/exclude-filtered by (PLAN.md section H). */
 export type LogFilterField = "source" | "facility" | "application_name";
 
@@ -39,6 +47,14 @@ export interface LogMessage {
   /** Origin Graylog server (multi-server setups); tagged onto every row. */
   serverId?: string;
   serverLabel?: string;
+  /**
+   * All origin servers when this row is a deduplicated cross-server duplicate
+   * (a host logging to several Graylog servers at once). Length > 1 means the
+   * same line was seen on multiple servers and collapsed into one row;
+   * serverId/serverLabel above stay set to the representative for compat.
+   */
+  serverIds?: string[];
+  serverLabels?: string[];
   fields: Record<string, unknown>;
 }
 
@@ -54,6 +70,11 @@ export interface LogSearchParams {
   to: number;
   limit?: number;
   offset?: number;
+  /**
+   * Collapse content-identical lines that arrived on different Graylog servers
+   * into one row (default true). Only has an effect when >1 server is queried.
+   */
+  dedupe?: boolean;
   /** Include filter chips (source/facility/application_name), ANDed with `query`. */
   include?: LogFilter[];
   /** Exclude filter chips, translated to `NOT field:"value"` by the gateway. */
@@ -109,8 +130,8 @@ export interface LogFilterSetInput {
  */
 export interface LogSource {
   readonly enabled: boolean;
-  /** Configured Graylog servers; length > 1 unlocks the multi-server UI. */
-  servers(signal?: AbortSignal): Promise<LogServer[]>;
+  /** Configured Graylog servers (+ dedup flag); length > 1 unlocks the multi-server UI. */
+  servers(signal?: AbortSignal): Promise<LogServersResult>;
   streams(signal?: AbortSignal): Promise<LogStream[]>;
   search(params: LogSearchParams): Promise<LogSearchResult>;
   /** Host-scoped search; the gateway resolves the Zabbix host → source mapping. */

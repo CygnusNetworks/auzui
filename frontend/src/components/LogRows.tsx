@@ -187,6 +187,39 @@ function FilterableField({
 }
 
 /**
+ * Server-Herkunft einer Zeile bei >1 Graylog-Server. Eine deduplizierte Zeile
+ * (dieselbe Message auf mehreren Servern, siehe dedupe_messages im Gateway)
+ * trägt `serverLabels` mit mehreren Einträgen — dann werden alle Labels als
+ * kleine Tags nebeneinander gezeigt (lesbarer als ein „a+b"-Kürzel), der
+ * Tooltip nennt alle Server. Sonst das einzelne `serverLabel` (Kompatibilität
+ * mit nicht-deduplizierten bzw. älteren gecachten Zeilen).
+ */
+function ServerTags({ msg, t }: { msg: LogMessage; t: Translate }) {
+  const labels =
+    msg.serverLabels && msg.serverLabels.length > 0
+      ? msg.serverLabels
+      : msg.serverLabel
+        ? [msg.serverLabel]
+        : [];
+  const [first] = labels;
+  if (first === undefined) return null;
+  const title =
+    labels.length > 1 ? t("logs.serverTagMulti", labels.join(", ")) : t("logs.serverTag", first);
+  return (
+    <span className="inline-flex items-center gap-0.5" title={title}>
+      {labels.map((label) => (
+        <span
+          key={label}
+          className="rounded bg-accent-soft px-1.5 py-0.5 font-mono text-[10px] text-accent"
+        >
+          {label}
+        </span>
+      ))}
+    </span>
+  );
+}
+
+/**
  * Dichte Log-Zeilenliste mit Expand (Zeit · Level · Application · Message,
  * Klick öffnet Fulltext + Fields) — extrahiert aus
  * features/host-detail/LogsPanel.tsx (PLAN.md Abschnitt H), damit der
@@ -258,14 +291,7 @@ export function LogRows({
               </span>
               <span className="min-w-0">
                 <span className="mb-0.5 flex flex-wrap items-center gap-1.5">
-                  {showServer && msg.serverLabel && (
-                    <span
-                      title={t("logs.serverTag", msg.serverLabel)}
-                      className="rounded bg-accent-soft px-1.5 py-0.5 font-mono text-[10px] text-accent"
-                    >
-                      {msg.serverLabel}
-                    </span>
-                  )}
+                  {showServer && <ServerTags msg={msg} t={t} />}
                   <FilterableField
                     value={msg.source}
                     field="source"

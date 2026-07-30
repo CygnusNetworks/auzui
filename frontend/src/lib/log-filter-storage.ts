@@ -15,6 +15,10 @@ export interface StoredLogFilters {
   include?: string;
   exclude?: string;
   servers?: string;
+  /** Persisted only when the "merge duplicates" toggle is turned off ("0"). */
+  dedupe?: string;
+  /** Stream-Picker-Sortierung ("name" | "server"); rein clientseitig, kein URL-Param. */
+  streamSort?: string;
 }
 
 function storageKey(username: string): string {
@@ -24,7 +28,12 @@ function storageKey(username: string): string {
 /** Ob überhaupt ein persistierenswerter Wert gesetzt ist (leere Objekte nicht speichern). */
 export function hasStoredValues(filters: StoredLogFilters): boolean {
   return Boolean(
-    filters.stream || filters.host || filters.include || filters.exclude || filters.servers,
+    filters.stream ||
+      filters.host ||
+      filters.include ||
+      filters.exclude ||
+      filters.servers ||
+      filters.dedupe,
   );
 }
 
@@ -41,6 +50,8 @@ export function readLogFilters(username: string): StoredLogFilters | null {
       include: typeof obj.include === "string" ? obj.include : undefined,
       exclude: typeof obj.exclude === "string" ? obj.exclude : undefined,
       servers: typeof obj.servers === "string" ? obj.servers : undefined,
+      dedupe: obj.dedupe === "0" ? "0" : undefined,
+      streamSort: typeof obj.streamSort === "string" ? obj.streamSort : undefined,
     };
     return result;
   } catch {

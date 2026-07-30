@@ -28,7 +28,7 @@ export function LogsPanel({
   const debouncedQuery = useDebouncedValue(query, DEBOUNCE_MS);
 
   const serversQuery = useLogServers(source);
-  const allServers = serversQuery.data ?? [];
+  const allServers = serversQuery.data?.servers ?? [];
   const multiServer = allServers.length > 1;
   // Panel-local server selection (empty = all); a small dropdown in the head.
   const [selectedServers, setSelectedServers] = useState<string[]>([]);

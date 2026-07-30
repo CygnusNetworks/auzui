@@ -6,6 +6,7 @@ import type {
   LogSearchParams,
   LogSearchResult,
   LogServer,
+  LogServersResult,
   LogSource,
   LogStream,
 } from "./source";
@@ -39,6 +40,8 @@ interface GatewayMessage {
   stream_ids?: string[];
   server_id?: string;
   server_label?: string;
+  server_ids?: string[];
+  server_labels?: string[];
   fields?: Record<string, unknown>;
 }
 
@@ -90,11 +93,11 @@ export class GraylogSource implements LogSource {
     }
   }
 
-  /** GET /api/logs/servers → configured Graylog backends (no tokens). */
-  async servers(signal?: AbortSignal): Promise<LogServer[]> {
+  /** GET /api/logs/servers → configured Graylog backends (no tokens) + dedup flag. */
+  async servers(signal?: AbortSignal): Promise<LogServersResult> {
     const res = await this.request("GET", "/api/logs/servers", undefined, signal);
-    const body = (await res.json()) as { servers: LogServer[] };
-    return body.servers ?? [];
+    const body = (await res.json()) as { servers?: LogServer[]; dedup_enabled?: boolean };
+    return { servers: body.servers ?? [], dedupEnabled: body.dedup_enabled === true };
   }
 
   async streams(signal?: AbortSignal): Promise<LogStream[]> {
@@ -123,6 +126,7 @@ export class GraylogSource implements LogSource {
         to: params.to,
         limit: params.limit ?? 100,
         offset: params.offset ?? 0,
+        dedupe: params.dedupe,
         include: toGatewayFilters(params.include),
         exclude: toGatewayFilters(params.exclude),
       },
@@ -222,6 +226,8 @@ export class GraylogSource implements LogSource {
       streamIds: m.stream_ids,
       serverId: m.server_id,
       serverLabel: m.server_label,
+      serverIds: m.server_ids,
+      serverLabels: m.server_labels,
       fields: m.fields ?? {},
     }));
     return {

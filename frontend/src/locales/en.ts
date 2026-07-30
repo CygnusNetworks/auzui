@@ -409,6 +409,14 @@ export const en = {
     filterActions: (v: string) => `Filter "${v}"…`,
     serversLabel: "Servers:",
     serverTag: (label: string) => `Server: ${label}`,
+    serverTagMulti: (labels: string) => `On multiple servers: ${labels}`,
+    dedupeToggle: "Merge duplicates",
+    dedupeToggleHint: "Merge identical messages from multiple Graylog servers into one row",
+    streamSortLabel: "Sort:",
+    streamSort: {
+      name: "Name",
+      server: "Server",
+    },
     pageInfo: (page: number, pages: number, perPage: number) =>
       `Page ${page} of ${pages} · ${perPage} per page`,
     hitsCount: (n: number) => `${n} hits`,

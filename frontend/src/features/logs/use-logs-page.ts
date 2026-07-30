@@ -37,6 +37,7 @@ export function useLogSearch(
     exclude: LogFilter[];
     page: number;
     live: boolean;
+    dedupe: boolean;
   },
 ) {
   const livePage1 = params.live && params.page === 1;
@@ -51,6 +52,7 @@ export function useLogSearch(
       params.include,
       params.exclude,
       params.page,
+      params.dedupe,
     ],
     queryFn: ({ signal }) =>
       source.search({
@@ -63,6 +65,7 @@ export function useLogSearch(
         offset: (params.page - 1) * PAGE_SIZE,
         include: params.include,
         exclude: params.exclude,
+        dedupe: params.dedupe,
         signal,
       }),
     enabled: source.enabled,

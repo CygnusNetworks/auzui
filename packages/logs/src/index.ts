@@ -9,6 +9,7 @@ export type {
   LogSearchResult,
   LogServer,
   LogServerError,
+  LogServersResult,
   LogSource,
   LogStream,
 } from "./source";

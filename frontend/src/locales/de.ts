@@ -410,6 +410,15 @@ export const de = {
     filterActions: (v: string) => `Filter für „${v}“…`,
     serversLabel: "Server:",
     serverTag: (label: string) => `Server: ${label}`,
+    serverTagMulti: (labels: string) => `Auf mehreren Servern: ${labels}`,
+    dedupeToggle: "Duplikate zusammenfassen",
+    dedupeToggleHint:
+      "Identische Meldungen von mehreren Graylog-Servern zu einer Zeile zusammenfassen",
+    streamSortLabel: "Sortierung:",
+    streamSort: {
+      name: "Name",
+      server: "Server",
+    },
     pageInfo: (page: number, pages: number, perPage: number) =>
       `Seite ${page} von ${pages} · ${perPage} pro Seite`,
     hitsCount: (n: number) => `${n} Treffer`,

@@ -118,14 +118,47 @@ describe("GraylogSource", () => {
           { id: "gl-a", label: "graylog-a" },
           { id: "gl-b", label: "graylog-b" },
         ],
+        dedup_enabled: true,
       });
     }) as unknown as typeof fetch;
 
     const src = new GraylogSource({ getToken: () => "tok", fetchFn });
-    expect(await src.servers()).toEqual([
-      { id: "gl-a", label: "graylog-a" },
-      { id: "gl-b", label: "graylog-b" },
-    ]);
+    expect(await src.servers()).toEqual({
+      servers: [
+        { id: "gl-a", label: "graylog-a" },
+        { id: "gl-b", label: "graylog-b" },
+      ],
+      dedupEnabled: true,
+    });
+  });
+
+  it("maps server_ids/server_labels of a deduplicated row + dedupe search flag", async () => {
+    const fetchFn = vi.fn(async (_url: RequestInfo | URL, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body));
+      expect(body.dedupe).toBe(false);
+      return jsonResponse({
+        messages: [
+          {
+            id: "gl-a:1",
+            timestamp: 100,
+            source: "h",
+            message: "m",
+            server_id: "gl-a",
+            server_label: "graylog-a",
+            server_ids: ["gl-a", "gl-b"],
+            server_labels: ["graylog-a", "graylog-b"],
+          },
+        ],
+        total: 2,
+      });
+    }) as unknown as typeof fetch;
+
+    const src = new GraylogSource({ getToken: () => "tok", fetchFn });
+    const result = await src.search({ from: 0, to: 100, dedupe: false });
+    expect(result.messages[0]).toMatchObject({
+      serverIds: ["gl-a", "gl-b"],
+      serverLabels: ["graylog-a", "graylog-b"],
+    });
   });
 
   it("sends the servers filter and maps server tags + partial errors", async () => {
@@ -171,7 +204,7 @@ describe("NullLogSource", () => {
   it("is disabled and returns empty results", async () => {
     const src = new NullLogSource();
     expect(src.enabled).toBe(false);
-    await expect(src.servers()).resolves.toEqual([]);
+    await expect(src.servers()).resolves.toEqual({ servers: [], dedupEnabled: false });
     await expect(src.streams()).resolves.toEqual([]);
     await expect(src.search()).resolves.toEqual({ messages: [], total: 0 });
   });
