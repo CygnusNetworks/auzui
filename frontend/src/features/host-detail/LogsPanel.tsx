@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { LogSource } from "@auzui/logs";
 import { LogRows } from "../../components/LogRows";
 import { useDebouncedValue } from "../../lib/use-debounced-value";
+import { useLogServers } from "../../lib/use-logs";
 import { useHostLogs } from "./use-host-logs";
 import { useT } from "../../lib/i18n";
 
@@ -26,11 +27,18 @@ export function LogsPanel({
   const [query, setQuery] = useState("");
   const debouncedQuery = useDebouncedValue(query, DEBOUNCE_MS);
 
+  const serversQuery = useLogServers(source);
+  const allServers = serversQuery.data ?? [];
+  const multiServer = allServers.length > 1;
+  // Panel-local server selection (empty = all); a small dropdown in the head.
+  const [selectedServers, setSelectedServers] = useState<string[]>([]);
+
   const { data, isLoading, isError, fetchNextPage, hasNextPage, isFetchingNextPage } = useHostLogs(
     source,
     hostId,
     range,
     debouncedQuery,
+    selectedServers,
   );
   const messages = data?.pages.flatMap((p) => p.messages) ?? [];
   const matchedSources = data?.pages[0]?.matchedSources;
@@ -54,12 +62,27 @@ export function LogsPanel({
             ))}
           </span>
         )}
+        {multiServer && (
+          <select
+            value={selectedServers.length === 1 ? selectedServers[0] : ""}
+            onChange={(e) => setSelectedServers(e.target.value ? [e.target.value] : [])}
+            aria-label={t("logs.serversLabel")}
+            className="ml-auto rounded-md border border-line bg-surface-2 px-2 py-1 font-mono text-[11px] text-ink"
+          >
+            <option value="">{t("logs.serversLabel")} *</option>
+            {allServers.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.label}
+              </option>
+            ))}
+          </select>
+        )}
         <input
           type="text"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder={t("hostDetail.logs.filterPlaceholder")}
-          className="ml-auto min-w-[180px] rounded-md border border-line bg-surface-2 px-2.5 py-1 text-[12px] text-ink"
+          className={`min-w-[180px] rounded-md border border-line bg-surface-2 px-2.5 py-1 text-[12px] text-ink ${multiServer ? "" : "ml-auto"}`}
         />
       </div>
 
@@ -76,7 +99,7 @@ export function LogsPanel({
       ) : (
         <>
           <div className="max-h-96 overflow-y-auto">
-            <LogRows messages={messages} />
+            <LogRows messages={messages} showServer={multiServer} />
           </div>
           {hasNextPage && (
             <div className="border-t border-line-soft p-2 text-center">

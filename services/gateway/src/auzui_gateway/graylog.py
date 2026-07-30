@@ -9,6 +9,7 @@ widely compatible path across Graylog versions; the Views/Search-Scripting
 API can be added later without changing the gateway surface.
 """
 
+import asyncio
 import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -17,7 +18,7 @@ from typing import Any
 import httpx
 from fastapi import HTTPException
 
-from .config import Settings
+from .config import GraylogServer, Settings
 
 logger = logging.getLogger(__name__)
 
@@ -115,19 +116,28 @@ def apply_filters(
 
 
 class GraylogClient:
-    def __init__(self, settings: Settings) -> None:
+    """Read-only client for ONE Graylog server. The multi-server orchestration
+    (parallel fan-out, timestamp merge, partial-failure handling) lives in
+    GraylogService below."""
+
+    def __init__(self, settings: Settings, server: GraylogServer) -> None:
         self._s = settings
+        self._server = server
+
+    @property
+    def server(self) -> GraylogServer:
+        return self._server
 
     def _client(self) -> httpx.AsyncClient:
         s = self._s
         headers = {"Accept": "application/json", "X-Requested-By": "auzui-gateway"}
         auth: tuple[str, str] | None = None
         if s.graylog_bearer_auth:
-            headers["Authorization"] = f"Bearer {s.graylog_token}"
+            headers["Authorization"] = f"Bearer {self._server.token}"
         else:
-            auth = (s.graylog_token, "token")
+            auth = (self._server.token, "token")
         return httpx.AsyncClient(
-            base_url=s.graylog_url.rstrip("/"),
+            base_url=self._server.url.rstrip("/"),
             timeout=s.graylog_timeout,
             verify=s.graylog_verify_tls,
             headers=headers,
@@ -162,6 +172,8 @@ class GraylogClient:
                     "description": s.get("description", ""),
                     "disabled": bool(s.get("disabled", False)),
                     "is_default": bool(s.get("is_default", False)),
+                    "server_id": self._server.id,
+                    "server_label": self._server.label,
                 }
             )
         return streams
@@ -215,7 +227,7 @@ class GraylogClient:
             }
             messages.append(
                 {
-                    "id": str(msg_id),
+                    "id": f"{self._server.id}:{msg_id}",
                     "timestamp": ts,
                     "source": m.get("source", ""),
                     "message": m.get("message", ""),
@@ -223,9 +235,99 @@ class GraylogClient:
                     "facility": m.get("facility"),
                     "facility_num": m.get("facility_num"),
                     "stream_ids": m.get("streams", []),
+                    "server_id": self._server.id,
+                    "server_label": self._server.label,
                     "fields": {
                         k: v for k, v in m.items() if k not in known and not k.startswith("gl2_")
                     },
                 }
             )
         return {"messages": messages, "total": int(body.get("total_results", len(messages)))}
+
+
+class GraylogService:
+    """Fans a search/stream request out across the selected Graylog servers,
+    running them in parallel and merging the results. A single server failing
+    yields a partial result plus an `errors` entry rather than a 5xx for the
+    whole request (PLAN task 2)."""
+
+    def __init__(self, settings: Settings) -> None:
+        self._s = settings
+        self._clients: dict[str, GraylogClient] = {
+            srv.id: GraylogClient(settings, srv) for srv in settings.graylog_server_list
+        }
+
+    @property
+    def enabled(self) -> bool:
+        return bool(self._clients)
+
+    def server_list(self) -> list[dict[str, str]]:
+        """[{id, label}] — never exposes tokens or URLs."""
+        return [{"id": c.server.id, "label": c.server.label} for c in self._clients.values()]
+
+    def _select(self, server_ids: list[str] | None) -> list[GraylogClient]:
+        if not server_ids:
+            return list(self._clients.values())
+        selected = [self._clients[sid] for sid in server_ids if sid in self._clients]
+        # Unknown ids are ignored; if the caller selected only unknown servers
+        # fall back to all so the request still returns something meaningful.
+        return selected or list(self._clients.values())
+
+    async def streams(self, server_ids: list[str] | None = None) -> list[dict[str, Any]]:
+        """Union of streams across the selected servers, each tagged with its
+        server_id/server_label. One unreachable server does not fail the rest."""
+        clients = self._select(server_ids)
+        results = await asyncio.gather(*(c.streams() for c in clients), return_exceptions=True)
+        streams: list[dict[str, Any]] = []
+        for client, res in zip(clients, results, strict=True):
+            if isinstance(res, BaseException):
+                logger.warning("streams from server %s failed: %r", client.server.id, res)
+                continue
+            streams.extend(res)
+        # Every selected server failed → surface it (single-server: the classic
+        # "Graylog down" 502) rather than a misleading empty stream list.
+        if streams == [] and all(isinstance(r, BaseException) for r in results) and results:
+            first = next(r for r in results if isinstance(r, BaseException))
+            if isinstance(first, HTTPException):
+                raise first
+            raise HTTPException(502, f"Graylog unreachable: {first.__class__.__name__}")
+        return streams
+
+    async def search(
+        self,
+        query: str,
+        time_from: float,
+        time_to: float,
+        limit: int,
+        offset: int = 0,
+        stream_ids: list[str] | None = None,
+        server_ids: list[str] | None = None,
+    ) -> dict[str, Any]:
+        """Query every selected server with the same limit+offset, then merge
+        all returned messages by timestamp (descending) and cap the merged list
+        to `limit`. `total` is the sum of the per-server totals. Pagination is
+        therefore approximate across servers (each page pulls limit rows per
+        server and keeps the newest `limit` of the union) — documented, simple
+        and correct enough for log triage; deep offsets stay monotonic."""
+        clients = self._select(server_ids)
+        results = await asyncio.gather(
+            *(c.search(query, time_from, time_to, limit, offset, stream_ids) for c in clients),
+            return_exceptions=True,
+        )
+        merged: list[dict[str, Any]] = []
+        total = 0
+        errors: list[dict[str, str]] = []
+        for client, res in zip(clients, results, strict=True):
+            if isinstance(res, BaseException):
+                detail = res.detail if isinstance(res, HTTPException) else res.__class__.__name__
+                logger.warning("search on server %s failed: %r", client.server.id, res)
+                errors.append({"server_id": client.server.id, "error": str(detail)})
+                continue
+            merged.extend(res["messages"])
+            total += res["total"]
+        merged.sort(key=lambda m: m["timestamp"], reverse=True)
+        # If every selected server errored, surface it as an upstream failure
+        # rather than a misleading empty-but-ok result.
+        if errors and not any(not isinstance(r, BaseException) for r in results):
+            raise HTTPException(502, f"all Graylog servers failed: {errors}")
+        return {"messages": merged[:limit], "total": total, "errors": errors}

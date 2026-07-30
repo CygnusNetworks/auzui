@@ -83,7 +83,9 @@ async def test_search_passes_query_and_range(client):
     assert body["total"] == 1
     msg = body["messages"][0]
     assert msg["source"] == "acc-sw-b04"
-    assert msg["id"] == "msg-1"
+    # ids are prefixed with the server id so they stay unique across servers
+    assert msg["id"] == "default:msg-1"
+    assert msg["server_id"] == "default"
     assert msg["facility_num"] == 16
     # gl2_* internals are stripped from fields, custom fields survive
     assert "gl2_remote_ip" not in msg["fields"]

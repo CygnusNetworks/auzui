@@ -20,6 +20,7 @@ class ZabbixClient:
         self._url = settings.zabbix_api_url
         self._timeout = settings.zabbix_timeout
         self._perm_cache: TTLCache[bool] = TTLCache(settings.permission_cache_ttl)
+        self._username_cache: TTLCache[str] = TTLCache(settings.permission_cache_ttl)
         self._host_cache: TTLCache[dict[str, Any] | None] = TTLCache(
             settings.host_mapping_cache_ttl
         )
@@ -94,6 +95,25 @@ class ZabbixClient:
             return
         await self._call(token, "user.get", {"output": ["userid"], "limit": 1})
         self._perm_cache.set(f"session:{token}", True)
+
+    async def get_username(self, token: str) -> str:
+        """The login name behind the session token — used as the `owner` of
+        saved filter sets. Zabbix 6.0+ calls it `username`; older releases use
+        `alias`. 401 if the session is invalid. Cached for the session TTL."""
+        cached = self._username_cache.get(token)
+        if cached is not None:
+            return cached
+        result = await self._call(
+            token, "user.get", {"output": ["userid", "username", "alias"], "limit": 1}
+        )
+        if not result:
+            raise HTTPException(401, "session token resolves to no user")
+        row = result[0]
+        username = str(row.get("username") or row.get("alias") or f"userid:{row.get('userid')}")
+        self._username_cache.set(token, username)
+        # A resolved username also proves the session is live.
+        self._perm_cache.set(f"session:{token}", True)
+        return username
 
     async def check_items_visible(self, token: str, itemids: list[str]) -> None:
         """403 unless the session token may see *all* requested items."""

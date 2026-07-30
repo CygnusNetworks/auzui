@@ -1,9 +1,14 @@
 export type {
   LogFilter,
   LogFilterField,
+  LogFilterSet,
+  LogFilterSetInput,
+  LogFilterSetPayload,
   LogMessage,
   LogSearchParams,
   LogSearchResult,
+  LogServer,
+  LogServerError,
   LogSource,
   LogStream,
 } from "./source";

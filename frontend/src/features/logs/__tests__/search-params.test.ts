@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { filtersFromSearch, filtersToSearchValue, validateLogsSearch } from "../search-params";
+import {
+  filtersFromSearch,
+  filtersToSearchValue,
+  parseServersParam,
+  validateLogsSearch,
+} from "../search-params";
 
 describe("logs search params: include/exclude filter chips", () => {
   it("round-trips a simple filter through encode/decode", () => {
@@ -39,5 +44,23 @@ describe("logs search params: include/exclude filter chips", () => {
   it("validateLogsSearch keeps include/exclude as raw strings, not parsed further", () => {
     const search = validateLogsSearch({ stream: "s1", host: "web01", include: "facility:local0" });
     expect(search).toEqual({ stream: "s1", host: "web01", include: "facility:local0", exclude: undefined });
+  });
+
+  it("validateLogsSearch parses page (string or number) and drops invalid/<1 pages", () => {
+    expect(validateLogsSearch({ page: "3" }).page).toBe(3);
+    expect(validateLogsSearch({ page: 2 }).page).toBe(2);
+    expect(validateLogsSearch({ page: "0" }).page).toBeUndefined();
+    expect(validateLogsSearch({ page: "abc" }).page).toBeUndefined();
+  });
+
+  it("validateLogsSearch keeps servers and set as strings", () => {
+    const search = validateLogsSearch({ servers: "gl-a,gl-b", set: "abc123" });
+    expect(search.servers).toBe("gl-a,gl-b");
+    expect(search.set).toBe("abc123");
+  });
+
+  it("parseServersParam splits and trims, dropping blanks", () => {
+    expect(parseServersParam("gl-a, gl-b ,")).toEqual(["gl-a", "gl-b"]);
+    expect(parseServersParam(undefined)).toEqual([]);
   });
 });

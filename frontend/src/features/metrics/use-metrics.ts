@@ -161,6 +161,71 @@ export function useGroupSuggestions(prefix: string) {
   });
 }
 
+/**
+ * Rezept-Daten (Vorschlag A): eine begrenzte Liste monitorter Hosts inkl. ihrer
+ * Gruppen — daraus zählen wir clientseitig die Hosts pro Gruppe, um eine Gruppe
+ * mit ≥2 Hosts für das "Load über <Gruppe>"-Rezept zu wählen. Bewusst EIN
+ * Request (kein Storm) und nur im leeren Zustand aktiv.
+ */
+export function useRecipeGroupCounts(enabled: boolean) {
+  return useQuery({
+    queryKey: ["metrics-recipe-groups"],
+    queryFn: async () => {
+      const hosts = await zabbixApi.hostGet({
+        output: ["hostid"],
+        selectHostGroups: "extend",
+        monitored_hosts: true,
+        limit: 500,
+      });
+      const counts = new Map<string, number>();
+      for (const h of hosts) {
+        for (const g of h.hostgroups ?? []) counts.set(g.name, (counts.get(g.name) ?? 0) + 1);
+      }
+      return [...counts.entries()].map(([name, hostCount]) => ({ name, hostCount }));
+    },
+    enabled,
+    staleTime: 5 * 60_000,
+  });
+}
+
+/**
+ * Zusatz-Spalten der Matrix ("＋ Host…"): lädt für die bereits sichtbaren
+ * Metrik-Keys die Items auf zusätzlich gewählten Hosts nach, damit deren Spalte
+ * echte Zellen bekommt. Exakter key_-Filter → kein API-Sturm.
+ */
+export function useExtraHostItems(hostIds: string[], metricKeys: string[]) {
+  const sortedHosts = [...hostIds].sort();
+  const sortedKeys = [...metricKeys].sort();
+  return useQuery({
+    queryKey: ["metrics-extra-host-items", sortedHosts, sortedKeys],
+    queryFn: () =>
+      zabbixApi.itemGet({
+        hostids: hostIds,
+        filter: { key_: metricKeys, value_type: ["0", "3"] },
+        selectTags: "extend",
+        selectHosts: "extend",
+        monitored: true,
+        webitems: false,
+        output: ["itemid", "hostid", "name", "key_", "units", "value_type", "lastvalue"],
+      }),
+    enabled: hostIds.length > 0 && metricKeys.length > 0,
+    staleTime: 30_000,
+  });
+}
+
+/** Lädt Itemids einer Metrik (exakter key_) auf einer Hostmenge — für den Zeilenkopf-Toggle. */
+export function fetchRowItemIds(key_: string, hostIds: string[]): Promise<string[]> {
+  return zabbixApi
+    .itemGet({
+      hostids: hostIds,
+      filter: { key_: [key_], value_type: ["0", "3"] },
+      monitored: true,
+      webitems: false,
+      output: ["itemid"],
+    })
+    .then((items) => items.map((i) => i.itemid));
+}
+
 /** Volle Item-Details für ausgewählte itemids (Graph-Tray) — unabhängig davon, ob die Suche noch dieselben Treffer liefert (teilbarer ?items=-Link). */
 export function useItemsByIds(itemIds: string[]) {
   return useQuery({

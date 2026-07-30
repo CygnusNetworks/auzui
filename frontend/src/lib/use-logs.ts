@@ -27,3 +27,17 @@ export function useLogSource(): LogSource {
     [enabled, token],
   );
 }
+
+/**
+ * The configured Graylog servers (GET /api/logs/servers). The multi-server UI
+ * (server chips, per-row server tags) only shows when this returns >1 entry;
+ * single-server deployments see nothing new.
+ */
+export function useLogServers(source: LogSource) {
+  return useQuery({
+    queryKey: ["log-servers"],
+    queryFn: ({ signal }) => source.servers(signal),
+    enabled: source.enabled,
+    staleTime: Infinity,
+  });
+}

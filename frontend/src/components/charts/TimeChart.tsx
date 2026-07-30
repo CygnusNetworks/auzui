@@ -51,6 +51,13 @@ export interface TimeChartProps {
   thresholds?: TimeChartThreshold[];
   /** Drag-to-select on the plot calls this with the selection as Unix seconds instead of auto-zooming. */
   onBrush?: (fromSec: number, toSec: number) => void;
+  /**
+   * Optional uPlot cursor-sync group key. When set, this chart joins the named
+   * sync group so a crosshair in one chart mirrors across all charts sharing
+   * the key (used by the metrics Panel-Stack). Omitted → no sync, identical
+   * behaviour as before.
+   */
+  syncKey?: string;
 }
 
 const CHART_COLOR_VARS = ["--color-chart-1", "--color-chart-2", "--color-chart-3", "--color-chart-4"];
@@ -105,7 +112,7 @@ function drawThresholds(thresholds: TimeChartThreshold[]) {
  * data update (e.g. the 30s live-refresh tick) instead calls uPlot's
  * `setData` in place so the chart never unmounts/flashes a placeholder.
  */
-export function TimeChart({ series, unit, height = 220, thresholds = [], onBrush }: TimeChartProps) {
+export function TimeChart({ series, unit, height = 220, thresholds = [], onBrush, syncKey }: TimeChartProps) {
   const { locale } = useLocale();
   const containerRef = useRef<HTMLDivElement>(null);
   const plotRef = useRef<uPlot | null>(null);
@@ -130,6 +137,7 @@ export function TimeChart({ series, unit, height = 220, thresholds = [], onBrush
     height,
     thresholds,
     hasOnBrush: !!onBrush,
+    syncKey,
     // Axis tick formatters (x date + y number) close over `locale`, so a
     // language switch must trigger a full rebuild, not just a setData update.
     locale,
@@ -167,6 +175,10 @@ export function TimeChart({ series, unit, height = 220, thresholds = [], onBrush
       series: uSeries,
       cursor: {
         drag: { x: true, y: false, setScale: false },
+        // Group crosshairs across panels that share the key. `match` keeps the
+        // sync limited to the x-axis so panels with different y-units don't try
+        // to align vertically. Omitted key → uPlot leaves cursor.sync undefined.
+        ...(syncKey ? { sync: { key: syncKey, setSeries: false } } : {}),
       },
       hooks: {
         draw: thresholds.length > 0 ? [drawThresholds(thresholds)] : [],

@@ -14,6 +14,7 @@ export interface StoredLogFilters {
   host?: string;
   include?: string;
   exclude?: string;
+  servers?: string;
 }
 
 function storageKey(username: string): string {
@@ -22,7 +23,9 @@ function storageKey(username: string): string {
 
 /** Ob überhaupt ein persistierenswerter Wert gesetzt ist (leere Objekte nicht speichern). */
 export function hasStoredValues(filters: StoredLogFilters): boolean {
-  return Boolean(filters.stream || filters.host || filters.include || filters.exclude);
+  return Boolean(
+    filters.stream || filters.host || filters.include || filters.exclude || filters.servers,
+  );
 }
 
 export function readLogFilters(username: string): StoredLogFilters | null {
@@ -37,6 +40,7 @@ export function readLogFilters(username: string): StoredLogFilters | null {
       host: typeof obj.host === "string" ? obj.host : undefined,
       include: typeof obj.include === "string" ? obj.include : undefined,
       exclude: typeof obj.exclude === "string" ? obj.exclude : undefined,
+      servers: typeof obj.servers === "string" ? obj.servers : undefined,
     };
     return result;
   } catch {

@@ -214,12 +214,16 @@ export function LogRows({
   messages,
   onFilter,
   activeModeFor,
+  showServer = false,
 }: {
   messages: LogMessage[];
   onFilter?: OnFilter;
   /** Markiert Werte, auf die bereits ein Include/Exclude gesetzt ist. */
   activeModeFor?: ActiveModeFor;
+  /** Zeigt bei >1 Graylog-Servern ein dezentes Server-Tag je Zeile. */
+  showServer?: boolean;
 }) {
+  const t = useT();
   const [expanded, setExpanded] = useState<string | undefined>(undefined);
 
   return (
@@ -254,6 +258,14 @@ export function LogRows({
               </span>
               <span className="min-w-0">
                 <span className="mb-0.5 flex flex-wrap items-center gap-1.5">
+                  {showServer && msg.serverLabel && (
+                    <span
+                      title={t("logs.serverTag", msg.serverLabel)}
+                      className="rounded bg-accent-soft px-1.5 py-0.5 font-mono text-[10px] text-accent"
+                    >
+                      {msg.serverLabel}
+                    </span>
+                  )}
                   <FilterableField
                     value={msg.source}
                     field="source"

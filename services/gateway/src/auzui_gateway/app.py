@@ -11,7 +11,8 @@ from pydantic import BaseModel, Field
 
 from . import __version__
 from .config import Settings, get_settings
-from .graylog import GraylogClient, LogFilter, apply_filters, build_host_query
+from .filter_sets import FilterSetStore
+from .graylog import GraylogService, LogFilter, apply_filters, build_host_query
 from .influx import VALID_FNS, InfluxClient
 from .spnego import SpnegoAuthFailed, SpnegoService, SpnegoUnavailable, principal_to_login
 from .zabbix import ZabbixClient
@@ -44,6 +45,7 @@ class LogFilterModel(BaseModel):
 class LogsSearchRequest(BaseModel):
     query: str = "*"
     stream_ids: list[str] | None = None
+    servers: list[str] | None = None
     from_: float = Field(alias="from")
     to: float
     limit: int = Field(default=100, ge=1, le=1000)
@@ -61,10 +63,29 @@ class HostLogsRequest(BaseModel):
     offset: int = Field(default=0, ge=0)
     extra_query: str | None = None
     stream_ids: list[str] | None = None
+    servers: list[str] | None = None
     include: list[LogFilterModel] = Field(default_factory=list)
     exclude: list[LogFilterModel] = Field(default_factory=list)
 
     model_config = {"populate_by_name": True}
+
+
+class FilterSetPayload(BaseModel):
+    """The filter selection stored inside a saved set — mirrors the logs
+    toolbar's URL params (include/exclude chips, stream/server selection,
+    max level)."""
+
+    include: list[LogFilterModel] = Field(default_factory=list)
+    exclude: list[LogFilterModel] = Field(default_factory=list)
+    streams: list[str] | None = None
+    servers: list[str] | None = None
+    level: int | None = None
+
+
+class FilterSetCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    shared: bool = False
+    filters: FilterSetPayload = Field(default_factory=FilterSetPayload)
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -73,7 +94,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     zabbix = ZabbixClient(settings)
     influx = InfluxClient(settings)
-    graylog = GraylogClient(settings)
+    graylog = GraylogService(settings)
+    filter_store = FilterSetStore(settings.filter_sets_path)
 
     if settings.cors_origins:
         from fastapi.middleware.cors import CORSMiddleware
@@ -178,13 +200,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if not settings.graylog_enabled:
             raise HTTPException(404, "Graylog path not configured")
 
+    @app.get("/api/logs/servers")
+    async def logs_servers(token: str = Depends(bearer_token)) -> dict[str, object]:
+        require_graylog()
+        await zabbix.validate_session(token)
+        return {"servers": graylog.server_list()}
+
     @app.get("/api/logs/streams")
-    async def logs_streams(token: str = Depends(bearer_token)) -> dict[str, object]:
+    async def logs_streams(
+        servers: list[str] | None = None, token: str = Depends(bearer_token)
+    ) -> dict[str, object]:
         require_graylog()
         # Any valid Zabbix session may list streams; verify the token is real
         # by resolving it against the API (cheap, cached via permission cache).
         await zabbix.validate_session(token)
-        return {"streams": await graylog.streams()}
+        return {"streams": await graylog.streams(servers)}
 
     @app.post("/api/logs/search")
     async def logs_search(
@@ -198,7 +228,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             [LogFilter(f.field, f.value) for f in req.exclude],
             settings.graylog_source_field,
         )
-        return await graylog.search(query, req.from_, req.to, req.limit, req.offset, req.stream_ids)
+        return await graylog.search(
+            query, req.from_, req.to, req.limit, req.offset, req.stream_ids, req.servers
+        )
 
     @app.post("/api/logs/host/{hostid}")
     async def logs_host(
@@ -216,10 +248,54 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             settings.graylog_source_field,
         )
         result = await graylog.search(
-            query, req.from_, req.to, req.limit, req.offset, req.stream_ids
+            query, req.from_, req.to, req.limit, req.offset, req.stream_ids, req.servers
         )
         result["matched_sources"] = aliases
         return result
+
+    # ---- saved filter sets (team-wide) ----------------------------------
+
+    def _payload_dict(p: FilterSetPayload) -> dict[str, object]:
+        return {
+            "include": [{"field": f.field, "value": f.value} for f in p.include],
+            "exclude": [{"field": f.field, "value": f.value} for f in p.exclude],
+            "streams": p.streams,
+            "servers": p.servers,
+            "level": p.level,
+        }
+
+    @app.get("/api/logs/filter-sets")
+    async def filter_sets_list(token: str = Depends(bearer_token)) -> dict[str, object]:
+        require_graylog()
+        username = await zabbix.get_username(token)
+        return {"filter_sets": await filter_store.list_for(username)}
+
+    @app.post("/api/logs/filter-sets")
+    async def filter_sets_create(
+        req: FilterSetCreate, token: str = Depends(bearer_token)
+    ) -> dict[str, object]:
+        require_graylog()
+        username = await zabbix.get_username(token)
+        return await filter_store.create(username, req.name, req.shared, _payload_dict(req.filters))
+
+    @app.put("/api/logs/filter-sets/{set_id}")
+    async def filter_sets_update(
+        set_id: str, req: FilterSetCreate, token: str = Depends(bearer_token)
+    ) -> dict[str, object]:
+        require_graylog()
+        username = await zabbix.get_username(token)
+        return await filter_store.update(
+            set_id, username, req.name, req.shared, _payload_dict(req.filters)
+        )
+
+    @app.delete("/api/logs/filter-sets/{set_id}")
+    async def filter_sets_delete(
+        set_id: str, token: str = Depends(bearer_token)
+    ) -> dict[str, bool]:
+        require_graylog()
+        username = await zabbix.get_username(token)
+        await filter_store.delete(set_id, username)
+        return {"deleted": True}
 
     # ---- optional SPA serving -------------------------------------------
 

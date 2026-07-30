@@ -1,8 +1,11 @@
 import type {
   LogFilter,
+  LogFilterSet,
+  LogFilterSetInput,
   LogMessage,
   LogSearchParams,
   LogSearchResult,
+  LogServer,
   LogSource,
   LogStream,
 } from "./source";
@@ -21,6 +24,8 @@ interface GatewayStream {
   description: string;
   disabled: boolean;
   is_default: boolean;
+  server_id?: string;
+  server_label?: string;
 }
 
 interface GatewayMessage {
@@ -32,6 +37,8 @@ interface GatewayMessage {
   facility?: string;
   facility_num?: number;
   stream_ids?: string[];
+  server_id?: string;
+  server_label?: string;
   fields?: Record<string, unknown>;
 }
 
@@ -44,6 +51,7 @@ interface GatewaySearchResult {
   messages: GatewayMessage[];
   total: number;
   matched_sources?: string[];
+  errors?: { server_id: string; error: string }[];
 }
 
 function toGatewayFilters(filters: LogFilter[] | undefined): GatewayLogFilter[] | undefined {
@@ -82,6 +90,13 @@ export class GraylogSource implements LogSource {
     }
   }
 
+  /** GET /api/logs/servers → configured Graylog backends (no tokens). */
+  async servers(signal?: AbortSignal): Promise<LogServer[]> {
+    const res = await this.request("GET", "/api/logs/servers", undefined, signal);
+    const body = (await res.json()) as { servers: LogServer[] };
+    return body.servers ?? [];
+  }
+
   async streams(signal?: AbortSignal): Promise<LogStream[]> {
     const res = await this.request("GET", "/api/logs/streams", undefined, signal);
     const body = (await res.json()) as { streams: GatewayStream[] };
@@ -91,6 +106,8 @@ export class GraylogSource implements LogSource {
       description: s.description,
       disabled: s.disabled,
       isDefault: s.is_default,
+      serverId: s.server_id,
+      serverLabel: s.server_label,
     }));
   }
 
@@ -101,6 +118,7 @@ export class GraylogSource implements LogSource {
       {
         query: params.query ?? "*",
         stream_ids: params.streamIds,
+        servers: params.servers,
         from: params.from,
         to: params.to,
         limit: params.limit ?? 100,
@@ -127,6 +145,7 @@ export class GraylogSource implements LogSource {
         offset: params.offset ?? 0,
         extra_query: params.extraQuery,
         stream_ids: params.streamIds,
+        servers: params.servers,
         include: toGatewayFilters(params.include),
         exclude: toGatewayFilters(params.exclude),
       },
@@ -135,8 +154,32 @@ export class GraylogSource implements LogSource {
     return this.toResult((await res.json()) as GatewaySearchResult);
   }
 
+  async listFilterSets(signal?: AbortSignal): Promise<LogFilterSet[]> {
+    const res = await this.request("GET", "/api/logs/filter-sets", undefined, signal);
+    const body = (await res.json()) as { filter_sets: LogFilterSet[] };
+    return body.filter_sets ?? [];
+  }
+
+  async createFilterSet(input: LogFilterSetInput): Promise<LogFilterSet> {
+    const res = await this.request("POST", "/api/logs/filter-sets", input);
+    return (await res.json()) as LogFilterSet;
+  }
+
+  async updateFilterSet(id: string, input: LogFilterSetInput): Promise<LogFilterSet> {
+    const res = await this.request(
+      "PUT",
+      `/api/logs/filter-sets/${encodeURIComponent(id)}`,
+      input,
+    );
+    return (await res.json()) as LogFilterSet;
+  }
+
+  async deleteFilterSet(id: string): Promise<void> {
+    await this.request("DELETE", `/api/logs/filter-sets/${encodeURIComponent(id)}`);
+  }
+
   private async request(
-    method: "GET" | "POST",
+    method: "GET" | "POST" | "PUT" | "DELETE",
     path: string,
     body?: unknown,
     signal?: AbortSignal,
@@ -177,8 +220,15 @@ export class GraylogSource implements LogSource {
       facility: m.facility,
       facilityNum: m.facility_num,
       streamIds: m.stream_ids,
+      serverId: m.server_id,
+      serverLabel: m.server_label,
       fields: m.fields ?? {},
     }));
-    return { messages, total: raw.total, matchedSources: raw.matched_sources };
+    return {
+      messages,
+      total: raw.total,
+      matchedSources: raw.matched_sources,
+      errors: raw.errors?.map((e) => ({ serverId: e.server_id, error: e.error })),
+    };
   }
 }

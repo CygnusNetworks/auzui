@@ -9,16 +9,42 @@ export interface LogsSearch {
   include?: string;
   /** Exclude-filter chips, same encoding — covers hosts too (the `host` param has no exclude concept). */
   exclude?: string;
+  /** Comma-separated Graylog server ids to query (multi-server setups); empty = all. */
+  servers?: string;
+  /** 1-based page number for the result pager; absent/1 = first page (live). */
+  page?: number;
+  /** Id of the currently active saved filter set, if any. */
+  set?: string;
 }
 
 /** Mirrors features/latest-data/search-params.ts's style: a defensive validator for router search state. */
 export function validateLogsSearch(search: Record<string, unknown>): LogsSearch {
+  const rawPage =
+    typeof search.page === "number"
+      ? search.page
+      : typeof search.page === "string"
+        ? Number.parseInt(search.page, 10)
+        : NaN;
+  const page = Number.isFinite(rawPage) && rawPage >= 1 ? rawPage : undefined;
   return {
     stream: typeof search.stream === "string" ? search.stream : undefined,
     host: typeof search.host === "string" ? search.host : undefined,
     include: typeof search.include === "string" ? search.include : undefined,
     exclude: typeof search.exclude === "string" ? search.exclude : undefined,
+    servers: typeof search.servers === "string" ? search.servers : undefined,
+    page,
+    set: typeof search.set === "string" ? search.set : undefined,
   };
+}
+
+/** Parses the `?servers=gl-a,gl-b` param into a list of server ids. */
+export function parseServersParam(servers: string | undefined): string[] {
+  return servers
+    ? servers
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean)
+    : [];
 }
 
 const FILTER_FIELDS: ReadonlySet<string> = new Set<LogFilterField>(["source", "facility", "application_name"]);

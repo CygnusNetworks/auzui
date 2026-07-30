@@ -110,6 +110,43 @@ describe("GraylogSource", () => {
     });
   });
 
+  it("lists servers from GET /api/logs/servers", async () => {
+    const fetchFn = vi.fn(async (url: RequestInfo | URL) => {
+      expect(String(url)).toBe("/api/logs/servers");
+      return jsonResponse({
+        servers: [
+          { id: "gl-a", label: "graylog-a" },
+          { id: "gl-b", label: "graylog-b" },
+        ],
+      });
+    }) as unknown as typeof fetch;
+
+    const src = new GraylogSource({ getToken: () => "tok", fetchFn });
+    expect(await src.servers()).toEqual([
+      { id: "gl-a", label: "graylog-a" },
+      { id: "gl-b", label: "graylog-b" },
+    ]);
+  });
+
+  it("sends the servers filter and maps server tags + partial errors", async () => {
+    const fetchFn = vi.fn(async (_url: RequestInfo | URL, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body));
+      expect(body.servers).toEqual(["gl-a"]);
+      return jsonResponse({
+        messages: [
+          { id: "gl-a:1", timestamp: 100, source: "h", message: "m", server_id: "gl-a", server_label: "graylog-a" },
+        ],
+        total: 1,
+        errors: [{ server_id: "gl-b", error: "Graylog timeout" }],
+      });
+    }) as unknown as typeof fetch;
+
+    const src = new GraylogSource({ getToken: () => "tok", fetchFn });
+    const result = await src.search({ from: 0, to: 100, servers: ["gl-a"] });
+    expect(result.messages[0]).toMatchObject({ serverId: "gl-a", serverLabel: "graylog-a" });
+    expect(result.errors).toEqual([{ serverId: "gl-b", error: "Graylog timeout" }]);
+  });
+
   it("throws on gateway error status", async () => {
     const fetchFn = vi.fn(async () => new Response("nope", { status: 403 })) as unknown as typeof fetch;
     const src = new GraylogSource({ getToken: () => "tok", fetchFn });
@@ -134,6 +171,7 @@ describe("NullLogSource", () => {
   it("is disabled and returns empty results", async () => {
     const src = new NullLogSource();
     expect(src.enabled).toBe(false);
+    await expect(src.servers()).resolves.toEqual([]);
     await expect(src.streams()).resolves.toEqual([]);
     await expect(src.search()).resolves.toEqual({ messages: [], total: 0 });
   });

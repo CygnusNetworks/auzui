@@ -1,3 +1,6 @@
+import tempfile
+from pathlib import Path
+
 import httpx
 import pytest
 
@@ -19,6 +22,9 @@ def make_settings(**overrides) -> Settings:
         "graylog_url": GRAYLOG_URL,
         "graylog_token": "graylog-secret",
         "serve_frontend": False,
+        # Point at a temp file so the filter-set store is writable in tests
+        # (the /data default is a read-only mount that only exists in prod).
+        "filter_sets_path": str(Path(tempfile.gettempdir()) / "auzui-test-filter-sets.json"),
     }
     base.update(overrides)
     return Settings(_env_file=None, **base)

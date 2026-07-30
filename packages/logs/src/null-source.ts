@@ -1,8 +1,18 @@
-import type { LogSearchResult, LogSource, LogStream } from "./source";
+import type {
+  LogFilterSet,
+  LogSearchResult,
+  LogServer,
+  LogSource,
+  LogStream,
+} from "./source";
 
 /** No-op implementation used when the gateway reports logs disabled. */
 export class NullLogSource implements LogSource {
   readonly enabled = false;
+
+  async servers(): Promise<LogServer[]> {
+    return [];
+  }
 
   async streams(): Promise<LogStream[]> {
     return [];
@@ -14,5 +24,21 @@ export class NullLogSource implements LogSource {
 
   async hostLogs(): Promise<LogSearchResult> {
     return { messages: [], total: 0 };
+  }
+
+  async listFilterSets(): Promise<LogFilterSet[]> {
+    return [];
+  }
+
+  async createFilterSet(): Promise<LogFilterSet> {
+    throw new Error("logs disabled");
+  }
+
+  async updateFilterSet(): Promise<LogFilterSet> {
+    throw new Error("logs disabled");
+  }
+
+  async deleteFilterSet(): Promise<void> {
+    // no-op
   }
 }

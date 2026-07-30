@@ -1,7 +1,24 @@
+import json
+import logging
+from dataclasses import dataclass
 from functools import lru_cache
+from urllib.parse import urlparse
 
 from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class GraylogServer:
+    """One Graylog backend the gateway can query. `token` never leaves the
+    gateway; only `id`/`label` are exposed via /api/logs/servers."""
+
+    id: str
+    label: str
+    url: str
+    token: str
 
 
 class Settings(BaseSettings):
@@ -43,12 +60,23 @@ class Settings(BaseSettings):
 
     graylog_url: str = ""
     graylog_token: str = ""
+    # Multiple Graylog servers as a JSON list, e.g.
+    # [{"id":"gl-a","label":"graylog-a","url":"https://a...","token":"..."}].
+    # Takes precedence over graylog_url/token; the latter stay as a
+    # single-server fallback so existing deployments keep working unchanged.
+    graylog_servers: str = ""
     graylog_verify_tls: bool = True
     graylog_default_streams: str = ""  # CSV of stream ids; empty = all
     graylog_source_field: str = "source"
     # Graylog API tokens authenticate as Basic token:token; some setups sit
     # behind a proxy that wants Bearer instead.
     graylog_bearer_auth: bool = False
+
+    # Persistence for team-wide saved filter sets (JSON file on disk). The
+    # container runs read_only, so this MUST point at a writable mount (a
+    # Docker volume or tmpfs at /data). If the directory is not writable the
+    # store degrades to read-only/empty with a warning instead of crashing.
+    filter_sets_path: str = "/data/log-filter-sets.json"
 
     # Upstream timeouts (seconds)
     zabbix_timeout: float = 15.0
@@ -84,12 +112,52 @@ class Settings(BaseSettings):
         return bool(self.influx_url and self.influx_token and self.influx_org)
 
     @property
+    def graylog_server_list(self) -> list[GraylogServer]:
+        """Parsed multi-server config, or a single-element list derived from
+        the legacy graylog_url/token, or empty when Graylog is unconfigured."""
+        if self.graylog_servers.strip():
+            try:
+                raw = json.loads(self.graylog_servers)
+            except (ValueError, TypeError):
+                logger.warning("GRAYLOG_SERVERS is not valid JSON; ignoring it")
+                raw = []
+            servers: list[GraylogServer] = []
+            for i, entry in enumerate(raw if isinstance(raw, list) else []):
+                if not isinstance(entry, dict):
+                    continue
+                url = str(entry.get("url", "")).strip()
+                token = str(entry.get("token", "")).strip()
+                if not url or not token:
+                    logger.warning("GRAYLOG_SERVERS entry %d missing url/token; skipped", i)
+                    continue
+                sid = str(entry.get("id") or f"gl-{i}")
+                label = str(entry.get("label") or _derive_label(url))
+                servers.append(GraylogServer(id=sid, label=label, url=url, token=token))
+            return servers
+        if self.graylog_url and self.graylog_token:
+            return [
+                GraylogServer(
+                    id="default",
+                    label=_derive_label(self.graylog_url),
+                    url=self.graylog_url,
+                    token=self.graylog_token,
+                )
+            ]
+        return []
+
+    @property
     def graylog_enabled(self) -> bool:
-        return bool(self.graylog_url and self.graylog_token)
+        return bool(self.graylog_server_list)
 
     @property
     def default_stream_ids(self) -> list[str]:
         return [s.strip() for s in self.graylog_default_streams.split(",") if s.strip()]
+
+
+def _derive_label(url: str) -> str:
+    """Human-readable server label from a URL host (fallback when unset)."""
+    host = urlparse(url).hostname or url
+    return host
 
 
 @lru_cache
