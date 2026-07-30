@@ -38,8 +38,10 @@ export function useLogSearch(
     page: number;
     live: boolean;
     dedupe: boolean;
+    pageSize?: number;
   },
 ) {
+  const pageSize = params.pageSize ?? PAGE_SIZE;
   const livePage1 = params.live && params.page === 1;
   return useQuery<LogSearchResult>({
     queryKey: [
@@ -53,6 +55,7 @@ export function useLogSearch(
       params.exclude,
       params.page,
       params.dedupe,
+      pageSize,
     ],
     queryFn: ({ signal }) =>
       source.search({
@@ -61,8 +64,8 @@ export function useLogSearch(
         servers: params.servers.length > 0 ? params.servers : undefined,
         from: params.range.from,
         to: params.range.to,
-        limit: PAGE_SIZE,
-        offset: (params.page - 1) * PAGE_SIZE,
+        limit: pageSize,
+        offset: (params.page - 1) * pageSize,
         include: params.include,
         exclude: params.exclude,
         dedupe: params.dedupe,

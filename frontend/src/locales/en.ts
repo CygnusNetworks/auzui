@@ -420,6 +420,9 @@ export const en = {
     },
     pageInfo: (page: number, pages: number, perPage: number) =>
       `Page ${page} of ${pages} · ${perPage} per page`,
+    pageInfoShort: (page: number, pages: number) => `Page ${page} of ${pages}`,
+    pageSizeLabel: "Rows per page",
+    pageSizeOption: (n: number) => `${n}/page`,
     hitsCount: (n: number) => `${n} hits`,
     firstPage: "First page",
     prevPage: "Previous page",

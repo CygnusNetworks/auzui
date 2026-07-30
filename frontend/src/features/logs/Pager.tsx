@@ -5,18 +5,22 @@ import { useT } from "../../lib/i18n";
  * von Y · 50 pro Seite" + Seiten-Buttons (« ‹ 2 [3] 4 › »). Im Live-Modus auf
  * Seite > 1 zusätzlich der Hinweis, dass Live pausiert ist.
  */
+export const PAGE_SIZE_OPTIONS = [50, 100, 250, 500];
+
 export function Pager({
   total,
   page,
   pageSize,
   live,
   onPage,
+  onPageSize,
 }: {
   total: number;
   page: number;
   pageSize: number;
   live: boolean;
   onPage: (page: number) => void;
+  onPageSize?: (size: number) => void;
 }) {
   const t = useT();
   const pages = Math.max(1, Math.ceil(total / pageSize));
@@ -27,7 +31,26 @@ export function Pager({
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-line-soft px-3.5 py-1.5 font-mono text-[10.5px] text-ink-muted">
       <span>{t("logs.hitsCount", total)}</span>
       <span>·</span>
-      <span>{t("logs.pageInfo", clamped, pages, pageSize)}</span>
+      {onPageSize ? (
+        <>
+          <span>{t("logs.pageInfoShort", clamped, pages)}</span>
+          <select
+            value={pageSize}
+            onChange={(e) => onPageSize(Number(e.target.value))}
+            aria-label={t("logs.pageSizeLabel")}
+            title={t("logs.pageSizeLabel")}
+            className="rounded border border-line bg-surface-2 px-1 py-0.5 text-[10.5px] text-ink"
+          >
+            {PAGE_SIZE_OPTIONS.map((n) => (
+              <option key={n} value={n}>
+                {t("logs.pageSizeOption", n)}
+              </option>
+            ))}
+          </select>
+        </>
+      ) : (
+        <span>{t("logs.pageInfo", clamped, pages, pageSize)}</span>
+      )}
       {live && clamped > 1 && <span className="text-sev-warn">· {t("logs.livePaused")}</span>}
       <div className="ml-auto flex items-center gap-0.5">
         <PageButton label="«" title={t("logs.firstPage")} disabled={clamped <= 1} onClick={() => onPage(1)} />

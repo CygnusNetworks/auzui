@@ -19,6 +19,8 @@ export interface StoredLogFilters {
   dedupe?: string;
   /** Stream-Picker-Sortierung ("name" | "server"); rein clientseitig, kein URL-Param. */
   streamSort?: string;
+  /** Zeilen pro Seite; nur gespeichert, wenn vom Default abweichend. */
+  size?: number;
 }
 
 function storageKey(username: string): string {
@@ -52,6 +54,7 @@ export function readLogFilters(username: string): StoredLogFilters | null {
       servers: typeof obj.servers === "string" ? obj.servers : undefined,
       dedupe: obj.dedupe === "0" ? "0" : undefined,
       streamSort: typeof obj.streamSort === "string" ? obj.streamSort : undefined,
+      size: typeof obj.size === "number" && Number.isFinite(obj.size) ? obj.size : undefined,
     };
     return result;
   } catch {

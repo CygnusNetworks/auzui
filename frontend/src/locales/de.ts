@@ -422,6 +422,9 @@ export const de = {
     },
     pageInfo: (page: number, pages: number, perPage: number) =>
       `Seite ${page} von ${pages} · ${perPage} pro Seite`,
+    pageInfoShort: (page: number, pages: number) => `Seite ${page} von ${pages}`,
+    pageSizeLabel: "Zeilen pro Seite",
+    pageSizeOption: (n: number) => `${n}/Seite`,
     hitsCount: (n: number) => `${n} Treffer`,
     firstPage: "Erste Seite",
     prevPage: "Vorherige Seite",

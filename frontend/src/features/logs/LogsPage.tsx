@@ -175,6 +175,7 @@ function LogsBrowser() {
             exclude: stored.exclude,
             servers: stored.servers,
             dedupe: stored.dedupe,
+            size: stored.size,
           },
           replace: true,
         });
@@ -197,6 +198,7 @@ function LogsBrowser() {
       servers: search.servers,
       dedupe: search.dedupe,
       streamSort,
+      size: search.size,
     });
   }, [
     hydrated,
@@ -208,6 +210,7 @@ function LogsBrowser() {
     search.servers,
     search.dedupe,
     streamSort,
+    search.size,
   ]);
 
   // Beim ersten Laden ohne ?stream= den is_default-Stream vorauswählen.
@@ -328,6 +331,7 @@ function LogsBrowser() {
     page,
     live,
     dedupe: dedupeEnabled,
+    pageSize: search.size,
   });
   const messages = resultQuery.data?.messages ?? [];
   const total = resultQuery.data?.total ?? 0;
@@ -620,9 +624,15 @@ function LogsBrowser() {
                 <Pager
                   total={total}
                   page={page}
-                  pageSize={PAGE_SIZE}
+                  pageSize={search.size ?? PAGE_SIZE}
                   live={live}
                   onPage={(p) => void navigate({ to: "/logs", search: { ...search, page: p === 1 ? undefined : p } })}
+                  onPageSize={(n) =>
+                    void navigate({
+                      to: "/logs",
+                      search: { ...search, size: n === PAGE_SIZE ? undefined : n, page: undefined },
+                    })
+                  }
                 />
                 <div className="p-4 text-sm text-ink-2">{t("logs.noResults")}</div>
               </>
@@ -631,9 +641,15 @@ function LogsBrowser() {
                 <Pager
                   total={total}
                   page={page}
-                  pageSize={PAGE_SIZE}
+                  pageSize={search.size ?? PAGE_SIZE}
                   live={live}
                   onPage={(p) => void navigate({ to: "/logs", search: { ...search, page: p === 1 ? undefined : p } })}
+                  onPageSize={(n) =>
+                    void navigate({
+                      to: "/logs",
+                      search: { ...search, size: n === PAGE_SIZE ? undefined : n, page: undefined },
+                    })
+                  }
                 />
                 {partialErrors.length > 0 && (
                   <div className="border-b border-line-soft bg-sev-warn/10 px-3.5 py-1 font-mono text-[10.5px] text-sev-warn">

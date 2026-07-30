@@ -20,6 +20,8 @@ export interface LogsSearch {
    * is persisted so the shareable URL stays clean in the common case.
    */
   dedupe?: string;
+  /** Rows per page; absent = default (50). */
+  size?: number;
 }
 
 /** Mirrors features/latest-data/search-params.ts's style: a defensive validator for router search state. */
@@ -31,6 +33,13 @@ export function validateLogsSearch(search: Record<string, unknown>): LogsSearch 
         ? Number.parseInt(search.page, 10)
         : NaN;
   const page = Number.isFinite(rawPage) && rawPage >= 1 ? rawPage : undefined;
+  const rawSize =
+    typeof search.size === "number"
+      ? search.size
+      : typeof search.size === "string"
+        ? Number.parseInt(search.size, 10)
+        : NaN;
+  const size = Number.isFinite(rawSize) && rawSize >= 10 && rawSize <= 1000 ? rawSize : undefined;
   return {
     stream: typeof search.stream === "string" ? search.stream : undefined,
     host: typeof search.host === "string" ? search.host : undefined,
@@ -40,6 +49,7 @@ export function validateLogsSearch(search: Record<string, unknown>): LogsSearch 
     page,
     set: typeof search.set === "string" ? search.set : undefined,
     dedupe: search.dedupe === "0" ? "0" : undefined,
+    size,
   };
 }
 
