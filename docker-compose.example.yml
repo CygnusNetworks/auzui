@@ -10,9 +10,13 @@
 
 services:
   auzui:
-    image: ghcr.io/cygnusnetworks/auzui:latest
-    # alternatively, the same image from Docker Hub: cygnusnetworks/auzui:latest
+    image: ghcr.io/cygnusnetworks/auzui:stable
+    # alternatively, the same image from Docker Hub: cygnusnetworks/auzui:stable
     restart: unless-stopped
+    labels:
+      # Let Watchtower auto-update this container when a new :stable image
+      # (i.e. a new v* release tag) is pushed.
+      com.centurylinklabs.watchtower.enable: "true"
     ports:
       # Bind to localhost only; put a reverse proxy (nginx/traefik) in front
       # for TLS and external access.
