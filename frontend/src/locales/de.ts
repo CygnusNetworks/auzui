@@ -188,6 +188,7 @@ export const de = {
       title: "Logs",
       matched: "matched:",
       filterPlaceholder: "Freitext filtern…",
+      pageSize: "Nachlade-Menge",
       loading: "Lade Logs…",
       loadError: "Logs konnten nicht geladen werden.",
       noSource: "keine Log-Quelle gefunden",

@@ -19,14 +19,15 @@ export function useHostLogs(
   range: { from: number; to: number },
   extraQuery: string,
   servers: string[] = [],
+  pageSize: number = PAGE_SIZE,
 ) {
   return useInfiniteQuery<LogSearchResult>({
-    queryKey: ["host-logs", hostId, range.from, range.to, extraQuery, servers],
+    queryKey: ["host-logs", hostId, range.from, range.to, extraQuery, servers, pageSize],
     queryFn: ({ signal, pageParam }) =>
       source.hostLogs(hostId!, {
         from: range.from,
         to: range.to,
-        limit: PAGE_SIZE,
+        limit: pageSize,
         offset: pageParam as number,
         extraQuery: extraQuery || undefined,
         servers: servers.length > 0 ? servers : undefined,

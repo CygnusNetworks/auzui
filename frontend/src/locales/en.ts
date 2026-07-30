@@ -188,6 +188,7 @@ export const en = {
       title: "Logs",
       matched: "matched:",
       filterPlaceholder: "Filter free text…",
+      pageSize: "Batch size",
       loading: "Loading logs…",
       loadError: "Logs could not be loaded.",
       noSource: "no log source found",

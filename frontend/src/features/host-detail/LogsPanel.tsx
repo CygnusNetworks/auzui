@@ -25,6 +25,7 @@ export function LogsPanel({
 }) {
   const t = useT();
   const [query, setQuery] = useState("");
+  const [pageSize, setPageSize] = useState(100);
   const debouncedQuery = useDebouncedValue(query, DEBOUNCE_MS);
 
   const serversQuery = useLogServers(source);
@@ -39,6 +40,7 @@ export function LogsPanel({
     range,
     debouncedQuery,
     selectedServers,
+    pageSize,
   );
   const messages = data?.pages.flatMap((p) => p.messages) ?? [];
   const matchedSources = data?.pages[0]?.matchedSources;
@@ -84,6 +86,31 @@ export function LogsPanel({
           placeholder={t("hostDetail.logs.filterPlaceholder")}
           className={`min-w-[180px] rounded-md border border-line bg-surface-2 px-2.5 py-1 text-[12px] text-ink ${multiServer ? "" : "ml-auto"}`}
         />
+        <select
+          value={pageSize}
+          onChange={(e) => setPageSize(Number(e.target.value))}
+          aria-label={t("hostDetail.logs.pageSize")}
+          title={t("hostDetail.logs.pageSize")}
+          className="rounded-md border border-line bg-surface-2 px-2 py-1 font-mono text-[11px] text-ink"
+        >
+          {[100, 250, 500, 1000].map((n) => (
+            <option key={n} value={n}>
+              {n}
+            </option>
+          ))}
+        </select>
+        {hasNextPage && (
+          <button
+            type="button"
+            onClick={() => void fetchNextPage()}
+            disabled={isFetchingNextPage}
+            className="rounded-md border border-line px-3 py-1 font-mono text-[11px] text-ink-2 hover:bg-surface-2 disabled:opacity-50"
+          >
+            {isFetchingNextPage
+              ? t("hostDetail.logs.loadingMore")
+              : t("hostDetail.logs.loadMore", messages.length, total)}
+          </button>
+        )}
       </div>
 
       {isLoading ? (
@@ -97,25 +124,9 @@ export function LogsPanel({
             : t("hostDetail.logs.noResults")}
         </div>
       ) : (
-        <>
-          <div className="max-h-96 overflow-y-auto">
-            <LogRows messages={messages} showServer={multiServer} />
-          </div>
-          {hasNextPage && (
-            <div className="border-t border-line-soft p-2 text-center">
-              <button
-                type="button"
-                onClick={() => void fetchNextPage()}
-                disabled={isFetchingNextPage}
-                className="rounded-md border border-line px-3 py-1 font-mono text-[11px] text-ink-2 hover:bg-surface-2 disabled:opacity-50"
-              >
-                {isFetchingNextPage
-                  ? t("hostDetail.logs.loadingMore")
-                  : t("hostDetail.logs.loadMore", messages.length, total)}
-              </button>
-            </div>
-          )}
-        </>
+        <div className="max-h-96 overflow-y-auto">
+          <LogRows messages={messages} showServer={multiServer} />
+        </div>
       )}
     </div>
   );
