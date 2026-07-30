@@ -13,6 +13,38 @@ export interface PanZoomOptions {
 }
 
 /**
+ * Zoom is clamped relative to the "fit" scale (the scale at which the content
+ * exactly fills the stage): no further out than MIN_ZOOM_REL× fit, no closer
+ * in than MAX_ZOOM_REL× fit. Exported so callers derive their PanZoomOptions
+ * from the fitted viewBox instead of hard-coding absolute pixel spans.
+ */
+export const MIN_ZOOM_REL = 0.5;
+export const MAX_ZOOM_REL = 8;
+
+/**
+ * Derives absolute viewBox min/max spans from the fitted span (`fitW`/`fitH`)
+ * so zoom stays within [minRel, maxRel]× of fit. A larger `scale` (more zoomed
+ * in) means a smaller viewBox width, hence the inverse mapping: the closest
+ * zoom (maxRel× fit) yields the smallest span (fit / maxRel). Pure/testable —
+ * guards against non-finite/non-positive inputs so callers never produce NaN
+ * clamp bounds. */
+export function zoomBoundsFromFit(
+  fitW: number,
+  fitH: number,
+  minRel = MIN_ZOOM_REL,
+  maxRel = MAX_ZOOM_REL,
+): PanZoomOptions {
+  const safeW = Number.isFinite(fitW) && fitW > 0 ? fitW : 1;
+  const safeH = Number.isFinite(fitH) && fitH > 0 ? fitH : 1;
+  return {
+    minW: safeW / maxRel,
+    maxW: safeW / minRel,
+    minH: safeH / maxRel,
+    maxH: safeH / minRel,
+  };
+}
+
+/**
  * Shared pan/zoom mechanics for FocusStage/MapStage/MapView (PLAN.md "Gemeinsame
  * Interaktion"): wheel-zoom centered on the cursor, pinch-to-zoom (2-pointer
  * distance), pan via drag, double-click zoom-in, and an animated fit() that

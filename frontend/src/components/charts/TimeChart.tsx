@@ -149,6 +149,15 @@ export function TimeChart({ series, unit, height = 220, thresholds = [], onBrush
         stroke: s.color ?? cssVar(CHART_COLOR_VARS[i % CHART_COLOR_VARS.length]!),
         width: 1.6,
         points: { show: false },
+        // toUplotData merges every series onto a union x-axis, so any series
+        // whose (downsampled) timestamps don't coincide with the others' gets
+        // nulls at their x-positions. With point markers off, an isolated
+        // value between two nulls draws nothing — a whole series could vanish.
+        // spanGaps connects across those union-axis holes so the line stays
+        // visible. The gateway aligns same-cadence items to a shared grid
+        // (influx_min_window_seconds), so this only bridges genuine
+        // per-series gaps (e.g. mixed poll intervals in one chart).
+        spanGaps: true,
       })),
     ];
 

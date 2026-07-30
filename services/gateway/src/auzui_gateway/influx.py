@@ -35,10 +35,25 @@ def build_flux(
     )
 
 
-def choose_every(start: int, end: int, points: int) -> int:
-    """Window size so that the range yields roughly `points` samples."""
+def choose_every(start: int, end: int, points: int, min_window: int = 1) -> int:
+    """Window size (seconds) so the range yields roughly `points` samples.
+
+    Floored at ``min_window``: a window finer than the items' native poll
+    interval reveals no extra data (there is only one raw sample per interval),
+    but it DOES scatter each item onto its own phase of tiny window boundaries.
+    Items on a host are sampled a few seconds apart, so at e.g. ``every=3s``
+    their downsampled timestamps land in *adjacent* windows and never coincide.
+    The frontend then merges the series onto a union x-axis where every value
+    sits isolated between nulls, and uPlot (point markers off) draws no line at
+    all -- a blank chart for short ranges (15m/1h) while 6h+ happened to use a
+    window coarse enough to re-align. Flooring ``every`` snaps all items to a
+    shared grid (whole-minute boundaries for the 60s default) so their
+    timestamps coincide and the multi-series line renders. Capped at the span
+    so a very short custom range still yields a window that fits inside it.
+    """
     span = max(1, end - start)
-    return max(1, span // max(1, points))
+    every = max(1, span // max(1, points))
+    return min(max(every, min_window), span)
 
 
 class InfluxClient:
@@ -50,7 +65,12 @@ class InfluxClient:
     ) -> dict[str, list[tuple[float, float]]]:
         s = self._settings
         flux = build_flux(
-            s.influx_bucket, itemids, start, end, choose_every(start, end, points), fn
+            s.influx_bucket,
+            itemids,
+            start,
+            end,
+            choose_every(start, end, points, s.influx_min_window_seconds),
+            fn,
         )
         try:
             async with httpx.AsyncClient(timeout=s.influx_timeout) as client:

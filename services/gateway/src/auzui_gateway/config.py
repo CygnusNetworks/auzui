@@ -32,6 +32,14 @@ class Settings(BaseSettings):
     influx_token: str = ""
     influx_org: str = ""
     influx_bucket: str = "zabbix"
+    # Minimum aggregateWindow size (seconds). Downsampling never uses a window
+    # finer than this so every item in a multi-series query shares one window
+    # grid (whole-minute boundaries by default). A finer window scatters items
+    # sampled a few seconds apart onto non-coinciding timestamps, which the
+    # frontend renders as a blank chart for short ranges (see choose_every).
+    # Match to the smallest item poll interval you actually chart; 60s is the
+    # Zabbix default item interval.
+    influx_min_window_seconds: int = 60
 
     graylog_url: str = ""
     graylog_token: str = ""

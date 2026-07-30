@@ -38,4 +38,29 @@ describe("lttb", () => {
       expect(out[i]!.t).toBeGreaterThan(out[i - 1]!.t);
     }
   });
+
+  // Short-range edge cases: a 15m window over a 1m-polled item yields only
+  // ~15 raw points, far under any point budget — LTTB must pass them through
+  // untouched rather than dropping or duplicating any (a blank/short chart
+  // must never be caused by the downsampler).
+  it("passes a handful of points through unchanged (n < threshold)", () => {
+    const pts = mkSeries(15, (i) => i * 2);
+    const out = lttb(pts, 800);
+    expect(out).toEqual(pts);
+    expect(out).not.toBe(pts); // returns a copy, not the same reference
+  });
+
+  it("returns an empty array for empty input", () => {
+    expect(lttb([], 800)).toEqual([]);
+  });
+
+  it("keeps a single point", () => {
+    const pts = mkSeries(1, () => 42);
+    expect(lttb(pts, 800)).toEqual(pts);
+  });
+
+  it("passes through when threshold equals length exactly", () => {
+    const pts = mkSeries(10, (i) => i);
+    expect(lttb(pts, 10)).toEqual(pts);
+  });
 });
