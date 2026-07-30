@@ -117,3 +117,27 @@ jobs:
             AUZUI_BUILD_TIME=${{ steps.version.outputs.build_time }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      # Keep the Docker Hub repository description in sync with README.md.
+      # Docker Hub cannot resolve repo-relative links, so rewrite them to
+      # absolute GitHub URLs (raw for images, blob for documents) first.
+      - name: Prepare Docker Hub README
+        if: env.HAS_DOCKERHUB == 'true'
+        run: |
+          sed \
+            -e 's#](\./docs/images/#](https://raw.githubusercontent.com/CygnusNetworks/auzui/main/docs/images/#g' \
+            -e 's#](\./#](https://github.com/CygnusNetworks/auzui/blob/main/#g' \
+            README.md > README.dockerhub.md
+
+      # NOTE: DOCKER_TOKEN must be an access token with "Read & Write"
+      # scope (or the account password) — a pull-only token can push
+      # images via login-action but cannot update the description.
+      - name: Sync README to Docker Hub
+        if: env.HAS_DOCKERHUB == 'true'
+        uses: peter-evans/dockerhub-description@v4
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_TOKEN }}
+          repository: ${{ env.DOCKERHUB_IMAGE }}
+          readme-filepath: ./README.dockerhub.md
+          short-description: "auzui — A Usable Zabbix UI. Modern monitoring SPA + gateway for Zabbix."

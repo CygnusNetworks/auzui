@@ -132,7 +132,53 @@ docs/                      architecture, deployment, time-series notes
 site/                      static product page (GitHub Pages)
 ```
 
-## Quickstart
+## Run with Docker
+
+One image contains the gateway **and** the built SPA (served by the
+gateway, single origin). Only `ZABBIX_API_URL` is required:
+
+```bash
+docker run -d --name auzui \
+  -p 127.0.0.1:8080:8000 \
+  -e ZABBIX_API_URL=https://zabbix.example.com/api_jsonrpc.php \
+  ghcr.io/cygnusnetworks/auzui:latest
+# alternatively, the same image from Docker Hub:
+#   cygnusnetworks/auzui:latest
+```
+
+The same image is published to both
+[ghcr.io/cygnusnetworks/auzui](https://github.com/cygnusnetworks/auzui/pkgs/container/auzui)
+and [Docker Hub (`cygnusnetworks/auzui`)](https://hub.docker.com/r/cygnusnetworks/auzui)
+(`linux/amd64` + `linux/arm64`); tags: `latest` (main), `stable` +
+`X.Y.Z` + `X.Y` (release tags).
+
+For docker compose, copy
+[`docker-compose.example.yml`](./docker-compose.example.yml) to
+`docker-compose.yml` and adjust:
+
+```yaml
+services:
+  auzui:
+    image: ghcr.io/cygnusnetworks/auzui:latest
+    # alternatively: cygnusnetworks/auzui:latest (Docker Hub)
+    restart: unless-stopped
+    ports:
+      # Bind to localhost; put a reverse proxy (nginx/traefik) in front
+      # for TLS and external access.
+      - "127.0.0.1:8080:8000"
+    environment:
+      ZABBIX_API_URL: "https://zabbix.example.com/api_jsonrpc.php"
+      # Optional integrations (all feature-gated, see docs/configuration.md):
+      # INFLUX_URL / INFLUX_TOKEN / INFLUX_ORG   — InfluxDB time-series
+      # GRAYLOG_URL / GRAYLOG_TOKEN              — Graylog log panels
+      # SPNEGO_ENABLED / KRB5_KTNAME             — Kerberos SSO
+```
+
+InfluxDB and Graylog stay disabled until their variables are set; the
+corresponding UI surfaces hide themselves. Reverse-proxy pattern with the
+recommended security headers: [docs/deployment.md](./docs/deployment.md).
+
+## Development quickstart
 
 Prerequisites: Node ≥ 22, [pnpm](https://pnpm.io/) (version pinned via
 `packageManager` in `package.json`), and [uv](https://docs.astral.sh/uv/)

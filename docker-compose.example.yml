@@ -11,6 +11,7 @@
 services:
   auzui:
     image: ghcr.io/cygnusnetworks/auzui:latest
+    # alternatively, the same image from Docker Hub: cygnusnetworks/auzui:latest
     restart: unless-stopped
     ports:
       # Bind to localhost only; put a reverse proxy (nginx/traefik) in front
