@@ -123,6 +123,8 @@ export interface MaintenanceCreatePayload {
     every?: number;
     dayofweek?: number;
     start_time?: number;
+    /** Unix seconds — one-time periods only. */
+    start_date?: number;
     month?: number;
     day?: number;
   }[];
@@ -156,7 +158,12 @@ export function buildMaintenancePayload(
       name,
       active_since: input.startSeconds,
       active_till: input.startSeconds + input.durationSeconds,
-      timeperiods: [{ timeperiod_type: 0, period: input.durationSeconds }],
+      // start_date explizit setzen: ohne es nimmt Zabbix die Anlagezeit als
+      // Start der Timeperiod — ein in der Zukunft geplantes Fenster würde
+      // sonst nie innerhalb seines eigenen Rahmens greifen.
+      timeperiods: [
+        { timeperiod_type: 0, period: input.durationSeconds, start_date: input.startSeconds },
+      ],
       maintenance_type: input.withDataCollection ? 0 : 1,
     };
   } else {
@@ -235,6 +242,131 @@ export function buildMaintenancePayload(
   if (input.groupids.length > 0) payload.groups = input.groupids.map((groupid) => ({ groupid }));
   if (input.description?.trim()) payload.description = input.description.trim();
   return payload;
+}
+
+/**
+ * Prefill state for the maintenance form, decoded from an existing
+ * maintenance (see maintenanceToFormState). Mirrors the form's inputs, not
+ * the wire format.
+ */
+export interface MaintenanceFormState {
+  recurrence: MaintenanceRecurrence;
+  name: string;
+  description: string;
+  /** Unix seconds — occurrence start for "once", frame start otherwise. */
+  startSeconds: number;
+  durationSeconds: number;
+  withDataCollection: boolean;
+  hosts: { id: string; label: string }[];
+  groups: { id: string; label: string }[];
+  /** Seconds since midnight — recurrences only (0 for "once"). */
+  startTimeSeconds: number;
+  /** Weekday indices (0=Mon…6=Sun) — weekly only. */
+  weekdays: number[];
+  everyDays: number;
+  monthDay: number;
+  weekdayIndex: number;
+  weekdayOccurrence: number;
+  /** 1=Jan…12=Dec — yearly only. */
+  yearlyMonth: number;
+}
+
+/**
+ * Decodes an existing maintenance into form state for editing — the reverse
+ * of buildMaintenancePayload. Returns null for shapes the form cannot
+ * represent (no/multiple timeperiods, unknown types, multi-bit month masks
+ * with day-of-week mode, …); the UI disables editing for those.
+ */
+export function maintenanceToFormState(m: {
+  name: string;
+  description?: string;
+  active_since: string;
+  active_till: string;
+  maintenance_type: "0" | "1";
+  hosts?: { hostid: string; host: string; name?: string }[];
+  hostgroups?: { groupid: string; name: string }[];
+  timeperiods?: ZabbixTimeperiod[];
+}): MaintenanceFormState | null {
+  if (!m.timeperiods || m.timeperiods.length !== 1) return null;
+  const tp = m.timeperiods[0]!;
+
+  const base = {
+    name: m.name,
+    description: m.description ?? "",
+    durationSeconds: Number(tp.period),
+    withDataCollection: m.maintenance_type === "0",
+    hosts: (m.hosts ?? []).map((h) => ({ id: h.hostid, label: h.name || h.host })),
+    groups: (m.hostgroups ?? []).map((g) => ({ id: g.groupid, label: g.name })),
+    startTimeSeconds: Number(tp.start_time ?? 0),
+    weekdays: [] as number[],
+    everyDays: 1,
+    monthDay: 1,
+    weekdayIndex: 0,
+    weekdayOccurrence: 1,
+    yearlyMonth: 1,
+  };
+
+  switch (tp.timeperiod_type) {
+    case "0":
+      return {
+        ...base,
+        recurrence: "once",
+        startSeconds: Number(tp.start_date ?? m.active_since),
+        startTimeSeconds: 0,
+      };
+    case "2":
+      return {
+        ...base,
+        recurrence: "daily",
+        startSeconds: Number(m.active_since),
+        everyDays: Number(tp.every ?? 1),
+      };
+    case "3": {
+      const mask = Number(tp.dayofweek ?? 0);
+      const weekdays = Array.from({ length: 7 }, (_, i) => i).filter((i) => mask & (1 << i));
+      if (weekdays.length === 0) return null;
+      return {
+        ...base,
+        recurrence: "weekly",
+        startSeconds: Number(m.active_since),
+        weekdays,
+      };
+    }
+    case "4": {
+      const dow = Number(tp.dayofweek ?? 0);
+      const monthMask = Number(tp.month ?? 0);
+      const startSeconds = Number(m.active_since);
+      if (dow === 0) {
+        const monthDay = Number(tp.day ?? 0);
+        if (!monthDay) return null;
+        const singleMonth = singleBitIndex(monthMask);
+        if (singleMonth !== null) {
+          return {
+            ...base,
+            recurrence: "yearly",
+            startSeconds,
+            monthDay,
+            yearlyMonth: singleMonth + 1,
+          };
+        }
+        if (monthMask !== ALL_MONTHS) return null;
+        return { ...base, recurrence: "monthlyDay", startSeconds, monthDay };
+      }
+      const weekdayIndex = singleBitIndex(dow);
+      const occurrence = Number(tp.every ?? 0);
+      if (weekdayIndex === null || monthMask !== ALL_MONTHS) return null;
+      if (occurrence < 1 || occurrence > 5) return null;
+      return {
+        ...base,
+        recurrence: "monthlyWeekday",
+        startSeconds,
+        weekdayIndex,
+        weekdayOccurrence: occurrence,
+      };
+    }
+    default:
+      return null;
+  }
 }
 
 function intlLocale(locale: Locale): string {
@@ -336,7 +468,8 @@ function singleBitIndex(mask: number): number | null {
   return Math.round(Math.log2(mask));
 }
 
-function formatStartTime(secondsSinceMidnight: number): string {
+/** Seconds since midnight → "HH:MM" (form time input / timeperiod descriptions). */
+export function formatStartTime(secondsSinceMidnight: number): string {
   const h = Math.floor(secondsSinceMidnight / 3600);
   const m = Math.floor((secondsSinceMidnight % 3600) / 60);
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;

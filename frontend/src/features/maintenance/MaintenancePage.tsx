@@ -5,6 +5,7 @@ import {
   formatFrame,
   formatWindow,
   maintenanceStatus,
+  maintenanceToFormState,
   type MaintenanceStatus,
 } from "../../lib/maintenance";
 import { useHostsInMaintenance, useMaintenance } from "./use-maintenance";
@@ -19,6 +20,12 @@ export function MaintenancePage() {
   const { data: maintenances, isLoading, isError, error, refetch } = useMaintenance();
   const { data: hostsInMaintenance } = useHostsInMaintenance();
   const [expiredOpen, setExpiredOpen] = useState(false);
+  const [editing, setEditing] = useState<ZabbixMaintenance | null>(null);
+
+  // Falls das bearbeitete Fenster verschwindet (gelöscht/Poll), Edit-Modus verlassen.
+  const editingCurrent = editing
+    ? (maintenances ?? []).find((m) => m.maintenanceid === editing.maintenanceid)
+    : undefined;
 
   const activeMaintenanceIds = useMemo(
     () =>
@@ -51,11 +58,15 @@ export function MaintenancePage() {
                   title={t("maintenance.page.active")}
                   accentClass="border-l-sev-warn"
                   items={grouped.active}
+                  editingId={editingCurrent?.maintenanceid}
+                  onEdit={setEditing}
                 />
                 <StatusGroup
                   title={t("maintenance.page.planned")}
                   accentClass="border-l-accent"
                   items={grouped.planned}
+                  editingId={editingCurrent?.maintenanceid}
+                  onEdit={setEditing}
                 />
                 {grouped.expired.length > 0 && (
                   <div>
@@ -73,6 +84,8 @@ export function MaintenancePage() {
                           title=""
                           accentClass="border-l-line"
                           items={grouped.expired.slice(0, MAX_EXPIRED)}
+                          editingId={editingCurrent?.maintenanceid}
+                          onEdit={setEditing}
                         />
                       </div>
                     )}
@@ -83,7 +96,11 @@ export function MaintenancePage() {
           </div>
 
           <aside className="rounded-lg border border-line bg-surface">
-            <CreateMaintenanceForm />
+            <CreateMaintenanceForm
+              key={editingCurrent?.maintenanceid ?? "create"}
+              editing={editingCurrent}
+              onCloseEdit={() => setEditing(null)}
+            />
           </aside>
         </div>
       )}
@@ -112,10 +129,14 @@ function StatusGroup({
   title,
   accentClass,
   items,
+  editingId,
+  onEdit,
 }: {
   title: string;
   accentClass: string;
   items: ZabbixMaintenance[];
+  editingId?: string;
+  onEdit: (m: ZabbixMaintenance) => void;
 }) {
   const t = useT();
   if (items.length === 0 && title) return null;
@@ -129,7 +150,15 @@ function StatusGroup({
       {items.length === 0 ? (
         <span className="text-xs text-ink-muted">{t("maintenance.page.none")}</span>
       ) : (
-        items.map((m) => <MaintenanceRow key={m.maintenanceid} maintenance={m} accentClass={accentClass} />)
+        items.map((m) => (
+          <MaintenanceRow
+            key={m.maintenanceid}
+            maintenance={m}
+            accentClass={accentClass}
+            isEditing={m.maintenanceid === editingId}
+            onEdit={onEdit}
+          />
+        ))
       )}
     </div>
   );
@@ -138,13 +167,18 @@ function StatusGroup({
 function MaintenanceRow({
   maintenance,
   accentClass,
+  isEditing,
+  onEdit,
 }: {
   maintenance: ZabbixMaintenance;
   accentClass: string;
+  isEditing: boolean;
+  onEdit: (m: ZabbixMaintenance) => void;
 }) {
   const t = useT();
   const { locale } = useLocale();
   const deleteMutation = useDeleteMaintenance();
+  const editable = maintenanceToFormState(maintenance) !== null;
 
   function onDelete() {
     if (!window.confirm(t("maintenance.page.confirmDelete", maintenance.name))) return;
@@ -179,14 +213,29 @@ function MaintenanceRow({
             </span>
           )}
         </div>
-        <button
-          type="button"
-          onClick={onDelete}
-          disabled={deleteMutation.isPending}
-          className="rounded border border-line px-2 py-1 font-mono text-[10.5px] text-ink-muted disabled:opacity-50"
-        >
-          {t("maintenance.page.delete")}
-        </button>
+        <div className="flex gap-1.5">
+          <button
+            type="button"
+            onClick={() => onEdit(maintenance)}
+            disabled={!editable}
+            title={editable ? undefined : t("maintenance.page.editUnsupported")}
+            className={`rounded border px-2 py-1 font-mono text-[10.5px] disabled:opacity-40 ${
+              isEditing
+                ? "border-accent/50 bg-accent-soft font-semibold text-accent"
+                : "border-line text-ink-muted"
+            }`}
+          >
+            {t("maintenance.page.edit")}
+          </button>
+          <button
+            type="button"
+            onClick={onDelete}
+            disabled={deleteMutation.isPending}
+            className="rounded border border-line px-2 py-1 font-mono text-[10.5px] text-ink-muted disabled:opacity-50"
+          >
+            {t("maintenance.page.delete")}
+          </button>
+        </div>
       </div>
 
       {(maintenance.hosts?.length || maintenance.hostgroups?.length) && (

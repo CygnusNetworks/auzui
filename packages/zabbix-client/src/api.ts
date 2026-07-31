@@ -16,6 +16,28 @@ import type {
   ZabbixTrigger,
 } from "./types";
 
+/** Shared body of maintenance.create / maintenance.update. */
+export interface MaintenanceWriteParams {
+  name: string;
+  active_since: number;
+  active_till: number;
+  hosts?: { hostid: ZabbixId }[];
+  groups?: { groupid: ZabbixId }[];
+  timeperiods: {
+    timeperiod_type: number;
+    period: number;
+    every?: number;
+    dayofweek?: number;
+    start_time?: number;
+    /** Unix seconds — one-time periods only. */
+    start_date?: number;
+    month?: number;
+    day?: number;
+  }[];
+  maintenance_type?: number;
+  description?: string;
+}
+
 /**
  * Typed wrappers for the JSON-RPC methods auzui uses. Parameter shapes are
  * pragmatic subsets; anything else can go through `client.call` directly.
@@ -198,23 +220,15 @@ export class ZabbixApi {
   }
 
   /** hosts/groups use Zabbix ≥6.0 object-array form, not hostids/groupids. */
-  maintenanceCreate(params: {
-    name: string;
-    active_since: number;
-    active_till: number;
-    hosts?: { hostid: ZabbixId }[];
-    groups?: { groupid: ZabbixId }[];
-    timeperiods: {
-      timeperiod_type: number;
-      period: number;
-      every?: number;
-      dayofweek?: number;
-      start_time?: number;
-    }[];
-    maintenance_type?: number;
-    description?: string;
-  }): Promise<{ maintenanceids: ZabbixId[] }> {
+  maintenanceCreate(params: MaintenanceWriteParams): Promise<{ maintenanceids: ZabbixId[] }> {
     return this.client.call("maintenance.create", params);
+  }
+
+  /** Replaces hosts/groups/timeperiods wholesale with what is passed. */
+  maintenanceUpdate(
+    params: { maintenanceid: ZabbixId } & MaintenanceWriteParams,
+  ): Promise<{ maintenanceids: ZabbixId[] }> {
+    return this.client.call("maintenance.update", params);
   }
 
   maintenanceDelete(ids: ZabbixId[]): Promise<{ maintenanceids: ZabbixId[] }> {

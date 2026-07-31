@@ -4,7 +4,7 @@
  * dispatch logic itself stays simple to read and doesn't add a runtime
  * dependency to the normal build.
  */
-import type { ZabbixTrigger } from "@auzui/zabbix-client";
+import type { ZabbixMaintenance, ZabbixTimeperiod, ZabbixTrigger } from "@auzui/zabbix-client";
 import {
   DEMO_NOW,
   DEMO_TOKEN,
@@ -166,9 +166,16 @@ function resolveRpcMethod(method: string, params: Record<string, unknown>): unkn
     case "maintenance.get":
       return demoMaintenances;
     case "maintenance.create":
-      return { maintenanceids: [`900${Math.floor(Math.random() * 1000)}`] };
-    case "maintenance.delete":
-      return { maintenanceids: params };
+      return resolveMaintenanceCreate(params);
+    case "maintenance.update":
+      return resolveMaintenanceUpdate(params);
+    case "maintenance.delete": {
+      const ids = asStringArray(params) ?? asStringArray(params.maintenanceids) ?? [];
+      for (let i = demoMaintenances.length - 1; i >= 0; i--) {
+        if (ids.includes(demoMaintenances[i]!.maintenanceid)) demoMaintenances.splice(i, 1);
+      }
+      return { maintenanceids: ids };
+    }
     case "discoveryrule.get":
       return [];
     default:
@@ -241,6 +248,71 @@ function resolveEventAcknowledge(params: Record<string, unknown>) {
     }
   }
   return { eventids };
+}
+
+/** Rebuilds a ZabbixMaintenance row (string wire fields) from create/update params. */
+function maintenanceFromParams(
+  params: Record<string, unknown>,
+  maintenanceid: string,
+): ZabbixMaintenance {
+  const hosts = (params.hosts as { hostid: string | number }[] | undefined)?.map((h) => {
+    const full = demoHosts.find((d) => d.hostid === String(h.hostid));
+    return {
+      hostid: String(h.hostid),
+      host: full?.host ?? String(h.hostid),
+      name: full?.name ?? full?.host ?? String(h.hostid),
+    };
+  });
+  const hostgroups = (params.groups as { groupid: string | number }[] | undefined)?.map(
+    (g) =>
+      demoHostGroups.find((d) => d.groupid === String(g.groupid)) ?? {
+        groupid: String(g.groupid),
+        name: `group ${String(g.groupid)}`,
+      },
+  );
+  const timeperiods = ((params.timeperiods as Record<string, unknown>[] | undefined) ?? []).map(
+    (tp) => {
+      const out: Record<string, string> = {};
+      const keys = [
+        "timeperiod_type",
+        "period",
+        "every",
+        "dayofweek",
+        "start_time",
+        "start_date",
+        "month",
+        "day",
+      ];
+      for (const k of keys) if (tp[k] !== undefined) out[k] = String(tp[k]);
+      return out as unknown as ZabbixTimeperiod;
+    },
+  );
+  return {
+    maintenanceid,
+    name: String(params.name ?? ""),
+    active_since: String(params.active_since ?? 0),
+    active_till: String(params.active_till ?? 0),
+    maintenance_type: String(params.maintenance_type ?? "0") === "1" ? "1" : "0",
+    description: String(params.description ?? ""),
+    ...(hosts ? { hosts } : {}),
+    ...(hostgroups ? { hostgroups } : {}),
+    timeperiods,
+  };
+}
+
+let demoMaintenanceSequence = 90100;
+
+function resolveMaintenanceCreate(params: Record<string, unknown>) {
+  const maintenanceid = String(demoMaintenanceSequence++);
+  demoMaintenances.push(maintenanceFromParams(params, maintenanceid));
+  return { maintenanceids: [maintenanceid] };
+}
+
+function resolveMaintenanceUpdate(params: Record<string, unknown>) {
+  const maintenanceid = String(params.maintenanceid);
+  const index = demoMaintenances.findIndex((m) => m.maintenanceid === maintenanceid);
+  if (index >= 0) demoMaintenances[index] = maintenanceFromParams(params, maintenanceid);
+  return { maintenanceids: [maintenanceid] };
 }
 
 function resolveEventGet(params: Record<string, unknown>) {

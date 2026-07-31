@@ -7,6 +7,7 @@ import {
   formatFrame,
   formatWindow,
   maintenanceStatus,
+  maintenanceToFormState,
 } from "../maintenance";
 
 describe("maintenanceStatus", () => {
@@ -62,6 +63,11 @@ describe("buildMaintenancePayload", () => {
       maintenance_type: 0,
     });
     expect(payload.groups).toBeUndefined();
+  });
+
+  it("sets start_date on one-time periods (Zabbix would default to creation time)", () => {
+    const payload = buildMaintenancePayload(base);
+    expect(payload.timeperiods[0]!.start_date).toBe(1000);
   });
 
   it("omits hosts when empty and includes groups when present", () => {
@@ -405,5 +411,182 @@ describe("describeTimeperiod", () => {
       period: "3600",
     });
     expect(result).toBe("monatlich (komplex)");
+  });
+});
+
+describe("maintenanceToFormState", () => {
+  const base = {
+    name: "Wartung",
+    description: "Kernel-Update",
+    active_since: "1000",
+    active_till: "4600",
+    maintenance_type: "0" as const,
+    hosts: [{ hostid: "1", host: "web-01", name: "Web 01" }],
+    hostgroups: [{ groupid: "5", name: "Webserver" }],
+  };
+
+  it("decodes a one-time window (start from start_date, not active_since)", () => {
+    const state = maintenanceToFormState({
+      ...base,
+      timeperiods: [{ timeperiod_type: "0", period: "3600", start_date: "2000" }],
+    });
+    expect(state).toMatchObject({
+      recurrence: "once",
+      name: "Wartung",
+      description: "Kernel-Update",
+      startSeconds: 2000,
+      durationSeconds: 3600,
+      withDataCollection: true,
+      hosts: [{ id: "1", label: "Web 01" }],
+      groups: [{ id: "5", label: "Webserver" }],
+    });
+  });
+
+  it("falls back to active_since when start_date is missing", () => {
+    const state = maintenanceToFormState({
+      ...base,
+      timeperiods: [{ timeperiod_type: "0", period: "3600" }],
+    });
+    expect(state?.startSeconds).toBe(1000);
+  });
+
+  it("decodes a daily recurrence", () => {
+    const state = maintenanceToFormState({
+      ...base,
+      timeperiods: [{ timeperiod_type: "2", period: "1800", every: "2", start_time: "32400" }],
+    });
+    expect(state).toMatchObject({
+      recurrence: "daily",
+      everyDays: 2,
+      startTimeSeconds: 32400,
+      durationSeconds: 1800,
+    });
+  });
+
+  it("decodes a weekly recurrence into weekday indices", () => {
+    const state = maintenanceToFormState({
+      ...base,
+      timeperiods: [
+        { timeperiod_type: "3", period: "7200", every: "1", dayofweek: "65", start_time: "79200" },
+      ],
+    });
+    expect(state).toMatchObject({ recurrence: "weekly", weekdays: [0, 6] });
+  });
+
+  it("decodes monthly day-of-month (all-months mask)", () => {
+    const state = maintenanceToFormState({
+      ...base,
+      timeperiods: [
+        { timeperiod_type: "4", period: "1800", month: "4095", day: "15", start_time: "3600" },
+      ],
+    });
+    expect(state).toMatchObject({ recurrence: "monthlyDay", monthDay: 15 });
+  });
+
+  it("decodes yearly (single-month mask)", () => {
+    const state = maintenanceToFormState({
+      ...base,
+      timeperiods: [
+        { timeperiod_type: "4", period: "3600", month: "4", day: "15", start_time: "32400" },
+      ],
+    });
+    expect(state).toMatchObject({ recurrence: "yearly", yearlyMonth: 3, monthDay: 15 });
+  });
+
+  it("decodes monthly weekday-occurrence mode", () => {
+    const state = maintenanceToFormState({
+      ...base,
+      timeperiods: [
+        {
+          timeperiod_type: "4",
+          period: "3600",
+          month: "4095",
+          dayofweek: "2",
+          every: "2",
+          start_time: "32400",
+        },
+      ],
+    });
+    expect(state).toMatchObject({
+      recurrence: "monthlyWeekday",
+      weekdayIndex: 1,
+      weekdayOccurrence: 2,
+    });
+  });
+
+  it("maps maintenance_type 1 to withDataCollection false", () => {
+    const state = maintenanceToFormState({
+      ...base,
+      maintenance_type: "1",
+      timeperiods: [{ timeperiod_type: "0", period: "3600", start_date: "2000" }],
+    });
+    expect(state?.withDataCollection).toBe(false);
+  });
+
+  it("returns null for unrepresentable shapes", () => {
+    // No timeperiods at all.
+    expect(maintenanceToFormState({ ...base, timeperiods: [] })).toBeNull();
+    // Multiple timeperiods.
+    expect(
+      maintenanceToFormState({
+        ...base,
+        timeperiods: [
+          { timeperiod_type: "0", period: "60" },
+          { timeperiod_type: "2", period: "60" },
+        ],
+      }),
+    ).toBeNull();
+    // Weekly without any weekday bit.
+    expect(
+      maintenanceToFormState({
+        ...base,
+        timeperiods: [{ timeperiod_type: "3", period: "60", dayofweek: "0" }],
+      }),
+    ).toBeNull();
+    // Monthly day-of-month with a partial month mask (not all, not single).
+    expect(
+      maintenanceToFormState({
+        ...base,
+        timeperiods: [{ timeperiod_type: "4", period: "60", month: "5", day: "1" }],
+      }),
+    ).toBeNull();
+  });
+
+  it("round-trips through buildMaintenancePayload for a weekly window", () => {
+    const payload = buildMaintenancePayload({
+      name: "Patchday",
+      hostids: ["1"],
+      groupids: [],
+      startSeconds: 1000,
+      durationSeconds: 7200,
+      withDataCollection: true,
+      recurrence: "weekly",
+      dayofweek: 65,
+      startTimeSeconds: 79200,
+    });
+    const tp = payload.timeperiods[0]!;
+    const state = maintenanceToFormState({
+      name: payload.name,
+      active_since: String(payload.active_since),
+      active_till: String(payload.active_till),
+      maintenance_type: "0",
+      hosts: [{ hostid: "1", host: "web-01" }],
+      timeperiods: [
+        {
+          timeperiod_type: String(tp.timeperiod_type),
+          period: String(tp.period),
+          every: String(tp.every),
+          dayofweek: String(tp.dayofweek),
+          start_time: String(tp.start_time),
+        },
+      ],
+    });
+    expect(state).toMatchObject({
+      recurrence: "weekly",
+      weekdays: [0, 6],
+      startTimeSeconds: 79200,
+      durationSeconds: 7200,
+      startSeconds: 1000,
+    });
   });
 });

@@ -181,6 +181,7 @@ export interface ZabbixMap {
 }
 
 export interface ZabbixTimeperiod {
+  timeperiodid?: ZabbixId;
   /** "0" one-time, "2" daily, "3" weekly, "4" monthly. */
   timeperiod_type: string;
   /** Unix seconds — one-time periods only. */

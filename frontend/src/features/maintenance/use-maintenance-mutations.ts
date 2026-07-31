@@ -16,6 +16,20 @@ export function useCreateMaintenance() {
   });
 }
 
+export function useUpdateMaintenance() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      maintenanceid,
+      payload,
+    }: {
+      maintenanceid: string;
+      payload: MaintenanceCreatePayload;
+    }) => zabbixApi.maintenanceUpdate({ maintenanceid, ...payload }),
+    onSettled: () => invalidateAll(queryClient),
+  });
+}
+
 export function useDeleteMaintenance() {
   const queryClient = useQueryClient();
   return useMutation({

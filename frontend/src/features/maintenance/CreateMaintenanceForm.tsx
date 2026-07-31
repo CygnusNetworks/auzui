@@ -1,16 +1,20 @@
 import { useMemo, useState, type FormEvent } from "react";
 import { useQuery } from "@tanstack/react-query";
+import type { ZabbixMaintenance } from "@auzui/zabbix-client";
 import { zabbixApi } from "../../lib/auth/store";
 import {
   buildMaintenancePayload,
   dayOfWeekBit,
+  formatStartTime,
+  maintenanceToFormState,
   monthLabels,
   weekdayFullLabels,
   weekdayLabels,
   weekdayOccurrenceLabels,
+  type MaintenanceFormState,
   type MaintenanceRecurrence,
 } from "../../lib/maintenance";
-import { useCreateMaintenance } from "./use-maintenance-mutations";
+import { useCreateMaintenance, useUpdateMaintenance } from "./use-maintenance-mutations";
 import { useLocale, useT } from "../../lib/i18n";
 
 interface Option {
@@ -24,9 +28,52 @@ function nowLocalDateTime(): string {
   return d.toISOString().slice(0, 16);
 }
 
-export function CreateMaintenanceForm() {
+function toLocalDateTime(unixSeconds: number): string {
+  const d = new Date(unixSeconds * 1000);
+  d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+  return d.toISOString().slice(0, 16);
+}
+
+const PRESET_MINUTES = [5, 10, 15, 30, 60, 4 * 60, 8 * 60, 24 * 60, 7 * 24 * 60];
+
+/** Decodes a period in seconds back into the preset-pill / custom-field trio. */
+function decodeDuration(seconds: number): {
+  durationMinutes: number;
+  customDuration: string;
+  customDurationUnit: "minutes" | "hours";
+} {
+  const minutes = seconds / 60;
+  if (PRESET_MINUTES.includes(minutes)) {
+    return { durationMinutes: minutes, customDuration: "", customDurationUnit: "hours" };
+  }
+  if (Number.isInteger(minutes) && minutes % 60 !== 0 && minutes < 600) {
+    return { durationMinutes: 60, customDuration: String(minutes), customDurationUnit: "minutes" };
+  }
+  const hours = Math.round((seconds / 3600) * 100) / 100;
+  return { durationMinutes: 60, customDuration: String(hours), customDurationUnit: "hours" };
+}
+
+/**
+ * Create/edit form for maintenance windows. Without `editing` it creates;
+ * with `editing` it prefills from the existing maintenance (the parent only
+ * passes maintenances that maintenanceToFormState can decode — and remounts
+ * via `key` so the initializers rerun per edited window) and saves via
+ * maintenance.update.
+ */
+export function CreateMaintenanceForm({
+  editing,
+  onCloseEdit,
+}: {
+  editing?: ZabbixMaintenance;
+  onCloseEdit?: () => void;
+} = {}) {
   const t = useT();
   const { locale } = useLocale();
+  const initial: MaintenanceFormState | null = useMemo(
+    () => (editing ? maintenanceToFormState(editing) : null),
+    [editing],
+  );
+  const initialDuration = initial ? decodeDuration(initial.durationSeconds) : null;
 
   const RECURRENCE_OPTIONS: { value: MaintenanceRecurrence; label: string }[] = [
     { value: "once", label: t("maintenance.form.recurrence.once") },
@@ -49,28 +96,40 @@ export function CreateMaintenanceForm() {
     { label: t("maintenance.form.durationWeek"), minutes: 7 * 24 * 60 },
   ];
 
-  const [recurrence, setRecurrence] = useState<MaintenanceRecurrence>("once");
-  const [name, setName] = useState("");
-  const [description, setDescription] = useState("");
-  const [start, setStart] = useState(nowLocalDateTime());
-  const [durationMinutes, setDurationMinutes] = useState(60);
-  const [customDuration, setCustomDuration] = useState("");
-  const [customDurationUnit, setCustomDurationUnit] = useState<"minutes" | "hours">("hours");
-  const [withDataCollection, setWithDataCollection] = useState(true);
-  const [hosts, setHosts] = useState<Option[]>([]);
-  const [groups, setGroups] = useState<Option[]>([]);
+  const [recurrence, setRecurrence] = useState<MaintenanceRecurrence>(
+    initial?.recurrence ?? "once",
+  );
+  const [name, setName] = useState(initial?.name ?? "");
+  const [description, setDescription] = useState(initial?.description ?? "");
+  const [start, setStart] = useState(
+    initial ? toLocalDateTime(initial.startSeconds) : nowLocalDateTime(),
+  );
+  const [durationMinutes, setDurationMinutes] = useState(initialDuration?.durationMinutes ?? 60);
+  const [customDuration, setCustomDuration] = useState(initialDuration?.customDuration ?? "");
+  const [customDurationUnit, setCustomDurationUnit] = useState<"minutes" | "hours">(
+    initialDuration?.customDurationUnit ?? "hours",
+  );
+  const [withDataCollection, setWithDataCollection] = useState(
+    initial?.withDataCollection ?? true,
+  );
+  const [hosts, setHosts] = useState<Option[]>(initial?.hosts ?? []);
+  const [groups, setGroups] = useState<Option[]>(initial?.groups ?? []);
   const [hostQuery, setHostQuery] = useState("");
   const [groupQuery, setGroupQuery] = useState("");
   const [formError, setFormError] = useState<string | undefined>();
-  const [weekdays, setWeekdays] = useState<Set<number>>(new Set());
-  const [recurringTime, setRecurringTime] = useState("09:00");
-  const [everyDays, setEveryDays] = useState("1");
-  const [monthDay, setMonthDay] = useState("1");
-  const [weekdayIndex, setWeekdayIndex] = useState(0);
-  const [weekdayOccurrence, setWeekdayOccurrence] = useState(1);
-  const [yearlyMonth, setYearlyMonth] = useState(1);
+  const [weekdays, setWeekdays] = useState<Set<number>>(new Set(initial?.weekdays ?? []));
+  const [recurringTime, setRecurringTime] = useState(
+    initial && initial.recurrence !== "once" ? formatStartTime(initial.startTimeSeconds) : "09:00",
+  );
+  const [everyDays, setEveryDays] = useState(String(initial?.everyDays ?? 1));
+  const [monthDay, setMonthDay] = useState(String(initial?.monthDay ?? 1));
+  const [weekdayIndex, setWeekdayIndex] = useState(initial?.weekdayIndex ?? 0);
+  const [weekdayOccurrence, setWeekdayOccurrence] = useState(initial?.weekdayOccurrence ?? 1);
+  const [yearlyMonth, setYearlyMonth] = useState(initial?.yearlyMonth ?? 1);
 
   const createMutation = useCreateMaintenance();
+  const updateMutation = useUpdateMaintenance();
+  const pending = createMutation.isPending || updateMutation.isPending;
 
   const allHostsQuery = useQuery({
     queryKey: ["all-hosts"],
@@ -221,15 +280,23 @@ export function CreateMaintenanceForm() {
       setFormError(err instanceof Error ? err.message : t("maintenance.form.invalidInput"));
       return;
     }
-    createMutation.mutate(payload, {
-      onSuccess: reset,
-      onError: (err) => setFormError(err instanceof Error ? err.message : t("maintenance.form.unknownError")),
-    });
+    const onError = (err: unknown) =>
+      setFormError(err instanceof Error ? err.message : t("maintenance.form.unknownError"));
+    if (editing) {
+      updateMutation.mutate(
+        { maintenanceid: editing.maintenanceid, payload },
+        { onSuccess: onCloseEdit, onError },
+      );
+    } else {
+      createMutation.mutate(payload, { onSuccess: reset, onError });
+    }
   }
 
   return (
     <form onSubmit={submit} className="flex flex-col gap-3 p-3.5">
-      <h2 className="text-[13px] font-semibold text-ink">{t("maintenance.form.title")}</h2>
+      <h2 className="text-[13px] font-semibold text-ink">
+        {editing ? t("maintenance.form.editTitle", editing.name) : t("maintenance.form.title")}
+      </h2>
 
       <div className="flex flex-wrap gap-1.5 text-xs text-ink-2">
         {RECURRENCE_OPTIONS.map((opt) => (
@@ -474,13 +541,29 @@ export function CreateMaintenanceForm() {
 
       {formError && <div className="text-xs text-sev-high">{formError}</div>}
 
-      <button
-        type="submit"
-        disabled={createMutation.isPending}
-        className="rounded-md bg-accent px-3 py-1.5 text-xs font-semibold text-accent-ink disabled:opacity-50"
-      >
-        {createMutation.isPending ? t("maintenance.form.submitting") : t("maintenance.form.submit")}
-      </button>
+      <div className="flex gap-2">
+        <button
+          type="submit"
+          disabled={pending}
+          className="flex-1 rounded-md bg-accent px-3 py-1.5 text-xs font-semibold text-accent-ink disabled:opacity-50"
+        >
+          {pending
+            ? t("maintenance.form.submitting")
+            : editing
+              ? t("maintenance.form.save")
+              : t("maintenance.form.submit")}
+        </button>
+        {editing && (
+          <button
+            type="button"
+            onClick={onCloseEdit}
+            disabled={pending}
+            className="rounded-md border border-line px-3 py-1.5 text-xs text-ink-2 disabled:opacity-50"
+          >
+            {t("maintenance.form.cancel")}
+          </button>
+        )}
+      </div>
     </form>
   );
 }
