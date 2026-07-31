@@ -204,8 +204,19 @@ export function ProblemsPage() {
                   onRemoveAck={(message) =>
                     runBulk({ eventids: [...visibleSelectedIds], unack: true, message })
                   }
-                  onSuppress={(message) =>
-                    runBulk({ eventids: [...visibleSelectedIds], suppress: true, message })
+                  onSuppress={(message, suppressUntil) =>
+                    runBulk({
+                      eventids: [...visibleSelectedIds],
+                      suppress: true,
+                      suppressUntil,
+                      message,
+                    })
+                  }
+                  onUnsuppress={(message) =>
+                    runBulk({ eventids: [...visibleSelectedIds], unsuppress: true, message })
+                  }
+                  onChangeSeverity={(severity, message) =>
+                    runBulk({ eventids: [...visibleSelectedIds], severity, message })
                   }
                   onDone={exitSelectMode}
                 />

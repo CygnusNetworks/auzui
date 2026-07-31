@@ -6,6 +6,8 @@ import type { ZabbixProblem, ZabbixSeverity } from "@auzui/zabbix-client";
 export interface AcknowledgeInput {
   /** One or more event ids — event.acknowledge natively accepts a batch. */
   eventids: string[];
+  /** Manual close — only valid for triggers with manual_close=1. */
+  close?: boolean;
   ack?: boolean;
   unack?: boolean;
   message?: string;
@@ -41,8 +43,10 @@ export function useAcknowledge() {
       // Präfix — optimistisch in allen matchenden Caches spiegeln.
       const previous = queryClient.getQueriesData<ZabbixProblem[]>({ queryKey: ["problems"] });
       const ids = new Set(input.eventids);
-      queryClient.setQueriesData<ZabbixProblem[]>({ queryKey: ["problems"] }, (old) =>
-        old?.map((p) => {
+      queryClient.setQueriesData<ZabbixProblem[]>({ queryKey: ["problems"] }, (old) => {
+        // Manuelles Schließen löst das Problem — Zeilen sofort entfernen.
+        if (input.close) return old?.filter((p) => !ids.has(p.eventid));
+        return old?.map((p) => {
           if (!ids.has(p.eventid)) return p;
           return {
             ...p,
@@ -54,8 +58,8 @@ export function useAcknowledge() {
               ? { severity: String(input.severity) as ZabbixSeverity }
               : {}),
           };
-        }),
-      );
+        });
+      });
       return { previous };
     },
     onError: (_err, _input, context) => {
@@ -65,6 +69,9 @@ export function useAcknowledge() {
     },
     onSettled: () => {
       void queryClient.invalidateQueries({ queryKey: ["problems"] });
+      // Timeline im DetailPanel sofort nachladen, damit der neue
+      // Acknowledge-Eintrag (inkl. Nachricht) direkt erscheint.
+      void queryClient.invalidateQueries({ queryKey: ["event-timeline"] });
     },
   });
 }

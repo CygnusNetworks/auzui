@@ -1,15 +1,27 @@
 import { useState } from "react";
 import { Link } from "@tanstack/react-router";
-import { SeverityBadge, severityDotClass } from "../../components/SeverityBadge";
-import { ALL_SEVERITIES, severityLabel, type Severity } from "../../lib/severity";
+import { SeverityBadge } from "../../components/SeverityBadge";
+import { severityFromWire, severityLabel, type Severity } from "../../lib/severity";
 import { formatAge, type EnrichedProblem } from "../../lib/problems";
-import { useAcknowledge } from "./use-acknowledge";
+import { useAcknowledge, type AcknowledgeInput } from "./use-acknowledge";
+import { SuppressButton } from "./SuppressButton";
+import { SeverityPills } from "./SeverityPills";
 import { useEventTimeline } from "./use-event-timeline";
 import { useAppConfig } from "../../lib/use-app-config";
 import { useLogsEnabled } from "../../lib/use-logs";
-import { useLocale, useT } from "../../lib/i18n";
+import { useLocale, useT, type Locale } from "../../lib/i18n";
 
 const LOGS_CONTEXT_WINDOW_SECONDS = 15 * 60;
+
+/** Short local date+time for "suppressed until …" timeline entries. */
+function formatClock(unixSeconds: number, locale: Locale): string {
+  return new Date(unixSeconds * 1000).toLocaleString(locale === "de" ? "de-DE" : "en-GB", {
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
 
 export function DetailPanel({ problem }: { problem: EnrichedProblem | undefined }) {
   const t = useT();
@@ -30,17 +42,24 @@ export function DetailPanel({ problem }: { problem: EnrichedProblem | undefined 
     ? `${config.zabbix_ui_url}/tr_events.php?triggerid=${encodeURIComponent(problem.objectid)}&eventid=${encodeURIComponent(problem.eventid)}`
     : undefined;
 
-  function submitComment() {
-    if (!problem || comment.trim().length === 0) return;
+  // Alle Aktionen nehmen das Kommentarfeld als Nachricht mit (ein einziger
+  // event.acknowledge-Call, z. B. action 2|4) und leeren es bei Erfolg.
+  function act(input: Omit<AcknowledgeInput, "eventids" | "message">) {
+    if (!problem) return;
     acknowledge.mutate(
-      { eventids: [problem.eventid], message: comment },
+      { eventids: [problem.eventid], message: comment, ...input },
       { onSuccess: () => setComment("") },
     );
   }
 
+  function submitComment() {
+    if (comment.trim().length === 0) return;
+    act({});
+  }
+
   function changeSeverity(severity: Severity) {
     if (!problem || severity === problem.severity) return;
-    acknowledge.mutate({ eventids: [problem.eventid], severity });
+    act({ severity });
   }
 
   return (
@@ -84,18 +103,41 @@ export function DetailPanel({ problem }: { problem: EnrichedProblem | undefined 
             </span>
             <span>{t("problems.detailPanel.problemDetected")}</span>
           </div>
-          {(timeline.data?.[0]?.acknowledges ?? []).map((entry) => (
-            <div key={entry.acknowledgeid} className="flex items-baseline gap-2">
-              <span className="whitespace-nowrap font-mono text-[10.5px] text-ink-muted">
-                −{formatAge(Number(entry.clock), undefined, locale)}
-              </span>
-              <span>
-                {(Number(entry.action) & 2) !== 0 && t("problems.detailPanel.acknowledged")}
-                {(Number(entry.action) & 16) !== 0 && t("problems.detailPanel.unacknowledgedEntry")}
-                {entry.message ? ` — „${entry.message}“` : ""}
-              </span>
-            </div>
-          ))}
+          {(timeline.data?.[0]?.acknowledges ?? []).map((entry) => {
+            const bits = Number(entry.action);
+            const parts: string[] = [];
+            if (bits & 1) parts.push(t("problems.detailPanel.closedEntry"));
+            if (bits & 2) parts.push(t("problems.detailPanel.acknowledged"));
+            if (bits & 16) parts.push(t("problems.detailPanel.unacknowledgedEntry"));
+            if (bits & 8)
+              parts.push(
+                t(
+                  "problems.detailPanel.severityChangedEntry",
+                  severityLabel(severityFromWire(entry.old_severity ?? "0"), locale),
+                  severityLabel(severityFromWire(entry.new_severity ?? "0"), locale),
+                ),
+              );
+            if (bits & 32) {
+              const until = Number(entry.suppress_until ?? 0);
+              parts.push(
+                until > 0
+                  ? t("problems.detailPanel.suppressedUntilEntry", formatClock(until, locale))
+                  : t("problems.detailPanel.suppressedEntry"),
+              );
+            }
+            if (bits & 64) parts.push(t("problems.detailPanel.unsuppressedEntry"));
+            return (
+              <div key={entry.acknowledgeid} className="flex items-baseline gap-2">
+                <span className="whitespace-nowrap font-mono text-[10.5px] text-ink-muted">
+                  −{formatAge(Number(entry.clock), undefined, locale)}
+                </span>
+                <span>
+                  {parts.join(" · ")}
+                  {entry.message ? ` — „${entry.message}“` : ""}
+                </span>
+              </div>
+            );
+          })}
         </div>
       </div>
 
@@ -103,13 +145,25 @@ export function DetailPanel({ problem }: { problem: EnrichedProblem | undefined 
         <div className="mb-1 font-mono text-[10px] uppercase tracking-wider text-ink-muted">
           {t("problems.detailPanel.actions")}
         </div>
-        <div className="mb-2 flex flex-wrap gap-1.5">
+        <input
+          value={comment}
+          onChange={(e) => setComment(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") submitComment();
+          }}
+          placeholder={t("problems.detailPanel.commentPlaceholder")}
+          className="w-full rounded-md border border-line bg-surface-2 px-2.5 py-1 text-xs text-ink outline-none focus-visible:border-accent"
+        />
+        <div className="mb-2 mt-1 text-[10.5px] text-ink-muted">
+          {t("problems.detailPanel.commentHint")}
+        </div>
+        <div className="mb-2 flex flex-wrap items-center gap-1.5">
           {problem.acknowledged ? (
             <button
               type="button"
               className="rounded-md border border-line bg-surface-2 px-2.5 py-1 text-xs text-ink-2"
               disabled={acknowledge.isPending}
-              onClick={() => acknowledge.mutate({ eventids: [problem.eventid], unack: true })}
+              onClick={() => act({ unack: true })}
             >
               {t("problems.detailPanel.unack")}
             </button>
@@ -118,7 +172,7 @@ export function DetailPanel({ problem }: { problem: EnrichedProblem | undefined 
               type="button"
               className="rounded-md border border-accent/40 bg-accent-soft px-2.5 py-1 text-xs font-semibold text-accent"
               disabled={acknowledge.isPending}
-              onClick={() => acknowledge.mutate({ eventids: [problem.eventid], ack: true })}
+              onClick={() => act({ ack: true })}
             >
               {t("problems.detailPanel.acknowledge")}
             </button>
@@ -128,65 +182,36 @@ export function DetailPanel({ problem }: { problem: EnrichedProblem | undefined 
               type="button"
               className="rounded-md border border-line bg-surface-2 px-2.5 py-1 text-xs text-ink-2"
               disabled={acknowledge.isPending}
-              onClick={() => acknowledge.mutate({ eventids: [problem.eventid], unsuppress: true })}
+              onClick={() => act({ unsuppress: true })}
             >
               {t("problems.detailPanel.unsuppress")}
             </button>
           ) : (
+            <SuppressButton
+              pending={acknowledge.isPending}
+              onSuppress={(suppressUntil) => act({ suppress: true, suppressUntil })}
+            />
+          )}
+          {problem.manualClose && (
             <button
               type="button"
-              className="rounded-md border border-line bg-surface-2 px-2.5 py-1 text-xs text-ink-2"
+              className="ml-auto rounded-md border border-sev-high/45 bg-sev-high/10 px-2.5 py-1 text-xs font-semibold text-sev-high disabled:opacity-40"
               disabled={acknowledge.isPending}
-              onClick={() =>
-                acknowledge.mutate({ eventids: [problem.eventid], suppress: true, suppressUntil: 0 })
-              }
+              onClick={() => act({ close: true })}
             >
-              {t("problems.detailPanel.suppress")}
+              {t("problems.detailPanel.close")}
             </button>
           )}
         </div>
-        <div className="mb-2">
+        <div>
           <div className="mb-1.5 font-mono text-[10px] uppercase tracking-wider text-ink-muted">
             {t("problems.detailPanel.changeSeverity")}
           </div>
-          <div className="flex flex-wrap gap-1">
-            {ALL_SEVERITIES.map((sev) => {
-              const active = sev === problem.severity;
-              return (
-                <button
-                  key={sev}
-                  type="button"
-                  aria-pressed={active}
-                  disabled={acknowledge.isPending || active}
-                  onClick={() => changeSeverity(sev)}
-                  className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 font-mono text-[11px] transition-opacity disabled:cursor-default ${
-                    active
-                      ? "border-accent/50 font-semibold text-ink opacity-100"
-                      : "border-line text-ink-2 opacity-60 hover:opacity-100"
-                  }`}
-                >
-                  <i className={`inline-block h-2 w-2 rounded-sm ${severityDotClass(sev)}`} />
-                  {severityLabel(sev, locale)}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-        <div className="flex gap-1.5">
-          <input
-            value={comment}
-            onChange={(e) => setComment(e.target.value)}
-            placeholder={t("problems.detailPanel.commentPlaceholder")}
-            className="min-w-0 flex-1 rounded-md border border-line bg-surface-2 px-2.5 py-1 text-xs text-ink outline-none focus-visible:border-accent"
+          <SeverityPills
+            current={problem.severity}
+            disabled={acknowledge.isPending}
+            onSelect={changeSeverity}
           />
-          <button
-            type="button"
-            className="rounded-md border border-line bg-surface-2 px-2.5 py-1 text-xs text-ink-2 disabled:opacity-40"
-            disabled={acknowledge.isPending || comment.trim().length === 0}
-            onClick={submitComment}
-          >
-            {t("problems.detailPanel.send")}
-          </button>
         </div>
       </div>
 

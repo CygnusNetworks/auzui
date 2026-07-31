@@ -96,8 +96,13 @@ export interface ZabbixEventAcknowledge {
   eventid: ZabbixId;
   clock: string;
   message: string;
-  /** action bitmask: 1 close, 2 ack, 4 message, 8 change severity, 16 unack */
+  /** action bitmask: 1 close, 2 ack, 4 message, 8 change severity, 16 unack, 32 suppress, 64 unsuppress */
   action: string;
+  /** Set on action bit 8 (change severity). */
+  old_severity?: ZabbixSeverity;
+  new_severity?: ZabbixSeverity;
+  /** Set on action bit 32 (suppress) — unix timestamp, "0" = indefinite. */
+  suppress_until?: string;
 }
 
 export interface ZabbixEvent {
@@ -120,6 +125,8 @@ export interface ZabbixTrigger {
   priority: ZabbixSeverity;
   value?: "0" | "1";
   status?: "0" | "1";
+  /** "1" = the trigger allows manual problem closing (event.acknowledge action 1). */
+  manual_close?: "0" | "1";
   hosts?: Pick<ZabbixHost, "hostid" | "host">[];
   items?: Pick<ZabbixItem, "itemid" | "key_" | "name" | "value_type">[];
 }

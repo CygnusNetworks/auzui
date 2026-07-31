@@ -388,6 +388,16 @@ const PROBLEM_SPECS: ProblemSpec[] = [
 export const demoProblems: ZabbixProblem[] = [];
 export const demoTriggers: ZabbixTrigger[] = [];
 
+// Trigger mit "manual close" (Zabbix manual_close=1) — der Close-Button im
+// DetailPanel erscheint im Demo-Modus nur für diese Probleme.
+const MANUAL_CLOSE_NAMES = new Set([
+  "SSL certificate expires soon",
+  "Backup job finished with warnings",
+  "Package updates available",
+  "Informational: scheduled reboot pending",
+  "New host discovered",
+]);
+
 let nextEventId = 800000;
 for (const spec of PROBLEM_SPECS) {
   const host = demoHosts.find((h) => h.host === spec.hostname);
@@ -402,6 +412,7 @@ for (const spec of PROBLEM_SPECS) {
     priority: spec.severity,
     value: "1",
     status: "0",
+    manual_close: MANUAL_CLOSE_NAMES.has(spec.name) ? "1" : "0",
     hosts: [{ hostid: host.hostid, host: host.host }],
     items: item ? [{ itemid: item.itemid, key_: item.key_, name: item.name, value_type: item.value_type }] : [],
   });

@@ -15,6 +15,8 @@ export const ACK_ACTION = {
 } as const;
 
 export interface AckActionInput {
+  /** Manual close — only valid for triggers with manual_close=1. */
+  close?: boolean;
   ack?: boolean;
   unack?: boolean;
   message?: string;
@@ -32,6 +34,9 @@ export interface AckActionInput {
  */
 export function buildAckAction(input: AckActionInput): number {
   let action = 0;
+  if (input.close) {
+    action |= ACK_ACTION.CLOSE;
+  }
   if (input.ack) {
     action |= ACK_ACTION.ACKNOWLEDGE;
   } else if (input.unack) {

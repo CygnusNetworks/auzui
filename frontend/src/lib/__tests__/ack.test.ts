@@ -63,4 +63,16 @@ describe("buildAckAction", () => {
   it("combines unack + unsuppress (16 | 64 = 80)", () => {
     expect(buildAckAction({ unack: true, unsuppress: true })).toBe(80);
   });
+
+  it("returns 1 for a manual close", () => {
+    expect(buildAckAction({ close: true })).toBe(ACK_ACTION.CLOSE);
+  });
+
+  it("combines close with a message (1 | 4 = 5)", () => {
+    expect(buildAckAction({ close: true, message: "fixed by reboot" })).toBe(5);
+  });
+
+  it("combines close + ack + message (1 | 2 | 4 = 7)", () => {
+    expect(buildAckAction({ close: true, ack: true, message: "done" })).toBe(7);
+  });
 });

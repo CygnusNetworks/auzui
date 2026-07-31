@@ -154,11 +154,8 @@ function resolveRpcMethod(method: string, params: Record<string, unknown>): unkn
       return filterTriggers(params);
     case "event.get":
       return resolveEventGet(params);
-    case "event.acknowledge": {
-      const eventids = asStringArray(params.eventids) ?? [];
-      for (const p of demoProblems) if (eventids.includes(p.eventid)) p.acknowledged = "1";
-      return { eventids };
-    }
+    case "event.acknowledge":
+      return resolveEventAcknowledge(params);
     case "history.get":
     case "trend.get":
       return resolveTimeseries(params);
@@ -179,6 +176,73 @@ function resolveRpcMethod(method: string, params: Record<string, unknown>): unkn
   }
 }
 
+/**
+ * Acknowledge entries recorded by event.acknowledge during the demo session,
+ * so the detail panel's timeline reflects what the user actually did. Seeded
+ * lazily with a static "Investigating." entry for problems that start out
+ * acknowledged in the mock data.
+ */
+const demoAcknowledges = new Map<string, Record<string, string>[]>();
+let demoAckSequence = 0;
+
+function ackEntriesFor(eventid: string, acknowledged: boolean): Record<string, string>[] {
+  const recorded = demoAcknowledges.get(eventid);
+  if (recorded) return recorded;
+  if (!acknowledged) return [];
+  const problem = demoProblems.find((p) => p.eventid === eventid);
+  return [
+    {
+      acknowledgeid: `ack-${eventid}`,
+      userid: "1",
+      eventid,
+      clock: String(Number(problem?.clock ?? DEMO_NOW) + 120),
+      message: "Investigating.",
+      action: "2",
+    },
+  ];
+}
+
+function resolveEventAcknowledge(params: Record<string, unknown>) {
+  const eventids = asStringArray(params.eventids) ?? [];
+  const action = Number(params.action ?? 0);
+  const message = typeof params.message === "string" ? params.message : "";
+  const severity = params.severity !== undefined ? String(params.severity) : undefined;
+  const suppressUntil = params.suppress_until !== undefined ? String(params.suppress_until) : "0";
+
+  for (const p of demoProblems) {
+    if (!eventids.includes(p.eventid)) continue;
+    // Seed-Einträge VOR dem Umsetzen der Flags ermitteln, sonst bekämen frisch
+    // bestätigte Probleme den statischen "Investigating."-Eintrag untergeschoben.
+    const entries = ackEntriesFor(p.eventid, p.acknowledged === "1");
+    if (action & 2) p.acknowledged = "1";
+    if (action & 16) p.acknowledged = "0";
+    if (action & 32) p.suppressed = "1";
+    if (action & 64) p.suppressed = "0";
+    const entry: Record<string, string> = {
+      acknowledgeid: `ack-${p.eventid}-${demoAckSequence++}`,
+      userid: "1",
+      eventid: p.eventid,
+      clock: String(Math.floor(Date.now() / 1000)),
+      message,
+      action: String(action),
+    };
+    if (action & 8 && severity !== undefined) {
+      entry.old_severity = p.severity;
+      entry.new_severity = severity;
+      p.severity = severity as typeof p.severity;
+    }
+    if (action & 32) entry.suppress_until = suppressUntil;
+    demoAcknowledges.set(p.eventid, [...entries, entry]);
+  }
+  // Manuelles Schließen löst das Problem — aus der Liste entfernen.
+  if (action & 1) {
+    for (let i = demoProblems.length - 1; i >= 0; i--) {
+      if (eventids.includes(demoProblems[i]!.eventid)) demoProblems.splice(i, 1);
+    }
+  }
+  return { eventids };
+}
+
 function resolveEventGet(params: Record<string, unknown>) {
   const eventids = asStringArray(params.eventids) ?? [];
   return demoProblems
@@ -195,19 +259,7 @@ function resolveEventGet(params: Record<string, unknown>) {
         severity: p.severity,
         name: p.name,
         hosts: trigger?.hosts ?? [],
-        acknowledges:
-          p.acknowledged === "1"
-            ? [
-                {
-                  acknowledgeid: `ack-${p.eventid}`,
-                  userid: "1",
-                  eventid: p.eventid,
-                  clock: String(Number(p.clock) + 120),
-                  message: "Investigating.",
-                  action: "2",
-                },
-              ]
-            : [],
+        acknowledges: ackEntriesFor(p.eventid, p.acknowledged === "1"),
       };
     });
 }

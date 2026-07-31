@@ -24,6 +24,8 @@ export interface EnrichedProblem {
   hostId?: string;
   hostName?: string;
   triggerExpression?: string;
+  /** Trigger allows manual problem closing (event.acknowledge action 1). */
+  manualClose?: boolean;
   /** First item on the trigger — candidate for the sparkline, if numeric. */
   itemId?: string;
   itemValueType?: "0" | "3";
@@ -59,6 +61,7 @@ export function joinProblemsWithTriggers(
       hostId: host?.hostid,
       hostName: host?.host,
       triggerExpression: trigger?.expression,
+      manualClose: trigger?.manual_close === "1",
       itemId: numericItem?.itemid,
       itemValueType: numericItem?.value_type as "0" | "3" | undefined,
     };
