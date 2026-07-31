@@ -86,6 +86,13 @@ export interface ZabbixProblem {
   clock: string;
   acknowledged: "0" | "1";
   suppressed?: "0" | "1";
+  /** Present when suppressed — one entry per active suppression (maintenance or manual). */
+  suppression_data?: {
+    maintenanceid?: ZabbixId;
+    userid?: ZabbixId;
+    /** Unix seconds, "0" = indefinite (manual suppression). */
+    suppress_until?: string;
+  }[];
   opdata?: string;
   tags?: ZabbixItemTag[];
 }

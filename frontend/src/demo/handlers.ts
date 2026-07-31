@@ -223,8 +223,14 @@ function resolveEventAcknowledge(params: Record<string, unknown>) {
     const entries = ackEntriesFor(p.eventid, p.acknowledged === "1");
     if (action & 2) p.acknowledged = "1";
     if (action & 16) p.acknowledged = "0";
-    if (action & 32) p.suppressed = "1";
-    if (action & 64) p.suppressed = "0";
+    if (action & 32) {
+      p.suppressed = "1";
+      p.suppression_data = [{ suppress_until: suppressUntil }];
+    }
+    if (action & 64) {
+      p.suppressed = "0";
+      p.suppression_data = [];
+    }
     const entry: Record<string, string> = {
       acknowledgeid: `ack-${p.eventid}-${demoAckSequence++}`,
       userid: "1",

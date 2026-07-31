@@ -52,7 +52,12 @@ export function useAcknowledge() {
             ...p,
             ...(input.ack || input.unack ? { acknowledged: input.ack ? "1" : "0" } : {}),
             ...(input.suppress || input.unsuppress
-              ? { suppressed: input.suppress ? "1" : "0" }
+              ? {
+                  suppressed: input.suppress ? "1" : "0",
+                  suppression_data: input.suppress
+                    ? [{ suppress_until: String(input.suppressUntil ?? 0) }]
+                    : [],
+                }
               : {}),
             ...(input.severity !== undefined
               ? { severity: String(input.severity) as ZabbixSeverity }

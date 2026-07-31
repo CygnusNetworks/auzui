@@ -144,6 +144,9 @@ export const de = {
       selectRowAria: (name: string) => `${name} auswählen`,
       ackedCount: (n: number) => `${n} ack`,
       suppressedBadge: "unterdrückt",
+      ackChip: "✓ ack",
+      suppressedChip: "⏸ unterdrückt",
+      suppressedUntilChip: (time: string) => `⏸ bis ${time}`,
     },
     page: {
       title: "Problems",

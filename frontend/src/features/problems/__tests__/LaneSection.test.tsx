@@ -68,8 +68,34 @@ describe("LaneSection (rows mode)", () => {
     expect(screen.getByText("lnx-db01")).toBeInTheDocument();
     expect(screen.getByText("Temperature critical on chassis")).toBeInTheDocument();
     expect(screen.getByText("Disk full")).toBeInTheDocument();
+    // Acked row gets a chip; unacked+unsuppressed rows show no status at all.
     expect(screen.getByText("✓ ack")).toBeInTheDocument();
-    expect(screen.getByText("— ack")).toBeInTheDocument();
+    expect(screen.queryByText("— ack")).not.toBeInTheDocument();
+  });
+
+  it("shows a suppressed chip with the end time and dims the row content", () => {
+    const until = Math.floor(Date.now() / 1000) + 3600;
+    const problems = [
+      mkProblem({ eventid: "3", suppressed: true, suppressUntil: until }),
+      mkProblem({ eventid: "4", suppressed: true }),
+    ];
+
+    render(
+      <LaneSection
+        severity={4}
+        problems={problems}
+        mode="rows"
+        open={true}
+        onToggleOpen={vi.fn()}
+        selectedEventId={undefined}
+        onSelect={vi.fn()}
+        sparklines={new Map()}
+        {...bulkProps()}
+      />,
+    );
+
+    expect(screen.getByText(/⏸ bis /)).toBeInTheDocument();
+    expect(screen.getByText("⏸ unterdrückt")).toBeInTheDocument();
   });
 
   it("calls onSelect with the clicked problem", () => {

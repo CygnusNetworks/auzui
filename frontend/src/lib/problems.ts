@@ -20,6 +20,8 @@ export interface EnrichedProblem {
   acknowledged: boolean;
   /** Currently suppressed (maintenance or manual event.acknowledge suppress). */
   suppressed?: boolean;
+  /** Latest suppression end (unix seconds); undefined = indefinite/unknown. */
+  suppressUntil?: number;
   tags: ZabbixItemTag[];
   hostId?: string;
   hostName?: string;
@@ -55,6 +57,7 @@ export function joinProblemsWithTriggers(
       clock: Number(p.clock),
       acknowledged: p.acknowledged === "1",
       suppressed: p.suppressed === "1",
+      suppressUntil: latestSuppressUntil(p.suppression_data),
       // "__"-Tags sind interne Marker von Alert-Integrationen
       // (z. B. __message_ts_#zabbix) — nicht anzeigen.
       tags: (p.tags ?? []).filter((t) => !t.tag.startsWith("__")),
@@ -66,6 +69,32 @@ export function joinProblemsWithTriggers(
       itemValueType: numericItem?.value_type as "0" | "3" | undefined,
     };
   });
+}
+
+/** Latest finite suppression end; undefined if none or all indefinite ("0"). */
+function latestSuppressUntil(
+  data: ZabbixProblem["suppression_data"],
+): number | undefined {
+  const untils = (data ?? [])
+    .map((s) => Number(s.suppress_until ?? 0))
+    .filter((n) => n > 0);
+  return untils.length > 0 ? Math.max(...untils) : undefined;
+}
+
+/** "14:30" (same day) or "01.08., 14:30" — for the "suppressed until" chip. */
+export function formatSuppressUntil(
+  untilSeconds: number,
+  locale: Locale = "de",
+  nowSeconds: number = Date.now() / 1000,
+): string {
+  const intl = locale === "de" ? "de-DE" : "en-GB";
+  const until = new Date(untilSeconds * 1000);
+  const now = new Date(nowSeconds * 1000);
+  const sameDay = until.toDateString() === now.toDateString();
+  const time = until.toLocaleTimeString(intl, { hour: "2-digit", minute: "2-digit" });
+  if (sameDay) return time;
+  const date = until.toLocaleDateString(intl, { day: "2-digit", month: "2-digit" });
+  return `${date}, ${time}`;
 }
 
 export interface ProblemFilter {

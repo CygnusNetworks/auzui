@@ -2,7 +2,7 @@ import { type ReactNode } from "react";
 import { severityLabel, type Severity } from "../../lib/severity";
 import { severityBorderLeftClass, severityDotClass } from "../../components/SeverityBadge";
 import { Sparkline } from "../../components/Sparkline";
-import { formatAge, type EnrichedProblem } from "../../lib/problems";
+import { formatAge, formatSuppressUntil, type EnrichedProblem } from "../../lib/problems";
 import { useAnimatedPresence } from "../../lib/use-animated-presence";
 import { useLocale, useT } from "../../lib/i18n";
 import { shouldShowSparkline } from "./use-sparklines";
@@ -89,6 +89,37 @@ function RoundCheck({
         >
           <path d="M2.5 6.2 5 8.5 9.5 3.5" />
         </svg>
+      )}
+    </span>
+  );
+}
+
+/**
+ * Unified ack/suppressed status chips (rows and cards). Outline style on
+ * purpose: a filled background would drown in the selection/hover tint —
+ * exactly the inconsistency this replaces. Renders nothing for a plain
+ * unacked, unsuppressed problem (no "— ack" placeholder noise).
+ */
+function StatusChips({ problem }: { problem: EnrichedProblem }) {
+  const t = useT();
+  const { locale } = useLocale();
+  if (!problem.acknowledged && !problem.suppressed) return null;
+  return (
+    <span className="flex items-center justify-end gap-1.5">
+      {problem.acknowledged && (
+        <span className="whitespace-nowrap rounded-full border border-sev-ok/55 px-2 font-mono text-[10px] leading-[16px] text-sev-ok">
+          {t("problems.lane.ackChip")}
+        </span>
+      )}
+      {problem.suppressed && (
+        <span className="whitespace-nowrap rounded-full border border-ink-muted/60 px-2 font-mono text-[10px] leading-[16px] text-ink-muted">
+          {problem.suppressUntil
+            ? t(
+                "problems.lane.suppressedUntilChip",
+                formatSuppressUntil(problem.suppressUntil, locale),
+              )
+            : t("problems.lane.suppressedChip")}
+        </span>
       )}
     </span>
   );
@@ -243,6 +274,8 @@ function ProblemRow({
     selectMode && checked
       ? "border-l-accent bg-accent-soft"
       : `${severityBorderLeftClass(problem.severity)} ${!selectMode && selected ? "bg-accent-soft" : ""}`;
+  // Unterdrückte Probleme treten optisch zurück — nur die Statuschips bleiben voll sichtbar.
+  const dimClass = problem.suppressed ? "opacity-55" : "";
   return (
     <div
       role="row"
@@ -263,21 +296,16 @@ function ProblemRow({
         className="grid flex-1 items-center gap-2.5 py-1.5 pl-2"
         style={{ gridTemplateColumns: ROW_GRID_COLS }}
       >
-        <span className="pr-2.5 font-mono text-[11.5px] text-ink-muted">
+        <span className={`pr-2.5 font-mono text-[11.5px] text-ink-muted ${dimClass}`}>
           −{formatAge(problem.clock, undefined, locale)}
         </span>
-        <span className="pr-2.5 font-mono text-[11.5px]">
+        <span className={`pr-2.5 font-mono text-[11.5px] ${dimClass}`}>
           <b>{problem.hostName ?? "—"}</b>
         </span>
-        <span className="flex items-center gap-1.5 pr-2.5">
+        <span className={`flex items-center gap-1.5 pr-2.5 ${dimClass}`}>
           <span className="truncate">{problem.name}</span>
-          {problem.suppressed && (
-            <span className="whitespace-nowrap rounded bg-surface-3 px-1.5 font-mono text-[10px] text-ink-muted">
-              {t("problems.lane.suppressedBadge")}
-            </span>
-          )}
         </span>
-        <span className="pr-2.5">
+        <span className={`pr-2.5 ${dimClass}`}>
           {problem.tags.slice(0, 1).map((tag) => (
             <span
               key={tag.tag}
@@ -288,13 +316,7 @@ function ProblemRow({
             </span>
           ))}
         </span>
-        <span className="whitespace-nowrap font-mono text-[11px]">
-          {problem.acknowledged ? (
-            <span className="text-sev-ok">✓ ack</span>
-          ) : (
-            <span className="text-ink-muted">— ack</span>
-          )}
-        </span>
+        <StatusChips problem={problem} />
       </div>
     </div>
   );
@@ -329,6 +351,8 @@ function ProblemCard({
       : !selectMode && selected
         ? "border-accent bg-accent-soft"
         : "";
+  // Unterdrückte Probleme treten optisch zurück — nur die Statuschips bleiben voll sichtbar.
+  const dimClass = problem.suppressed ? "opacity-55" : "";
   return (
     <div
       role="button"
@@ -345,7 +369,7 @@ function ProblemCard({
         problem.severity,
       )} ${highlight}`}
     >
-      <span className="flex items-center justify-between gap-2 font-mono text-[11.5px]">
+      <span className={`flex items-center justify-between gap-2 font-mono text-[11.5px] ${dimClass}`}>
         <span className="flex min-w-0 items-center gap-1.5">
           {selectMode && (
             <SelectSpur width={24}>
@@ -362,28 +386,19 @@ function ProblemCard({
           −{formatAge(problem.clock, undefined, locale)}
         </span>
       </span>
-      <span className="text-[12.5px] leading-snug">{problem.name}</span>
+      <span className={`text-[12.5px] leading-snug ${dimClass}`}>{problem.name}</span>
       {shouldShowSparkline(problem.itemValueType, series) && (
-        <span className="-mx-0.5 mt-0.5">
+        <span className={`-mx-0.5 mt-0.5 ${dimClass}`}>
           <Sparkline points={series!.points} height={26} />
         </span>
       )}
       <span className="mt-0.5 flex items-center justify-between gap-1.5">
-        <span className="flex min-w-0 items-center gap-1.5">
+        <span className={`flex min-w-0 items-center gap-1.5 ${dimClass}`}>
           <span className="truncate rounded bg-surface-3 px-1.5 font-mono text-[10px] text-ink-2">
             {problem.tags[0]?.tag ?? ""}
           </span>
-          {problem.suppressed && (
-            <span className="whitespace-nowrap rounded bg-surface-3 px-1.5 font-mono text-[10px] text-ink-muted">
-              {t("problems.lane.suppressedBadge")}
-            </span>
-          )}
         </span>
-        {problem.acknowledged ? (
-          <span className="font-mono text-[11px] text-sev-ok">✓ ack</span>
-        ) : (
-          <span className="font-mono text-[11px] text-ink-muted">ack</span>
-        )}
+        <StatusChips problem={problem} />
       </span>
     </div>
   );
