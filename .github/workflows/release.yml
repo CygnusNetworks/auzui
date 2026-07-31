@@ -1,0 +1,25 @@
+name: GitHub Release
+
+# Creates a GitHub Release for every version tag (v*) with auto-generated
+# notes (PRs/commits since the previous tag). The Docker/pages/screenshot
+# workflows run independently on the same tag.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "auzui $GITHUB_REF_NAME" \
+            --verify-tag \
+            --generate-notes

@@ -184,7 +184,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def health() -> dict[str, object]:
         return {
             "status": "ok",
-            "version": __version__,
+            # Build-Version (AUZUI_VERSION aus CI) vor der Paketversion —
+            # sonst meldet /health ewig die zuletzt hartkodierte Zahl.
+            "version": settings.auzui_version or __version__,
             "influx": settings.influx_enabled,
             "graylog": settings.graylog_enabled,
         }
