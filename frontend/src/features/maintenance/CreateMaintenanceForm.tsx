@@ -445,8 +445,8 @@ export function CreateMaintenanceForm() {
           ))}
           <input
             type="number"
-            min={1}
-            step={1}
+            min={0.5}
+            step="any"
             placeholder={t("maintenance.form.customDurationPlaceholder")}
             value={customDuration}
             onChange={(e) => setCustomDuration(e.target.value)}
