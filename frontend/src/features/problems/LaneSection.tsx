@@ -150,6 +150,7 @@ export function LaneSection({
   selectedIds,
   onToggleSelect,
   onToggleSelectAll,
+  ackHidden = 0,
 }: {
   severity: Severity;
   problems: EnrichedProblem[];
@@ -165,6 +166,13 @@ export function LaneSection({
   selectedIds: ReadonlySet<string>;
   onToggleSelect: (eventid: string) => void;
   onToggleSelectAll: (eventids: string[], checked: boolean) => void;
+  /**
+   * Acknowledged problems of this severity that the "unacknowledged only"
+   * filter keeps out of the lane. Named explicitly instead of the old bare
+   * "0 ack", which read as "there are no acknowledged ones" when it meant
+   * "none of the visible ones are acknowledged".
+   */
+  ackHidden?: number;
 }) {
   const t = useT();
   const { locale } = useLocale();
@@ -199,7 +207,12 @@ export function LaneSection({
           {severityLabel(severity, locale).toUpperCase()}
         </span>
         <span className="font-mono text-[11px] text-ink-muted">
-          {problems.length} · {t("problems.lane.ackedCount", acked)}
+          {problems.length}
+          {ackHidden > 0
+            ? ` · ${t("problems.lane.ackHidden", ackHidden)}`
+            : acked > 0
+              ? ` · ${t("problems.lane.ackedCount", acked)}`
+              : ""}
         </span>
         <span className="h-px flex-1 bg-line-soft" />
       </div>

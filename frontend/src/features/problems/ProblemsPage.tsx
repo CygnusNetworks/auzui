@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { ALL_SEVERITIES, type Severity } from "../../lib/severity";
-import { filterProblems, groupIntoLanes } from "../../lib/problems";
+import { filterProblems, groupIntoLanes, visibilityBreakdown } from "../../lib/problems";
 import { useLocalStorageState } from "../../lib/use-local-storage-state";
 import { useHostsInMaintenance } from "../maintenance/use-maintenance";
 import { useProblems } from "./use-problems";
@@ -11,6 +11,7 @@ import { FilterChips } from "./FilterChips";
 import { LaneSection, type ViewMode } from "./LaneSection";
 import { DetailPanel } from "./DetailPanel";
 import { SelectionActionBar } from "./SelectionActionBar";
+import { VisibilityBalance } from "./VisibilityBalance";
 import { setLaneSelection, retainVisible, toggleSelection } from "./selection";
 import { useT } from "../../lib/i18n";
 import {
@@ -63,6 +64,16 @@ export function ProblemsPage() {
     [problems, activeSeverities, unackOnly, search.host, showSuppressed],
   );
   const lanes = useMemo(() => groupIntoLanes(filtered, ALL_SEVERITIES), [filtered]);
+  const breakdown = useMemo(
+    () =>
+      visibilityBreakdown(problems, {
+        severities: activeSeverities,
+        unackOnly,
+        host: search.host,
+        showSuppressed,
+      }),
+    [problems, activeSeverities, unackOnly, search.host, showSuppressed],
+  );
 
   const sparklines = useSparklines(mode === "cards" ? filtered : []);
 
@@ -235,6 +246,16 @@ export function ProblemsPage() {
               onClearHostFilter={() => updateSearch({ host: undefined })}
               selectMode={selectMode}
               onToggleSelectMode={toggleSelectMode}
+              hiddenByAck={breakdown.hiddenByAck}
+            />
+
+            <VisibilityBalance
+              breakdown={breakdown}
+              hostFilter={search.host}
+              onShowAcknowledged={() => updateSearch({ unack: "0" })}
+              onShowSuppressed={() => updateSearch({ suppressed: "1" })}
+              onClearSeverities={() => updateSearch({ sev: undefined })}
+              onClearHostFilter={() => updateSearch({ host: undefined })}
             />
 
             {isLoading ? (
@@ -260,12 +281,17 @@ export function ProblemsPage() {
                     selectedIds={visibleSelectedIds}
                     onToggleSelect={toggleSelect}
                     onToggleSelectAll={toggleSelectAll}
+                    ackHidden={breakdown.ackHiddenBySeverity[lane.severity]}
                   />
                 ))}
               </div>
             )}
+            {/* Die „x von y"-Bilanz steht jetzt über der Liste (VisibilityBalance),
+                wo sie auffällt und bedienbar ist — unten bleiben nur die Hinweise. */}
             <div className="px-3.5 py-2.5 text-[11.5px] text-ink-muted">
-              {t("problems.page.footer", filtered.length, problems.length)}
+              {breakdown.hiddenTotal > 0
+                ? t("problems.page.footerHints")
+                : t("problems.page.footer", filtered.length, problems.length)}
             </div>
           </div>
 

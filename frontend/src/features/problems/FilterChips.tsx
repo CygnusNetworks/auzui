@@ -16,6 +16,7 @@ export function FilterChips({
   onClearHostFilter,
   selectMode,
   onToggleSelectMode,
+  hiddenByAck = 0,
 }: {
   problems: EnrichedProblem[];
   activeSeverities: Set<Severity>;
@@ -29,6 +30,8 @@ export function FilterChips({
   onClearHostFilter?: () => void;
   selectMode: boolean;
   onToggleSelectMode: () => void;
+  /** Acknowledged problems currently withheld by this chip — shown as "+n". */
+  hiddenByAck?: number;
 }) {
   const t = useT();
   const { locale } = useLocale();
@@ -52,26 +55,40 @@ export function FilterChips({
           </button>
         );
       })}
-      <button
-        type="button"
-        onClick={onToggleUnack}
-        aria-pressed={unackOnly}
-        className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 font-mono text-xs ${
-          unackOnly ? "border-accent/50 text-ink font-semibold" : "border-line text-ink-2"
-        }`}
-      >
-        {t("problems.filterChips.unackOnly")}
-      </button>
-      <button
-        type="button"
-        onClick={onToggleSuppressed}
-        aria-pressed={showSuppressed}
-        className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 font-mono text-xs ${
-          showSuppressed ? "border-accent/50 text-ink font-semibold" : "border-line text-ink-2"
-        }`}
-      >
-        {t("problems.filterChips.showSuppressed")}
-      </button>
+      {/* Beide Chips sprechen jetzt dieselbe Sprache wie die Severity-Chips:
+          gedrückt = wird angezeigt. Vorher hieß gedrückt bei „nur unbestätigte"
+          versteckt mehr und bei „unterdrückte anzeigen" zeigt mehr — gleiche
+          Optik, gegenläufige Bedeutung. Label und Chips bleiben als Gruppe
+          zusammen, sonst rutscht „unterdrückte" ohne sein Label in die nächste
+          Zeile. */}
+      <span className="ml-1 flex items-center gap-2">
+        <span className="font-mono text-[11px] text-ink-muted">
+          {t("problems.filterChips.alsoShow")}
+        </span>
+        <button
+          type="button"
+          onClick={onToggleUnack}
+          aria-pressed={!unackOnly}
+          className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 font-mono text-xs ${
+            !unackOnly ? "border-accent/50 text-ink font-semibold" : "border-line text-ink-2"
+          }`}
+        >
+          {t("problems.filterChips.acknowledged")}
+          {unackOnly && hiddenByAck > 0 && (
+            <span className="tabular-nums text-ink-muted">+{hiddenByAck}</span>
+          )}
+        </button>
+        <button
+          type="button"
+          onClick={onToggleSuppressed}
+          aria-pressed={showSuppressed}
+          className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 font-mono text-xs ${
+            showSuppressed ? "border-accent/50 text-ink font-semibold" : "border-line text-ink-2"
+          }`}
+        >
+          {t("problems.filterChips.suppressed")}
+        </button>
+      </span>
       {hostFilter && (
         <button
           type="button"

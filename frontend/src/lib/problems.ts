@@ -131,6 +131,72 @@ export function filterProblems(
   });
 }
 
+/**
+ * Why a problem is not in the visible list, split by cause. `shown` plus all
+ * `hidden*` buckets always sum to `total` — each hidden problem is attributed
+ * to exactly one cause, in the precedence order below.
+ */
+export interface VisibilityBreakdown {
+  total: number;
+  shown: number;
+  hiddenBySeverity: number;
+  hiddenByHost: number;
+  hiddenByAck: number;
+  hiddenBySuppressed: number;
+  hiddenTotal: number;
+  /** Hidden-by-ack per severity lane — feeds the per-lane hint. */
+  ackHiddenBySeverity: Record<Severity, number>;
+}
+
+/**
+ * Decomposes `filterProblems` into "shown" plus one bucket per reason, so the
+ * UI can state *why* rows are missing and offer the matching way back.
+ *
+ * Precedence is explicit filters first (severity, host), then problem state
+ * (acknowledged, suppressed): a problem the user filtered out by severity is
+ * reported as severity-filtered even when it also happens to be acknowledged —
+ * otherwise narrowing the severity would inflate the "acknowledged" bucket with
+ * problems the user never meant to see.
+ *
+ * Caveat: suppressed problems are not fetched at all while `showSuppressed` is
+ * off (see useProblems), so `hiddenBySuppressed` only counts the ones already
+ * in hand — e.g. during the optimistic window right after suppressing a row.
+ */
+export function visibilityBreakdown(
+  problems: EnrichedProblem[],
+  filter: ProblemFilter,
+): VisibilityBreakdown {
+  const sevSet = filter.severities
+    ? filter.severities instanceof Set
+      ? filter.severities
+      : new Set(filter.severities)
+    : undefined;
+  const severityActive = sevSet !== undefined && sevSet.size > 0;
+
+  const result: VisibilityBreakdown = {
+    total: problems.length,
+    shown: 0,
+    hiddenBySeverity: 0,
+    hiddenByHost: 0,
+    hiddenByAck: 0,
+    hiddenBySuppressed: 0,
+    hiddenTotal: 0,
+    ackHiddenBySeverity: { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0, 0: 0 },
+  };
+
+  for (const p of problems) {
+    if (severityActive && !sevSet.has(p.severity)) result.hiddenBySeverity++;
+    else if (filter.host && p.hostName !== filter.host) result.hiddenByHost++;
+    else if (filter.unackOnly && p.acknowledged) {
+      result.hiddenByAck++;
+      result.ackHiddenBySeverity[p.severity]++;
+    } else if (!filter.showSuppressed && p.suppressed) result.hiddenBySuppressed++;
+    else result.shown++;
+  }
+  result.hiddenTotal = result.total - result.shown;
+  return result;
+}
+
 /** Counts per severity, for the filter-chip badges. Always includes all 6. */
 export function countBySeverity(problems: EnrichedProblem[]): Record<Severity, number> {
   const counts: Record<Severity, number> = { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0, 0: 0 };

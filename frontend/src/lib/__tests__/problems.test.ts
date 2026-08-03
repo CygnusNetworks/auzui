@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
 import type { ZabbixProblem, ZabbixTrigger } from "@auzui/zabbix-client";
+import type { ProblemFilter } from "../problems";
 import {
   countBySeverity,
   filterProblems,
   formatAge,
   groupIntoLanes,
   joinProblemsWithTriggers,
+  visibilityBreakdown,
 } from "../problems";
 import { ALL_SEVERITIES } from "../severity";
 
@@ -152,6 +154,74 @@ describe("filterProblems", () => {
     );
     const result = filterProblems(withHost, { host: "host-a" });
     expect(result.map((p) => p.eventid)).toEqual(["1"]);
+  });
+});
+
+describe("visibilityBreakdown", () => {
+  const problems = joinProblemsWithTriggers(
+    [
+      problem({ eventid: "1", severity: "5", acknowledged: "0" }),
+      problem({ eventid: "2", severity: "2", acknowledged: "1" }),
+      problem({ eventid: "3", severity: "2", acknowledged: "1" }),
+      problem({ eventid: "4", severity: "2", acknowledged: "0" }),
+    ],
+    [trigger()],
+  );
+
+  it("attributes acknowledged problems hidden by the unack filter", () => {
+    const result = visibilityBreakdown(problems, { unackOnly: true });
+    expect(result.shown).toBe(2);
+    expect(result.hiddenByAck).toBe(2);
+    expect(result.hiddenTotal).toBe(2);
+    expect(result.ackHiddenBySeverity[2]).toBe(2);
+    expect(result.ackHiddenBySeverity[5]).toBe(0);
+  });
+
+  it("reports nothing hidden when no filter applies", () => {
+    const result = visibilityBreakdown(problems, {});
+    expect(result.shown).toBe(4);
+    expect(result.hiddenTotal).toBe(0);
+  });
+
+  it("counts an explicit severity filter before problem state", () => {
+    // Events 2/3 are both Warning and acknowledged — the severity filter the
+    // user just set is the reason they are gone, not their ack state.
+    const result = visibilityBreakdown(problems, { severities: [5], unackOnly: true });
+    expect(result.hiddenBySeverity).toBe(3);
+    expect(result.hiddenByAck).toBe(0);
+    expect(result.shown).toBe(1);
+  });
+
+  it("counts suppressed problems still in hand", () => {
+    const withSuppressed = joinProblemsWithTriggers(
+      [problem({ eventid: "1" }), problem({ eventid: "2", suppressed: "1" })],
+      [trigger()],
+    );
+    const result = visibilityBreakdown(withSuppressed, {});
+    expect(result.hiddenBySuppressed).toBe(1);
+    expect(result.shown).toBe(1);
+  });
+
+  it("keeps shown plus hidden buckets equal to the total", () => {
+    const withHost = joinProblemsWithTriggers(
+      [
+        problem({ eventid: "1", objectid: "100", acknowledged: "1" }),
+        problem({ eventid: "2", objectid: "200" }),
+        problem({ eventid: "3", objectid: "100", severity: "1" }),
+      ],
+      [trigger({ triggerid: "100" }), trigger({ triggerid: "200", hosts: [{ hostid: "99", host: "other" }] })],
+    );
+    const filter: ProblemFilter = { severities: [4, 5], host: "host-a", unackOnly: true };
+    const result = visibilityBreakdown(withHost, filter);
+    expect(
+      result.shown +
+        result.hiddenBySeverity +
+        result.hiddenByHost +
+        result.hiddenByAck +
+        result.hiddenBySuppressed,
+    ).toBe(result.total);
+    // Same membership as the filter it explains.
+    expect(result.shown).toBe(filterProblems(withHost, filter).length);
   });
 });
 
