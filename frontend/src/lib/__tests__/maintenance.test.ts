@@ -243,14 +243,18 @@ describe("buildMaintenancePayload", () => {
 });
 
 describe("formatWindow", () => {
+  // Fixed 10:00 *local* time, not Date.now(): a same-day window started
+  // after 22:00 ends on the next day, so the wall clock decided whether this
+  // test passed. Local-time constructor keeps it same-day in every timezone.
+  const NOON_ISH = Math.floor(new Date(2026, 0, 15, 10, 0, 0).getTime() / 1000);
+
   it("formats a same-day window with a single date and a time range", () => {
-    const now = Math.floor(Date.now() / 1000);
-    const result = formatWindow(now, now + 2 * 3600);
+    const result = formatWindow(NOON_ISH, NOON_ISH + 2 * 3600);
     expect(result).toMatch(/^\d{2}\.\d{2}\., \d{2}:\d{2} – \d{2}:\d{2}$/);
   });
 
   it("formats a window spanning multiple days with both dates", () => {
-    const now = Math.floor(Date.now() / 1000);
+    const now = NOON_ISH;
     const result = formatWindow(now, now + 3 * 86400);
     expect(result).toMatch(
       /^\d{2}\.\d{2}\., \d{2}:\d{2} – \d{2}\.\d{2}\., \d{2}:\d{2}$/,
