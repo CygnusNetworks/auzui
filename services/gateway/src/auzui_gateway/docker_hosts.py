@@ -250,12 +250,19 @@ class DockerHostClient:
         stdout: bool = True,
         stderr: bool = True,
     ) -> str:
-        """Raw timestamped log text for one container. When both streams are
-        requested, docker-py's `demux=True` keeps stdout/stderr as two
-        separate blobs (the Docker API does not interleave-merge them for
-        us), so each line is prefixed with a `1\\t`/`2\\t` stream tag;
-        DockerService._parse_log_lines splits on the tag and re-sorts by the
-        embedded RFC3339Nano timestamp."""
+        """Raw timestamped log text for one container. Each line is prefixed
+        with a `1\\t`/`2\\t` stream tag; DockerService._parse_log_lines splits
+        on the tag and re-sorts by the embedded RFC3339Nano timestamp.
+
+        The two streams are fetched with one call each rather than in a single
+        demultiplexed call: docker-py's `APIClient.logs()` has no `demux`
+        parameter (unlike `attach`/`exec_start`), and `Container.logs(**kwargs)`
+        forwards the unknown keyword straight into it, so passing it raised
+        `TypeError: ContainerApiMixin.logs() got an unexpected keyword argument
+        'demux'` for every container. Verified against docker-py 7.2.0, the
+        pinned version. The Docker API does not interleave-merge the streams
+        for us either way, so this costs one extra round trip and nothing
+        else."""
         container = self._get_client().containers.get(cid)
         kwargs: dict[str, Any] = {"timestamps": True, "stream": False}
         if since is not None:
@@ -265,14 +272,13 @@ class DockerHostClient:
         if tail is not None:
             kwargs["tail"] = tail
 
-        if stdout and stderr:
-            out, err = container.logs(stdout=True, stderr=True, demux=True, **kwargs)
-            lines = [f"1\t{ln}" for ln in _decode(out).splitlines() if ln]
-            lines += [f"2\t{ln}" for ln in _decode(err).splitlines() if ln]
-            return "\n".join(lines)
-        tag = "1" if stdout else "2"
-        raw = container.logs(stdout=stdout, stderr=stderr, **kwargs)
-        return "\n".join(f"{tag}\t{ln}" for ln in _decode(raw).splitlines() if ln)
+        lines: list[str] = []
+        for want, tag in ((stdout, "1"), (stderr, "2")):
+            if not want:
+                continue
+            raw = container.logs(stdout=tag == "1", stderr=tag == "2", **kwargs)
+            lines += [f"{tag}\t{ln}" for ln in _decode(raw).splitlines() if ln]
+        return "\n".join(lines)
 
     def list_images(self) -> list[dict]:
         return [i.attrs for i in self._get_client().images.list()]

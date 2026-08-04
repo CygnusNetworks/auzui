@@ -45,9 +45,41 @@ class _FakeContainers:
         return [_FakeModel(LIST_SHAPE if sparse else INSPECT_SHAPE)]
 
 
+class _FakeContainer:
+    """docker-py's Container.logs(**kwargs) forwards straight into
+    APIClient.logs — whose signature this mirrors *exactly*, `demux` included
+    by its absence (verified against docker-py 7.2.0). An unknown keyword
+    therefore raises TypeError here just as it does in production."""
+
+    def __init__(self) -> None:
+        self.calls: list[dict] = []
+
+    def logs(
+        self,
+        stdout=True,
+        stderr=True,
+        stream=False,
+        timestamps=False,
+        tail="all",
+        since=None,
+        until=None,
+        follow=None,
+    ) -> bytes:
+        self.calls.append({"stdout": stdout, "stderr": stderr, "tail": tail, "since": since})
+        if stdout and not stderr:
+            return (
+                b"2026-08-04T11:40:47.100000000Z out-one\n2026-08-04T11:40:49.300000000Z out-two\n"
+            )
+        if stderr and not stdout:
+            return b"2026-08-04T11:40:48.200000000Z err-one\n"
+        raise AssertionError("both streams in one call: the Docker API does not merge them")
+
+
 class _FakeDockerPy:
     def __init__(self) -> None:
         self.containers = _FakeContainers()
+        self.container = _FakeContainer()
+        self.containers.get = lambda cid: self.container  # type: ignore[method-assign]
 
 
 def _client() -> tuple[DockerHostClient, _FakeDockerPy]:
@@ -80,3 +112,30 @@ def test_list_containers_issues_a_single_request_per_host():
     # sparse=False would also mean one inspect per container on top of the
     # list call — N+1 round trips across the WireGuard tunnel.
     assert fake.containers.calls == [{"all": False, "sparse": True}]
+
+
+def test_logs_fetches_each_stream_separately_and_tags_the_lines():
+    client, fake = _client()
+
+    # Regression: this used to pass demux=True in one call, which raised
+    # TypeError: ContainerApiMixin.logs() got an unexpected keyword argument
+    # 'demux' — every log request 500'd, for every container.
+    raw = client.logs("abc123", tail=50)
+
+    assert [c["stdout"] for c in fake.container.calls] == [True, False]
+    assert [c["stderr"] for c in fake.container.calls] == [False, True]
+    assert all(c["tail"] == 50 for c in fake.container.calls)
+    assert raw.splitlines() == [
+        "1\t2026-08-04T11:40:47.100000000Z out-one",
+        "1\t2026-08-04T11:40:49.300000000Z out-two",
+        "2\t2026-08-04T11:40:48.200000000Z err-one",
+    ]
+
+
+def test_logs_requests_only_the_stream_that_was_asked_for():
+    client, fake = _client()
+
+    raw = client.logs("abc123", stderr=False)
+
+    assert fake.container.calls == [{"stdout": True, "stderr": False, "tail": "all", "since": None}]
+    assert all(ln.startswith("1\t") for ln in raw.splitlines())
