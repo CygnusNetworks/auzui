@@ -134,7 +134,16 @@ export function TopologyPage() {
               {t("topology.clusterList.toggleList")} ({clusters.length}) {listOpen ? "▲" : "▼"}
             </button>
           </div>
-          <div className={`${listOpen ? "" : "hidden"} min-[821px]:block sticky top-4 max-h-[640px] rounded-lg border border-line bg-surface`}>
+          {/*
+            The list scrolls inside itself (ClusterList is h-full + flex-1
+            overflow-y-auto), which needs a *definite* height here: against a
+            bare max-height `h-full` resolves to auto, the inner scroll box
+            never gets a bound, and a long list (44 subnet clusters = 1627px)
+            simply runs out the bottom of the card.
+          */}
+          <div
+            className={`${listOpen ? "flex" : "hidden"} sticky top-4 h-[min(640px,calc(100vh-6rem))] flex-col overflow-hidden rounded-lg border border-line bg-surface min-[821px]:flex`}
+          >
             <ClusterList clusters={clusters} selectedId={search.cluster} onSelect={setCluster} query={query} onQueryChange={setQuery} />
           </div>
 
