@@ -7,7 +7,7 @@ requires-python = ">=3.12"
 license = { text = "AGPL-3.0-only" }
 authors = [{ name = "Cygnus Networks GmbH" }]
 dependencies = [
-    "fastapi>=0.115",
+    "fastapi>=0.141.1",
     "httpx>=0.28",
     "pydantic-settings>=2.7",
     "uvicorn[standard]>=0.34",
