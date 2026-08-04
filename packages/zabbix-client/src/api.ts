@@ -13,6 +13,7 @@ import type {
   ZabbixMap,
   ZabbixProblem,
   ZabbixProxy,
+  ZabbixProxyGroup,
   ZabbixTrendPoint,
   ZabbixTrigger,
 } from "./types";
@@ -223,6 +224,15 @@ export class ZabbixApi {
     } = {},
   ): Promise<ZabbixProxy[]> {
     return this.client.call("proxy.get", params);
+  }
+
+  /** Zabbix ≥7.0 — proxy groups (hosts with monitored_by "2" belong to one). */
+  proxyGroupGet(
+    params: GetParamsBase & {
+      proxy_groupids?: ZabbixId[];
+    } = {},
+  ): Promise<ZabbixProxyGroup[]> {
+    return this.client.call("proxygroup.get", params);
   }
 
   maintenanceGet(

@@ -65,9 +65,36 @@ function hostNodeId(hostid: string): string {
  */
 const NO_PROXY_ID = "0";
 
-/** True when the host is monitored via a real proxy (proxyid set, non-empty, not "0"). */
+/** True when the id is a usable Zabbix reference (set, non-empty, not the "none" sentinel "0"). */
+function isRealId(id: string | undefined): id is string {
+  return !!id && id !== NO_PROXY_ID;
+}
+
+/** True when the host is monitored via a single named proxy. */
 function hasRealProxy(proxyid: string | undefined): proxyid is string {
-  return !!proxyid && proxyid !== NO_PROXY_ID;
+  return isRealId(proxyid);
+}
+
+/**
+ * Where a host's data collection is anchored. Zabbix ≥7.0 has three cases and
+ * only the first two are visible in `proxyid`: a proxy-group host carries
+ * `monitored_by: "2"` with `proxyid: "0"` and its group in `proxy_groupid`, so
+ * keying on `proxyid` alone silently files all of them under "no proxy".
+ */
+export type HostCollectionAnchor =
+  | { kind: "proxy"; id: string }
+  | { kind: "proxygroup"; id: string }
+  | { kind: "direct" };
+
+export function collectionAnchorOf(host: ZabbixHost): HostCollectionAnchor {
+  // monitored_by is authoritative when present; fall back to the id fields so
+  // this still behaves on pre-7.0 payloads (and on output filters that omit it).
+  if (host.monitored_by === "2" || (host.monitored_by === undefined && isRealId(host.proxy_groupid))) {
+    if (isRealId(host.proxy_groupid)) return { kind: "proxygroup", id: host.proxy_groupid };
+    return { kind: "direct" };
+  }
+  if (hasRealProxy(host.proxyid)) return { kind: "proxy", id: host.proxyid };
+  return { kind: "direct" };
 }
 
 /** Synthetic cluster id for the "directly monitored (no proxy)" bucket in the Proxies tab. */
@@ -231,7 +258,7 @@ export function buildTopology(
  * Netzwerkzugriff — Tests in lib/__tests__/topology.test.ts.
  */
 
-export type ClusterKind = "subnet" | "proxy" | "map";
+export type ClusterKind = "subnet" | "proxy" | "proxygroup" | "map";
 
 export interface ClusterHostRef {
   hostid: string;
@@ -298,27 +325,32 @@ export function deriveSubnetClusters(
 }
 
 /**
- * Proxies-Tab: eine Gruppe je Proxy, Klarname aus `proxyNameById` (proxy.get,
- * siehe use-topology.ts), Fallback "Proxy <id>". Hosts ohne Proxy (proxyid
- * "0"/undefined/leer) landen NICHT als "Proxy 0" (die id löst in proxy.get
- * nichts auf), sondern gebündelt im Cluster `directClusterName` (i18n).
+ * Proxies-Tab: eine Gruppe je Proxy *und* je Proxy-Gruppe (Zabbix ≥7.0),
+ * Klarnamen aus `proxyNameById`/`proxyGroupNameById` (proxy.get /
+ * proxygroup.get, siehe use-topology.ts), Fallback "Proxy <id>". Hosts ohne
+ * beides landen NICHT als "Proxy 0" (die id löst in proxy.get nichts auf),
+ * sondern gebündelt im Cluster `directClusterName` (i18n).
  */
 export function deriveProxyClusters(
   hosts: ZabbixHost[],
   problemsByHost: Map<string, HostProblemSummary>,
   proxyNameById: Map<string, string>,
   directClusterName: string,
+  proxyGroupNameById: Map<string, string> = new Map(),
 ): ClusterSummary[] {
   const byProxy = new Map<string, ZabbixHost[]>();
+  const byProxyGroup = new Map<string, ZabbixHost[]>();
   const direct: ZabbixHost[] = [];
   for (const host of hosts) {
-    if (!hasRealProxy(host.proxyid)) {
+    const anchor = collectionAnchorOf(host);
+    if (anchor.kind === "direct") {
       direct.push(host);
       continue;
     }
-    const list = byProxy.get(host.proxyid);
+    const bucket = anchor.kind === "proxy" ? byProxy : byProxyGroup;
+    const list = bucket.get(anchor.id);
     if (list) list.push(host);
-    else byProxy.set(host.proxyid, [host]);
+    else bucket.set(anchor.id, [host]);
   }
   const clusters: ClusterSummary[] = [];
   for (const [proxyid, members] of byProxy) {
@@ -327,6 +359,16 @@ export function deriveProxyClusters(
       id: `proxy:${proxyid}`,
       kind: "proxy",
       name: proxyNameById.get(proxyid) ?? `Proxy ${proxyid}`,
+      hosts: hostRefs,
+      severity: worstSeverityOf(hostRefs.map((h) => h.severity)),
+    });
+  }
+  for (const [groupid, members] of byProxyGroup) {
+    const hostRefs = members.map((h) => hostRef(h, problemsByHost));
+    clusters.push({
+      id: `proxygroup:${groupid}`,
+      kind: "proxygroup",
+      name: proxyGroupNameById.get(groupid) ?? `Proxy group ${groupid}`,
       hosts: hostRefs,
       severity: worstSeverityOf(hostRefs.map((h) => h.severity)),
     });

@@ -35,6 +35,20 @@ function useProxies() {
 }
 
 /**
+ * proxygroup.get — Zabbix ≥7.0. Hosts monitored by a group carry proxyid "0",
+ * so without this the whole group would collapse into "directly monitored".
+ * Older servers answer with an error for the unknown method; the Proxies tab
+ * then just has no group clusters, which is correct there.
+ */
+function useProxyGroups() {
+  return useQuery({
+    queryKey: ["topology-proxy-groups"],
+    queryFn: () => zabbixApi.proxyGroupGet({ output: ["proxy_groupid", "name"] }).catch(() => []),
+    staleTime: 5 * 60_000,
+  });
+}
+
+/**
  * Combines hosts + maps + proxies + per-host problem counts into the three
  * cluster lists the redesign's tabs need (lib/topology.ts). Each list is
  * pre-sorted worst-severity-first, then name.
@@ -44,6 +58,7 @@ export function useTopology() {
   const hostsQuery = useHosts();
   const mapsQuery = useMaps();
   const proxiesQuery = useProxies();
+  const proxyGroupsQuery = useProxyGroups();
   const problemsByHost = useHostProblemCounts();
 
   const directProxyName = t("topology.directProxy");
@@ -51,8 +66,13 @@ export function useTopology() {
   const hosts = hostsQuery.data ?? [];
   const maps = mapsQuery.data ?? [];
   const proxies = proxiesQuery.data ?? [];
+  const proxyGroups = proxyGroupsQuery.data ?? [];
 
   const proxyNameById = useMemo(() => new Map(proxies.map((p) => [p.proxyid, p.name])), [proxies]);
+  const proxyGroupNameById = useMemo(
+    () => new Map(proxyGroups.map((g) => [g.proxy_groupid, g.name])),
+    [proxyGroups],
+  );
   const hostByHostId = useMemo(() => new Map(hosts.map((h) => [h.hostid, h])), [hosts]);
 
   const subnetClusters = useMemo(
@@ -60,8 +80,11 @@ export function useTopology() {
     [hosts, problemsByHost],
   );
   const proxyClusters = useMemo(
-    () => sortClustersBySeverity(deriveProxyClusters(hosts, problemsByHost, proxyNameById, directProxyName)),
-    [hosts, problemsByHost, proxyNameById, directProxyName],
+    () =>
+      sortClustersBySeverity(
+        deriveProxyClusters(hosts, problemsByHost, proxyNameById, directProxyName, proxyGroupNameById),
+      ),
+    [hosts, problemsByHost, proxyNameById, directProxyName, proxyGroupNameById],
   );
   const mapClusters = useMemo(
     () => sortClustersBySeverity(deriveMapClusters(maps, hostByHostId, problemsByHost)),
@@ -80,6 +103,6 @@ export function useTopology() {
     hostByHostId,
     problemsByHost,
     clustersByTab,
-    isLoading: hostsQuery.isLoading || mapsQuery.isLoading || proxiesQuery.isLoading,
+    isLoading: hostsQuery.isLoading || mapsQuery.isLoading || proxiesQuery.isLoading || proxyGroupsQuery.isLoading,
   };
 }

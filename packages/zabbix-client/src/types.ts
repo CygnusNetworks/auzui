@@ -41,7 +41,17 @@ export interface ZabbixHost {
   maintenance_status?: "0" | "1";
   /** Set while maintenance_status is "1" — id of the currently active maintenance. */
   maintenanceid?: ZabbixId;
+  /**
+   * Zabbix ≥7.0: who collects this host's data — "0" server, "1" a single
+   * proxy (`proxyid`), "2" a proxy group (`proxy_groupid`). Beware: for a
+   * proxy-group host `proxyid` is "0"; the proxy currently doing the work is
+   * `assigned_proxyid` and moves on failover.
+   */
+  monitored_by?: "0" | "1" | "2";
   proxyid?: ZabbixId;
+  proxy_groupid?: ZabbixId;
+  /** Read-only — proxy the group has currently assigned (monitored_by "2"). */
+  assigned_proxyid?: ZabbixId;
   interfaces?: ZabbixHostInterface[];
   parentTemplates?: ZabbixTemplate[];
   hostgroups?: ZabbixHostGroup[];
@@ -210,6 +220,12 @@ export interface ZabbixTimeperiod {
 /** Zabbix ≥7.0 renamed the proxy "host" field to "name" (proxy.get). */
 export interface ZabbixProxy {
   proxyid: ZabbixId;
+  name: string;
+}
+
+/** Zabbix ≥7.0 proxy group — hosts are assigned to one of its proxies at runtime. */
+export interface ZabbixProxyGroup {
+  proxy_groupid: ZabbixId;
   name: string;
 }
 

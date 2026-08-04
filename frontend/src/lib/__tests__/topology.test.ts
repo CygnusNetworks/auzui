@@ -222,6 +222,51 @@ describe("deriveProxyClusters", () => {
     const clusters = deriveProxyClusters(hosts, new Map(), new Map(), DIRECT);
     expect(clusters.some((c) => c.id === DIRECT_PROXY_CLUSTER_ID)).toBe(false);
   });
+
+  // Zabbix ≥7.0: a proxy-group host reports proxyid "0", so keying on proxyid
+  // alone filed every one of them under "directly monitored".
+  it("groups proxy-group hosts by their group instead of calling them directly monitored", () => {
+    const hosts = [
+      mkHost({ hostid: "1", monitored_by: "2", proxyid: "0", proxy_groupid: "2", assigned_proxyid: "4" }),
+      mkHost({ hostid: "2", monitored_by: "2", proxyid: "0", proxy_groupid: "2", assigned_proxyid: "7" }),
+      mkHost({ hostid: "3", monitored_by: "1", proxyid: "5" }),
+      mkHost({ hostid: "4", monitored_by: "0", proxyid: "0" }),
+    ];
+    const clusters = deriveProxyClusters(
+      hosts,
+      new Map(),
+      new Map([["5", "proxy-fra1"]]),
+      DIRECT,
+      new Map([["2", "proxies_cygnusnet"]]),
+    );
+    const group = clusters.find((c) => c.id === "proxygroup:2")!;
+    expect(group).toBeDefined();
+    expect(group.name).toBe("proxies_cygnusnet");
+    // Assigned proxy moves on failover — the group, not the proxy, is the cluster.
+    expect(group.hosts.map((h) => h.hostid).sort()).toEqual(["1", "2"]);
+    expect(clusters.find((c) => c.id === "proxy:5")!.hosts).toHaveLength(1);
+    expect(clusters.find((c) => c.id === DIRECT_PROXY_CLUSTER_ID)!.hosts.map((h) => h.hostid)).toEqual(["4"]);
+  });
+
+  it("falls back to 'Proxy group <id>' for an unresolved group name", () => {
+    const hosts = [mkHost({ hostid: "1", monitored_by: "2", proxyid: "0", proxy_groupid: "3" })];
+    const clusters = deriveProxyClusters(hosts, new Map(), new Map(), DIRECT);
+    expect(clusters[0]!.name).toBe("Proxy group 3");
+  });
+
+  it("keeps pre-7.0 payloads (no monitored_by) working off proxyid alone", () => {
+    const hosts = [mkHost({ hostid: "1", proxyid: "5" }), mkHost({ hostid: "2", proxyid: "0" })];
+    const clusters = deriveProxyClusters(hosts, new Map(), new Map([["5", "p"]]), DIRECT);
+    expect(clusters.find((c) => c.id === "proxy:5")!.hosts).toHaveLength(1);
+    expect(clusters.find((c) => c.id === DIRECT_PROXY_CLUSTER_ID)!.hosts).toHaveLength(1);
+  });
+
+  it("treats monitored_by '2' without a usable group id as directly monitored, never 'Proxy group 0'", () => {
+    const hosts = [mkHost({ hostid: "1", monitored_by: "2", proxyid: "0", proxy_groupid: "0" })];
+    const clusters = deriveProxyClusters(hosts, new Map(), new Map(), DIRECT);
+    expect(clusters.some((c) => c.name.startsWith("Proxy group"))).toBe(false);
+    expect(clusters.find((c) => c.id === DIRECT_PROXY_CLUSTER_ID)!.hosts).toHaveLength(1);
+  });
 });
 
 describe("resolveMapLabel", () => {

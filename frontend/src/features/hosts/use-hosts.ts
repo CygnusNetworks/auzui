@@ -9,7 +9,9 @@ export function useHosts() {
     queryKey: ["hosts"],
     queryFn: () =>
       zabbixApi.hostGet({
-        output: ["hostid", "host", "name", "status", "maintenance_status", "proxyid"],
+        // monitored_by/proxy_groupid: a proxy-group host has proxyid "0", so
+        // without these it looks unmonitored-by-proxy (see collectionAnchorOf).
+        output: ["hostid", "host", "name", "status", "maintenance_status", "proxyid", "monitored_by", "proxy_groupid", "assigned_proxyid"],
         selectInterfaces: "extend",
         selectParentTemplates: ["templateid", "name"],
         selectHostGroups: "extend",
