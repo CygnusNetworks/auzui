@@ -1,0 +1,123 @@
+name: Supply Chain
+
+# Drei Pruefungen gegen npm-Wuermer vom Typ Shai-Hulud (Mai 2026, TanStack)
+# und keyv (August 2026):
+#
+#   1. osv-scanner  -- bekannte Schwachstellen und Malware-Advisories
+#   2. pnpm-policy  -- Karenzzeit gegen frisch veroeffentlichte Versionen;
+#                      pnpm 11 prueft dabei das gesamte Lockfile, nicht nur
+#                      neue Aufloesungen
+#   3. ioc-scan     -- die konkreten Artefakte dieser Wuermer im Arbeitsbaum
+#
+# Der Zeitplan ist wichtig: die gefaehrlichen Versionen sind nur Stunden
+# online, und ein Repo ohne Commits wuerde sonst nie neu geprueft.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    # taeglich 06:15 UTC, versetzt zur vollen Stunde
+    - cron: "15 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: supply-chain-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  osv-scan:
+    name: OSV-Scanner
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+
+      # Die Reusable Workflows von google/osv-scanner-action brauchen
+      # security-events: write fuer SARIF-Upload. Das waere mehr Recht als
+      # noetig -- der CLI-Aufruf genuegt und schlaegt genauso fehl.
+      - name: OSV-Scanner installieren
+        run: |
+          curl -sSfL -o /usr/local/bin/osv-scanner \
+            https://github.com/google/osv-scanner/releases/latest/download/osv-scanner_linux_amd64
+          chmod +x /usr/local/bin/osv-scanner
+          osv-scanner --version
+
+      - name: Lockfiles scannen
+        run: osv-scanner scan source --lockfile=pnpm-lock.yaml --lockfile=uv.lock .
+
+  pnpm-policy:
+    name: pnpm-Karenzzeit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1  # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4
+        with:
+          node-version: "22"
+
+      # --frozen-lockfile allein prueft nur, ob das Lockfile zur package.json
+      # passt. Die Altersprüfung von minimumReleaseAge laeuft in pnpm 11 bei
+      # jedem install ueber ALLE Lockfile-Eintraege -- auch die, die schon
+      # laenger drinstehen. Genau das faengt eine Version ab, die jemand ohne
+      # aktive Policy lokal ins Lockfile geschrieben hat.
+      - name: Lockfile gegen die Karenzzeit pruefen
+        run: pnpm install --frozen-lockfile
+
+      - name: pnpm audit
+        # Findet Malware-Advisories, sobald npm sie eingetragen hat. Bricht
+        # nicht ab: die Meldungen sind oft transitive DoS-Funde ohne Bezug zur
+        # Lieferkette, und dieser Job soll nicht dauerhaft rot stehen.
+        continue-on-error: true
+        run: pnpm audit --audit-level=high
+
+  ioc-scan:
+    name: IOC-Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+
+      # Sucht die Artefakte der bekannten Wuermer. Absichtlich im Repo selbst
+      # und nicht in node_modules: hier geht es darum, dass sich der Wurm ueber
+      # einen Commit festsetzt (Editor-Hooks, die beim Oeffnen des Projekts
+      # starten) -- das ist der Weg, auf dem er von einem Entwicklerrechner in
+      # das Repository und zu allen anderen weiterwandert.
+      - name: Wurm-Artefakte suchen
+        run: |
+          set -uo pipefail
+          fail=0
+
+          note() { echo "::error::$*"; fail=1; }
+
+          # keyv-Wurm (2026-08-04): preinstall laedt Bun nach und setzt sich
+          # ueber Editor-Hooks fest.
+          for f in setup.mjs Math_Symbol.js .vscode/setup.mjs .claude/setup.mjs; do
+            if [ -e "$f" ]; then note "Wurm-Artefakt gefunden: $f"; fi
+          done
+          if find . -name 'setup.mjs' -not -path './node_modules/*' | grep -q .; then
+            note "setup.mjs irgendwo im Baum gefunden"
+          fi
+
+          # Autostart beim Oeffnen des Projekts -- der Persistenzmechanismus.
+          if [ -f .vscode/tasks.json ] && grep -q 'folderOpen' .vscode/tasks.json; then
+            note ".vscode/tasks.json startet eine Task beim Oeffnen (runOn: folderOpen)"
+          fi
+          # .claude/settings.json ist legitim; verdaechtig ist nur ein Hook,
+          # der auf die Wurm-Artefakte zeigt.
+          if [ -f .claude/settings.json ] && grep -qE 'setup\.mjs|Math_Symbol|bun ' .claude/settings.json; then
+            note ".claude/settings.json ruft setup.mjs/bun auf"
+          fi
+
+          # Shai-Hulud/TanStack (2026-05-11) und Exfiltrationsziele.
+          if grep -rl --binary-files=without-match \
+               -e '79ac49eedf774dd4b0cfa308722bc463cfe5885c' \
+               -e 'getsession\.org' -e 'git-tanstack\.com' -e 'webhook\.site' \
+               --exclude-dir=node_modules --exclude-dir=.git \
+               --exclude=supply-chain.yml . | grep -q .; then
+            note "Bekannter Malware-Indikator im Arbeitsbaum"
+          fi
+
+          if [ "$fail" -eq 0 ]; then echo "IOC-Scan sauber."; fi
+          exit "$fail"
