@@ -74,6 +74,25 @@ function cssVar(name: string): string {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 }
 
+/**
+ * uPlot's y-axis defaults to a fixed 50px width, which clips longer tick
+ * labels (e.g. formatAxisTick's "12.3 Mbps") instead of growing to fit them.
+ * Measures the widest rendered label each cycle and sizes the axis to match,
+ * per uPlot's own dynamic-size-axis pattern.
+ */
+function dynamicAxisSize(self: uPlot, values: string[] | null, axisIdx: number, cycleNum: number): number {
+  const axis = self.axes[axisIdx]!;
+  if (cycleNum > 1) return (axis as unknown as { _size: number })._size ?? 50;
+
+  let axisSize = (axis.ticks?.size ?? 0) + (axis.gap ?? 0);
+  const longestVal = (values ?? []).reduce((acc, val) => (val.length > acc.length ? val : acc), "");
+  if (longestVal !== "") {
+    self.ctx.font = Array.isArray(axis.font) ? axis.font[0] : axis.font;
+    axisSize += self.ctx.measureText(longestVal).width / devicePixelRatio;
+  }
+  return Math.ceil(axisSize);
+}
+
 /** Merges per-series [t,v] pairs onto one shared, sorted x-axis (uPlot requires aligned columns). */
 function toUplotData(series: TimeChartSeries[]): uPlot.AlignedData {
   const allTimes = new Set<number>();
@@ -206,6 +225,7 @@ export function TimeChart({ series, unit, height = 220, thresholds = [], onBrush
           grid: { stroke: lineSoft },
           ticks: { stroke: lineSoft },
           values: (_u, vals) => vals.map((v) => formatAxisTick(v, unit, locale)),
+          size: dynamicAxisSize,
         },
       ],
       legend: { show: series.length > 1 },
