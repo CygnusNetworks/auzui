@@ -4,6 +4,7 @@ import { UserMenu } from "./UserMenu";
 import { CommandPalette } from "../features/command-palette/CommandPalette";
 import { useAuthStore } from "../lib/auth/store";
 import { useLogsEnabled } from "../lib/use-logs";
+import { useDockerEnabled } from "../lib/use-docker";
 import { BUNDLE_VERSION, useAppConfig } from "../lib/use-app-config";
 import { useT } from "../lib/i18n";
 
@@ -28,6 +29,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const { data: config } = useAppConfig();
   const version = config?.version || BUNDLE_VERSION;
   const { data: logsEnabled } = useLogsEnabled();
+  const { data: dockerEnabled } = useDockerEnabled();
   const menuRef = useRef<HTMLDivElement>(null);
 
   // Reactive guard: a query/mutation can clear the token mid-session (401 /
@@ -74,6 +76,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     { to: "/latest-data", label: t("appShell.nav.latestData") },
     { to: "/logs", label: t("appShell.nav.logs"), show: logsEnabled },
     { to: "/web-scenarios", label: t("appShell.nav.webScenarios") },
+    { to: "/docker", label: t("appShell.nav.docker"), show: dockerEnabled },
     { to: "/maintenance", label: t("appShell.nav.maintenance") },
   ];
 

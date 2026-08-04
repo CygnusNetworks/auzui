@@ -1,0 +1,91 @@
+# Example auzui-gateway configuration file (TOML).
+#
+# Copy to /config/auzui.toml (or ./auzui.toml, or point AUZUI_CONFIG_FILE at
+# a copy of this file elsewhere) and adjust. Every field here can also be
+# set via an environment variable of the same name (upper-cased); ENV and a
+# .env file always win over this file — see docs/configuration.md for the
+# full precedence rules and schema (flat vs. nested keys, unknown-key
+# handling, JSON/CSV fields as native lists).
+#
+# Loading this file needs no extra dependency (tomllib is stdlib); the YAML
+# equivalent (auzui.yaml, same settings) needs the gateway's optional `yaml`
+# extra, which the official image already includes.
+#
+# Never commit a copy of this file with real secrets filled in.
+
+# Flat keys are also allowed anywhere (they win over a nested key setting
+# the same field), e.g.:
+# permission_cache_ttl = 300
+
+# --- Zabbix (required) -----------------------------------------------------
+
+[zabbix]
+api_url = "https://zabbix.example.com/api_jsonrpc.php"
+# User-facing Zabbix UI ("open in old UI" links). Empty = derived from api_url.
+ui_url = "https://zabbix.example.com"
+
+# --- InfluxDB (optional — time-series fast path) ----------------------------
+# Leave the whole [influx] table out to disable the Influx path; the SPA
+# falls back to the Zabbix API (history.get/trend.get).
+
+[influx]
+url = "http://influx:8086"
+token = "influx-token"
+org = "monitoring"
+bucket = "zabbix"
+
+# --- Graylog (optional — log panels) ----------------------------------------
+# Leave [graylog] (and graylog.servers) out to disable the logs feature.
+
+[graylog]
+verify_tls = true
+default_streams = ["stream-a", "stream-b"]  # -> CSV "stream-a,stream-b"
+
+[[graylog.servers]]
+id = "gl-a"
+label = "graylog-a"
+url = "https://graylog-a.example.com"
+token = "graylog-token-a"
+
+# --- Docker (optional — container management) -------------------------------
+# Leave [docker] (and docker.hosts) out to disable the feature entirely.
+# See docs/configuration.md#docker-integration for the full host/registry
+# schema and the three connection variants (socket-proxy, mTLS, ssh://).
+
+[docker]
+timeout = 10.0
+cache_ttl = 10.0
+stats_cache_ttl = 5.0
+update_check_ttl = 3600.0
+# Read-only mount required for any ssh:// host below.
+ssh_known_hosts = "/config/ssh/known_hosts"
+
+[[docker.hosts]]
+id = "prod-a"
+label = "prod-a"
+url = "http://docker-socket-proxy-a:2375"
+readonly = true
+
+[[docker.hosts]]
+id = "db-1"
+url = "tcp://10.0.0.5:2376"
+tls_ca = "/certs/db1/ca.pem"
+tls_cert = "/certs/db1/cert.pem"
+tls_key = "/certs/db1/key.pem"
+
+[[docker.hosts]]
+id = "edge"
+url = "ssh://deploy@edge.example.com"
+ssh_key = "/config/ssh/edge_ed25519"
+zabbix_host = "edge.example.com"
+compose = true
+
+[[docker.registries]]
+registry = "ghcr.io"
+username = "bot"
+token = "registry-token"
+
+# --- CORS --------------------------------------------------------------------
+# CSV of allowed origins; a native list works the same way as
+# graylog.default_streams above. Empty/omitted disables CORS entirely.
+# cors_origins = ["https://auzui.example.com"]

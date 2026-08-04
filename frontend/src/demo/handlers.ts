@@ -9,6 +9,13 @@ import {
   DEMO_NOW,
   DEMO_TOKEN,
   DEMO_USERNAME,
+  demoDockerContainers,
+  demoDockerHosts,
+  demoDockerImages,
+  demoDockerNetworks,
+  demoDockerStackConfigs,
+  demoDockerUpdates,
+  demoDockerVolumes,
   demoFilterSets,
   demoHostGroups,
   demoHosts,
@@ -21,6 +28,16 @@ import {
   demoProblems,
   demoProxies,
   demoTriggers,
+  DOCKER_UNREACHABLE_HOST_ID,
+  applyDockerContainerAction,
+  applyDockerStackAction,
+  dockerContainersResult,
+  dockerHostsResult,
+  dockerInspectFor,
+  dockerLogLines,
+  dockerStacksResult,
+  dockerStatsFor,
+  findDockerContainer,
   generateHistory,
   type DemoFilterSet,
 } from "./mockData";
@@ -427,9 +444,190 @@ function searchResult(messages: unknown[], total: number) {
 
 let nextFilterSetId = 100;
 
+// ---------------------------------------------------------------------------
+// Docker plugin (/api/docker/*) — auzui-docker-plan.md Phase 4. Without these
+// handlers the demo build's /docker page 404s on every request the instant
+// VITE_DEMO=1 starts polling it, so this mirrors docker_routes.py's wire
+// shapes route-for-route (fan-out {..., errors} envelopes, {lines, cursor}
+// log pages, snake_case bodies) rather than reshaping anything for the
+// frontend — GatewayDockerSource already does that mapping in production.
+// ---------------------------------------------------------------------------
+
+function parseLogBoundary(value: string | null): number | undefined {
+  if (value === null) return undefined;
+  const num = Number(value);
+  if (Number.isFinite(num)) return num;
+  const ms = Date.parse(value);
+  return Number.isFinite(ms) ? ms / 1000 : undefined;
+}
+
+async function handleDockerRoute(request: Request, url: URL): Promise<Response | undefined> {
+  const method = request.method;
+  const rest = url.pathname.slice("/api/docker".length); // "" | "/status" | "/hosts" | ...
+
+  if (rest === "/status" && method === "GET") return jsonResponse({ enabled: true });
+
+  if (rest === "/hosts" && method === "GET") return jsonResponse(dockerHostsResult());
+
+  if (rest === "/containers" && method === "GET") {
+    return jsonResponse(dockerContainersResult(url.searchParams.getAll("hosts")));
+  }
+
+  const inspectMatch = rest.match(/^\/containers\/([^/]+)\/([^/]+)$/);
+  if (inspectMatch && method === "GET") {
+    const hostId = inspectMatch[1]!;
+    const cid = inspectMatch[2]!;
+    if (hostId === DOCKER_UNREACHABLE_HOST_ID) {
+      return jsonResponse({ detail: `docker host ${JSON.stringify(hostId)}: connection refused` }, 502);
+    }
+    const c = findDockerContainer(hostId, cid);
+    if (!c) return jsonResponse({ detail: "not found on this docker host" }, 404);
+    return jsonResponse(dockerInspectFor(c));
+  }
+
+  const statsMatch = rest.match(/^\/containers\/([^/]+)\/([^/]+)\/stats$/);
+  if (statsMatch && method === "GET") {
+    const hostId = statsMatch[1]!;
+    const cid = statsMatch[2]!;
+    if (hostId === DOCKER_UNREACHABLE_HOST_ID) return jsonResponse({ detail: "docker host unreachable" }, 502);
+    const c = findDockerContainer(hostId, cid);
+    if (!c) return jsonResponse({ detail: "not found on this docker host" }, 404);
+    return jsonResponse(dockerStatsFor(c));
+  }
+
+  if (rest === "/stats" && method === "POST") {
+    const body = await readJsonBody(request);
+    const targets = (body.targets as Record<string, string[]>) ?? {};
+    const stats: Record<string, Record<string, unknown>> = {};
+    const errors: { host_id: string; message: string }[] = [];
+    for (const [hostId, cids] of Object.entries(targets)) {
+      if (hostId === DOCKER_UNREACHABLE_HOST_ID) {
+        errors.push({ host_id: hostId, message: "connection refused" });
+        continue;
+      }
+      for (const cid of cids) {
+        const c = findDockerContainer(hostId, cid);
+        if (!c) continue;
+        (stats[hostId] ??= {})[cid] = dockerStatsFor(c);
+      }
+    }
+    return jsonResponse({ stats, errors });
+  }
+
+  const logsMatch = rest.match(/^\/containers\/([^/]+)\/([^/]+)\/logs$/);
+  if (logsMatch && method === "GET") {
+    const hostId = logsMatch[1]!;
+    const cid = logsMatch[2]!;
+    if (hostId === DOCKER_UNREACHABLE_HOST_ID) return jsonResponse({ detail: "docker host unreachable" }, 502);
+    const c = findDockerContainer(hostId, cid);
+    if (!c) return jsonResponse({ detail: "not found on this docker host" }, 404);
+    const since = parseLogBoundary(url.searchParams.get("since"));
+    const until = parseLogBoundary(url.searchParams.get("until"));
+    const tailParam = url.searchParams.get("tail");
+    const tail = tailParam ? Number(tailParam) : undefined;
+    const lines = dockerLogLines(cid, since, until, tail);
+    const cursor = lines.length > 0 ? new Date((lines[lines.length - 1]!.ts + 1) * 1000).toISOString() : null;
+    return jsonResponse({ lines, cursor });
+  }
+
+  if (rest === "/search" && method === "GET") {
+    const q = (url.searchParams.get("q") ?? "").toLowerCase();
+    const typesParam = url.searchParams.getAll("types");
+    const wantedTypes = typesParam.length > 0 ? typesParam : ["containers", "images", "volumes", "networks"];
+    const hostsParam = url.searchParams.getAll("hosts");
+    const wantedHosts = hostsParam.length > 0 ? hostsParam : demoDockerHosts.map((h) => h.id);
+    const matches = (s: string) => !q || s.toLowerCase().includes(q);
+    const results: Record<string, unknown[]> = { containers: [], images: [], volumes: [], networks: [] };
+    if (wantedTypes.includes("containers")) {
+      results.containers = dockerContainersResult(wantedHosts).containers.filter((c) =>
+        (c as { names: string[] }).names.some(matches),
+      );
+    }
+    if (wantedTypes.includes("images")) {
+      results.images = demoDockerImages.filter((i) => wantedHosts.includes(i.host_id) && i.RepoTags.some(matches));
+    }
+    if (wantedTypes.includes("volumes")) {
+      results.volumes = demoDockerVolumes.filter((v) => wantedHosts.includes(v.host_id) && matches(v.Name));
+    }
+    if (wantedTypes.includes("networks")) {
+      results.networks = demoDockerNetworks.filter((n) => wantedHosts.includes(n.host_id) && matches(n.Name));
+    }
+    const errors = wantedHosts.includes(DOCKER_UNREACHABLE_HOST_ID)
+      ? [{ host_id: DOCKER_UNREACHABLE_HOST_ID, message: "connection refused" }]
+      : [];
+    return jsonResponse({ results, errors });
+  }
+
+  if (rest === "/updates" && method === "GET") {
+    const hostsParam = url.searchParams.getAll("hosts");
+    const wantedHosts = hostsParam.length > 0 ? hostsParam : demoDockerHosts.map((h) => h.id);
+    const updates: Record<string, Record<string, unknown>> = {};
+    for (const [cid, entry] of demoDockerUpdates) {
+      const c = demoDockerContainers.find((x) => x.id === cid);
+      if (!c || !wantedHosts.includes(c.host_id)) continue;
+      (updates[c.host_id] ??= {})[cid] = entry;
+    }
+    const errors = wantedHosts.includes(DOCKER_UNREACHABLE_HOST_ID)
+      ? [{ host_id: DOCKER_UNREACHABLE_HOST_ID, message: "connection refused" }]
+      : [];
+    return jsonResponse({ updates, errors });
+  }
+
+  if (rest === "/permissions" && method === "GET") return jsonResponse({ can_act: true });
+
+  const actionMatch = rest.match(/^\/containers\/([^/]+)\/([^/]+)\/action$/);
+  if (actionMatch && method === "POST") {
+    const hostId = actionMatch[1]!;
+    const cid = actionMatch[2]!;
+    if (hostId === DOCKER_UNREACHABLE_HOST_ID) return jsonResponse({ detail: "docker host unreachable" }, 502);
+    const host = demoDockerHosts.find((h) => h.id === hostId);
+    if (host?.readonly) return jsonResponse({ detail: `docker host ${JSON.stringify(hostId)} is read-only` }, 403);
+    const c = findDockerContainer(hostId, cid);
+    if (!c) return jsonResponse({ detail: "not found on this docker host" }, 404);
+    const body = await readJsonBody(request);
+    return jsonResponse(applyDockerContainerAction(c, String(body.action ?? "")));
+  }
+
+  const stackConfigMatch = rest.match(/^\/stacks\/([^/]+)\/([^/]+)\/config$/);
+  if (stackConfigMatch && method === "GET") {
+    const hostId = stackConfigMatch[1]!;
+    const project = stackConfigMatch[2]!;
+    const host = demoDockerHosts.find((h) => h.id === hostId);
+    if (!host?.compose) return jsonResponse({ detail: `host ${hostId} does not support compose operations` }, 404);
+    const cfg = demoDockerStackConfigs[`${hostId}/${project}`];
+    if (!cfg) return jsonResponse({ detail: "not found" }, 404);
+    return jsonResponse(cfg);
+  }
+
+  const stackActionMatch = rest.match(/^\/stacks\/([^/]+)\/([^/]+)\/action$/);
+  if (stackActionMatch && method === "POST") {
+    const hostId = stackActionMatch[1]!;
+    const project = stackActionMatch[2]!;
+    const host = demoDockerHosts.find((h) => h.id === hostId);
+    if (!host?.compose) return jsonResponse({ detail: `host ${hostId} does not support compose operations` }, 404);
+    if (host.readonly) return jsonResponse({ detail: `docker host ${JSON.stringify(hostId)} is read-only` }, 403);
+    const body = await readJsonBody(request);
+    return jsonResponse(applyDockerStackAction(hostId, project, String(body.action ?? "")));
+  }
+
+  const stacksMatch = rest.match(/^\/stacks\/([^/]+)$/);
+  if (stacksMatch && method === "GET") {
+    const hostId = stacksMatch[1]!;
+    if (hostId === DOCKER_UNREACHABLE_HOST_ID) return jsonResponse({ detail: "all docker hosts unreachable" }, 502);
+    return jsonResponse(dockerStacksResult(hostId));
+  }
+
+  return undefined;
+}
+
 async function handleGateway(request: Request, pathname: string): Promise<Response> {
   const method = request.method;
   const url = new URL(request.url);
+
+  if (pathname.startsWith("/api/docker/")) {
+    const res = await handleDockerRoute(request, url);
+    if (res) return res;
+  }
 
   if (pathname === "/api/auth/methods") return jsonResponse({ password: true, spnego: false });
   if (pathname === "/api/config") {

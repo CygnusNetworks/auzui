@@ -803,6 +803,712 @@ export const demoFilterSets: DemoFilterSet[] = [
 ];
 
 // ---------------------------------------------------------------------------
+// Docker (optional plugin) — auzui-docker-plan.md Phase 4. Four hosts (one
+// normal/writable, one readonly, one SSH+compose, one unreachable so the
+// `errors` fan-out entries have something to show), containers spanning
+// every Docker state plus two compose stacks for the "group by stack" view.
+// Wire shapes here are deliberately snake_case/Docker-native — these are
+// mocks of the GATEWAY's raw JSON (docker_routes.py/docker_hosts.py), which
+// GatewayDockerSource (packages/docker) then maps to camelCase, exactly like
+// the Zabbix mock data above mirrors the Zabbix API's own field names.
+// ---------------------------------------------------------------------------
+
+/** Deterministic 12-hex-char id from a seed string — good enough to look
+ * like a Docker short id without needing real randomness. */
+function hexId(seed: string): string {
+  let h1 = 0;
+  let h2 = 0;
+  for (let i = 0; i < seed.length; i++) {
+    h1 = (h1 * 31 + seed.charCodeAt(i)) | 0;
+    h2 = (h2 * 131 + seed.charCodeAt(i)) | 0;
+  }
+  const hex = (n: number) => (n >>> 0).toString(16).padStart(8, "0");
+  return (hex(h1) + hex(h2)).slice(0, 12);
+}
+
+/** Deterministic fake `sha256:<64 hex>` digest from a seed string. */
+function fakeDigest(seed: string): string {
+  const chunks = ["a", "b", "c", "d", "e", "f"].map((suffix) => hexId(seed + suffix));
+  return `sha256:${chunks.join("").slice(0, 64).padEnd(64, "0")}`;
+}
+
+export interface DemoDockerPort {
+  private: number;
+  public: number | null;
+  type: string;
+  ip: string;
+}
+
+export type DemoDockerUpdateStatus = "current" | "outdated" | "unknown";
+
+export interface DemoDockerContainer {
+  id: string;
+  host_id: string;
+  name: string;
+  names: string[];
+  image: string;
+  tag: string;
+  image_id: string;
+  state: "running" | "exited" | "paused" | "restarting";
+  health: "healthy" | "unhealthy" | "starting" | null;
+  status: string;
+  created: number;
+  ports: DemoDockerPort[];
+  project: string;
+  service: string;
+  compose_working_dir: string;
+  compose_config_file: string;
+  labels: Record<string, string>;
+  mounts: { Source: string; Destination: string; RW: boolean; Type: string }[];
+  env: string[];
+  restart_policy: string;
+  /** Registry-update status this container's image carries in /updates. */
+  updateStatus: DemoDockerUpdateStatus;
+}
+
+export interface DemoDockerHost {
+  id: string;
+  label: string;
+  readonly: boolean;
+  compose: boolean;
+  zabbix_host: string;
+  engine_version: string;
+  /** Marks the "everything about this host fails" demo host. */
+  unreachable?: boolean;
+}
+
+export const demoDockerHosts: DemoDockerHost[] = [
+  { id: "prod-a", label: "prod-a", readonly: false, compose: false, zabbix_host: "web-01", engine_version: "26.1.4" },
+  { id: "prod-b", label: "prod-b", readonly: true, compose: false, zabbix_host: "web-02", engine_version: "26.1.4" },
+  { id: "edge", label: "edge (ssh)", readonly: false, compose: true, zabbix_host: "app-05", engine_version: "25.0.3" },
+  { id: "legacy-01", label: "legacy-01", readonly: false, compose: false, zabbix_host: "", engine_version: "", unreachable: true },
+];
+
+const DOCKER_UNREACHABLE_HOST_ID = "legacy-01";
+
+function dockerHostError(hostId: string): { host_id: string; message: string } {
+  return {
+    host_id: hostId,
+    message: "ConnectionError: HTTPConnectionPool(host='10.50.0.9', port=2375): connection refused",
+  };
+}
+
+interface DockerContainerSpec {
+  key: string;
+  hostId: string;
+  name: string;
+  image: string;
+  tag: string;
+  state: DemoDockerContainer["state"];
+  health?: "healthy" | "unhealthy" | "starting";
+  ports?: { private: number; public: number | null; type?: string }[];
+  project?: string;
+  service?: string;
+  createdHoursAgo: number;
+  updateStatus: DemoDockerUpdateStatus;
+  mounts?: { source: string; destination: string; ro?: boolean }[];
+  env?: string[];
+}
+
+const DOCKER_CONTAINER_SPECS: DockerContainerSpec[] = [
+  // prod-a — writable, non-compose host, but three of its containers still
+  // carry compose labels ("webshop") so "group by stack" has something to
+  // show on a non-SSH host too.
+  {
+    key: "web-nginx",
+    hostId: "prod-a",
+    name: "web-nginx",
+    image: "nginx",
+    tag: "1.27",
+    state: "running",
+    health: "healthy",
+    ports: [{ private: 80, public: 8080 }, { private: 443, public: 8443 }],
+    project: "webshop",
+    service: "nginx",
+    createdHoursAgo: 120,
+    updateStatus: "current",
+    mounts: [{ source: "/opt/stacks/webshop/nginx.conf", destination: "/etc/nginx/nginx.conf", ro: true }],
+  },
+  {
+    key: "web-app",
+    hostId: "prod-a",
+    name: "web-app",
+    image: "ghcr.io/acme/webapp",
+    tag: "v2.3.1",
+    state: "running",
+    health: "unhealthy",
+    ports: [{ private: 3000, public: null }],
+    project: "webshop",
+    service: "app",
+    createdHoursAgo: 120,
+    updateStatus: "outdated",
+    env: ["NODE_ENV=production", "DATABASE_URL=postgres://app@postgres-main:5432/webshop"],
+  },
+  {
+    key: "web-redis",
+    hostId: "prod-a",
+    name: "web-redis",
+    image: "redis",
+    tag: "7",
+    state: "running",
+    ports: [{ private: 6379, public: null }],
+    project: "webshop",
+    service: "redis",
+    createdHoursAgo: 120,
+    updateStatus: "current",
+  },
+  {
+    key: "postgres-main",
+    hostId: "prod-a",
+    name: "postgres-main",
+    image: "postgres",
+    tag: "16",
+    state: "running",
+    health: "healthy",
+    ports: [{ private: 5432, public: 5432 }],
+    createdHoursAgo: 400,
+    updateStatus: "current",
+    mounts: [{ source: "prod-a_pgdata", destination: "/var/lib/postgresql/data" }],
+  },
+  {
+    key: "batch-worker",
+    hostId: "prod-a",
+    name: "batch-worker",
+    image: "ghcr.io/acme/worker",
+    tag: "v1.0.0",
+    state: "exited",
+    createdHoursAgo: 48,
+    updateStatus: "outdated",
+  },
+  {
+    key: "old-cache",
+    hostId: "prod-a",
+    name: "old-cache",
+    image: "redis",
+    tag: "6",
+    state: "paused",
+    createdHoursAgo: 600,
+    updateStatus: "unknown",
+  },
+
+  // prod-b — read-only host (socket-proxy with POST=0), standalone containers.
+  {
+    key: "traefik",
+    hostId: "prod-b",
+    name: "traefik",
+    image: "traefik",
+    tag: "v3.1",
+    state: "running",
+    health: "healthy",
+    ports: [{ private: 80, public: 80 }, { private: 443, public: 443 }, { private: 8080, public: null }],
+    createdHoursAgo: 300,
+    updateStatus: "current",
+  },
+  {
+    key: "grafana",
+    hostId: "prod-b",
+    name: "grafana",
+    image: "grafana/grafana",
+    tag: "11.1.0",
+    state: "restarting",
+    createdHoursAgo: 5,
+    updateStatus: "outdated",
+  },
+  {
+    key: "prometheus",
+    hostId: "prod-b",
+    name: "prometheus",
+    image: "prom/prometheus",
+    tag: "v2.53.0",
+    state: "running",
+    ports: [{ private: 9090, public: 9090 }],
+    createdHoursAgo: 300,
+    updateStatus: "unknown",
+  },
+
+  // edge — ssh:// host with compose:true, one full "shop" stack.
+  {
+    key: "shop-db",
+    hostId: "edge",
+    name: "shop-db",
+    image: "postgres",
+    tag: "15",
+    state: "running",
+    health: "healthy",
+    ports: [{ private: 5432, public: 5432 }],
+    project: "shop",
+    service: "db",
+    createdHoursAgo: 200,
+    updateStatus: "current",
+    mounts: [{ source: "shop_db-data", destination: "/var/lib/postgresql/data" }],
+  },
+  {
+    key: "shop-api",
+    hostId: "edge",
+    name: "shop-api",
+    image: "ghcr.io/acme/shop-api",
+    tag: "v4.2.0",
+    state: "running",
+    ports: [{ private: 8080, public: 8080 }],
+    project: "shop",
+    service: "api",
+    createdHoursAgo: 200,
+    updateStatus: "outdated",
+  },
+  {
+    key: "shop-cache",
+    hostId: "edge",
+    name: "shop-cache",
+    image: "redis",
+    tag: "7-alpine",
+    state: "running",
+    project: "shop",
+    service: "cache",
+    createdHoursAgo: 200,
+    updateStatus: "current",
+  },
+  {
+    key: "shop-worker",
+    hostId: "edge",
+    name: "shop-worker",
+    image: "ghcr.io/acme/shop-worker",
+    tag: "v4.2.0",
+    state: "exited",
+    project: "shop",
+    service: "worker",
+    createdHoursAgo: 20,
+    updateStatus: "unknown",
+  },
+];
+
+function statusTextFor(state: DemoDockerContainer["state"], health: DemoDockerContainer["health"], hoursAgoVal: number): string {
+  const healthSuffix = health ? ` (${health === "starting" ? "health: starting" : health})` : "";
+  if (state === "running") return `Up ${Math.max(1, Math.round(hoursAgoVal))} hours${healthSuffix}`;
+  if (state === "paused") return `Up ${Math.max(1, Math.round(hoursAgoVal))} hours (Paused)`;
+  if (state === "restarting") return "Restarting (1) 12 seconds ago";
+  return `Exited (0) ${Math.max(1, Math.round(hoursAgoVal))} hours ago`;
+}
+
+export const demoDockerContainers: DemoDockerContainer[] = DOCKER_CONTAINER_SPECS.map((spec) => {
+  const id = hexId(`${spec.hostId}:${spec.key}`);
+  const imageId = fakeDigest(`img:${spec.image}:${spec.tag}`);
+  const workingDir = spec.project ? `/opt/stacks/${spec.project}` : "";
+  const configFile = spec.project ? `/opt/stacks/${spec.project}/docker-compose.yml` : "";
+  const labels: Record<string, string> = spec.project
+    ? {
+        "com.docker.compose.project": spec.project,
+        "com.docker.compose.service": spec.service ?? "",
+        "com.docker.compose.project.working_dir": workingDir,
+        "com.docker.compose.project.config_files": configFile,
+      }
+    : {};
+  return {
+    id,
+    host_id: spec.hostId,
+    name: spec.name,
+    names: [spec.name],
+    image: spec.image,
+    tag: spec.tag,
+    image_id: imageId,
+    state: spec.state,
+    health: spec.health ?? null,
+    status: statusTextFor(spec.state, spec.health ?? null, spec.createdHoursAgo),
+    created: hoursAgo(spec.createdHoursAgo),
+    ports: spec.state === "exited" ? [] : (spec.ports ?? []).map((p) => ({ private: p.private, public: p.public, type: p.type ?? "tcp", ip: p.public ? "0.0.0.0" : "" })),
+    project: spec.project ?? "",
+    service: spec.service ?? "",
+    compose_working_dir: workingDir,
+    compose_config_file: configFile,
+    labels,
+    mounts: (spec.mounts ?? []).map((m) => ({
+      Source: m.source,
+      Destination: m.destination,
+      RW: !m.ro,
+      Type: m.source.startsWith("/") ? "bind" : "volume",
+    })),
+    env: spec.env ?? [],
+    restart_policy: spec.state === "exited" ? "no" : "unless-stopped",
+    updateStatus: spec.updateStatus,
+  };
+});
+
+function findDockerContainer(hostId: string, cid: string): DemoDockerContainer | undefined {
+  return demoDockerContainers.find((c) => c.host_id === hostId && c.id === cid);
+}
+
+/** Mutable per-container registry-update entry, keyed by container id — pull_recreate flips "outdated" to "current". */
+interface DockerUpdateEntry {
+  tag: string;
+  local_digest: string;
+  remote_digest: string;
+  status: DemoDockerUpdateStatus;
+}
+
+export const demoDockerUpdates = new Map<string, DockerUpdateEntry>(
+  demoDockerContainers.map((c) => {
+    const localDigest = c.updateStatus === "unknown" ? "" : fakeDigest(`local:${c.id}`);
+    const remoteDigest =
+      c.updateStatus === "unknown"
+        ? ""
+        : c.updateStatus === "outdated"
+          ? fakeDigest(`remote-newer:${c.id}`)
+          : localDigest;
+    return [
+      c.id,
+      { tag: c.tag, local_digest: localDigest, remote_digest: remoteDigest, status: c.updateStatus },
+    ];
+  }),
+);
+
+// -- images / volumes / networks (GET /api/docker/search) -------------------
+
+export interface DemoDockerImageRow {
+  host_id: string;
+  Id: string;
+  RepoTags: string[];
+  RepoDigests: string[];
+  Size: number;
+  Created: string;
+}
+
+export const demoDockerImages: DemoDockerImageRow[] = (() => {
+  const seen = new Set<string>();
+  const rows: DemoDockerImageRow[] = [];
+  for (const c of demoDockerContainers) {
+    const key = `${c.host_id}:${c.image}:${c.tag}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const entry = demoDockerUpdates.get(c.id);
+    rows.push({
+      host_id: c.host_id,
+      Id: c.image_id,
+      RepoTags: [`${c.image}:${c.tag}`],
+      RepoDigests: entry?.local_digest ? [`${c.image}@${entry.local_digest}`] : [],
+      Size: 40_000_000 + (hexId(key).charCodeAt(0) % 200) * 1_000_000,
+      Created: new Date(c.created * 1000).toISOString(),
+    });
+  }
+  return rows;
+})();
+
+export interface DemoDockerVolumeRow {
+  host_id: string;
+  Name: string;
+  Driver: string;
+  Mountpoint: string;
+}
+
+export const demoDockerVolumes: DemoDockerVolumeRow[] = [
+  { host_id: "prod-a", Name: "prod-a_pgdata", Driver: "local", Mountpoint: "/var/lib/docker/volumes/prod-a_pgdata/_data" },
+  { host_id: "prod-a", Name: "webshop_nginx-cache", Driver: "local", Mountpoint: "/var/lib/docker/volumes/webshop_nginx-cache/_data" },
+  { host_id: "prod-b", Name: "prod-b_grafana-data", Driver: "local", Mountpoint: "/var/lib/docker/volumes/prod-b_grafana-data/_data" },
+  { host_id: "edge", Name: "shop_db-data", Driver: "local", Mountpoint: "/var/lib/docker/volumes/shop_db-data/_data" },
+];
+
+export interface DemoDockerNetworkRow {
+  host_id: string;
+  Id: string;
+  Name: string;
+  Driver: string;
+  Scope: string;
+}
+
+export const demoDockerNetworks: DemoDockerNetworkRow[] = [
+  { host_id: "prod-a", Id: fakeDigest("net:prod-a:bridge").slice(7, 19), Name: "bridge", Driver: "bridge", Scope: "local" },
+  { host_id: "prod-a", Id: fakeDigest("net:prod-a:webshop").slice(7, 19), Name: "webshop_default", Driver: "bridge", Scope: "local" },
+  { host_id: "prod-b", Id: fakeDigest("net:prod-b:bridge").slice(7, 19), Name: "bridge", Driver: "bridge", Scope: "local" },
+  { host_id: "edge", Id: fakeDigest("net:edge:shop").slice(7, 19), Name: "shop_default", Driver: "bridge", Scope: "local" },
+];
+
+// -- host summaries (GET /api/docker/hosts) ---------------------------------
+
+export function dockerHostSummary(host: DemoDockerHost): Record<string, unknown> {
+  const containers = demoDockerContainers.filter((c) => c.host_id === host.id);
+  const running = containers.filter((c) => c.state === "running").length;
+  return {
+    id: host.id,
+    label: host.label,
+    readonly: host.readonly,
+    compose: host.compose,
+    zabbix_host: host.zabbix_host,
+    engine_version: host.engine_version,
+    containers_running: running,
+    containers_stopped: containers.length - running,
+    images: demoDockerImages.filter((i) => i.host_id === host.id).length,
+  };
+}
+
+export function dockerHostsResult(): { hosts: Record<string, unknown>[]; errors: { host_id: string; message: string }[] } {
+  return {
+    hosts: demoDockerHosts.filter((h) => !h.unreachable).map(dockerHostSummary),
+    errors: [dockerHostError(DOCKER_UNREACHABLE_HOST_ID)],
+  };
+}
+
+export function dockerContainerWire(c: DemoDockerContainer): Record<string, unknown> {
+  return {
+    id: c.id,
+    host_id: c.host_id,
+    name: c.name,
+    names: c.names,
+    image: c.image,
+    tag: c.tag,
+    image_id: c.image_id,
+    state: c.state,
+    status: c.status,
+    health: c.health,
+    created: c.created,
+    ports: c.ports,
+    project: c.project,
+    service: c.service,
+    compose_working_dir: c.compose_working_dir,
+    labels: c.labels,
+  };
+}
+
+export function dockerContainersResult(hostIds: string[]): { containers: Record<string, unknown>[]; errors: { host_id: string; message: string }[] } {
+  const wanted = hostIds.length > 0 ? hostIds : demoDockerHosts.map((h) => h.id);
+  const containers = demoDockerContainers
+    .filter((c) => wanted.includes(c.host_id))
+    .map(dockerContainerWire);
+  const errors = wanted.includes(DOCKER_UNREACHABLE_HOST_ID) ? [dockerHostError(DOCKER_UNREACHABLE_HOST_ID)] : [];
+  return { containers, errors };
+}
+
+export function dockerInspectFor(c: DemoDockerContainer): Record<string, unknown> {
+  return {
+    host_id: c.host_id,
+    Id: c.id,
+    Name: `/${c.name}`,
+    Image: c.image_id,
+    Created: new Date(c.created * 1000).toISOString(),
+    State: {
+      Status: c.state,
+      Running: c.state === "running",
+      Paused: c.state === "paused",
+      Restarting: c.state === "restarting",
+      Health: c.health ? { Status: c.health, FailingStreak: c.health === "unhealthy" ? 3 : 0 } : undefined,
+    },
+    Config: {
+      Image: `${c.image}:${c.tag}`,
+      Env: c.env,
+      Labels: c.labels,
+      Cmd: null,
+      Hostname: c.name,
+      WorkingDir: "",
+    },
+    HostConfig: {
+      RestartPolicy: { Name: c.restart_policy, MaximumRetryCount: 0 },
+    },
+    Mounts: c.mounts,
+    NetworkSettings: {
+      Networks: {
+        [c.project ? `${c.project}_default` : "bridge"]: {
+          IPAddress: `172.19.${c.host_id.length}.${(hexId(c.id).charCodeAt(0) % 200) + 2}`,
+        },
+      },
+    },
+  };
+}
+
+// -- stats (GET single + POST bulk) ------------------------------------------
+
+export interface DemoDockerStats {
+  cpu_pct: number;
+  mem_used: number;
+  mem_limit: number;
+  net_rx: number;
+  net_tx: number;
+  blk_read: number;
+  blk_write: number;
+}
+
+/** Deterministic-per-container, slightly time-varying stats: a mulberry32
+ * PRNG reseeded from (container id, 3s wall-clock bucket) so the live
+ * sparkline visibly moves on every poll without ever calling Math.random(). */
+export function dockerStatsFor(c: DemoDockerContainer): DemoDockerStats {
+  const seed = itemSeed(c.id);
+  if (c.state !== "running" && c.state !== "restarting") {
+    return { cpu_pct: 0, mem_used: 0, mem_limit: 0, net_rx: 0, net_tx: 0, blk_read: 0, blk_write: 0 };
+  }
+  const bucket = Math.floor(Date.now() / 3000);
+  const local = mulberry32(seed ^ bucket);
+  const cpuBase = 4 + (Math.abs(seed) % 35);
+  const cpuPct = Math.max(0.1, cpuBase + (local() - 0.5) * 10);
+  const memLimit = 268_435_456 * (1 + (Math.abs(seed) % 4)); // 256MiB..1GiB
+  const memUsedFraction = 0.2 + ((Math.abs(seed) >>> 3) % 50) / 100;
+  const memUsed = Math.floor(memLimit * memUsedFraction * (0.9 + local() * 0.2));
+  const netRx = Math.floor((Math.abs(seed) % 500_000) + local() * 200_000);
+  const netTx = Math.floor((Math.abs(seed) % 300_000) + local() * 150_000);
+  const blkRead = Math.floor((Math.abs(seed) % 2_000_000) + local() * 500_000);
+  const blkWrite = Math.floor((Math.abs(seed) % 1_000_000) + local() * 300_000);
+  return {
+    cpu_pct: Math.round(cpuPct * 100) / 100,
+    mem_used: memUsed,
+    mem_limit: memLimit,
+    net_rx: netRx,
+    net_tx: netTx,
+    blk_read: blkRead,
+    blk_write: blkWrite,
+  };
+}
+
+// -- logs (GET .../logs) — historical lines with ascending timestamps and
+// cursor semantics that actually work: a fixed 5s-apart timeline anchored at
+// a far-past epoch (real wall-clock, NOT DEMO_NOW — logs are "live" relative
+// to whenever the demo is actually being viewed), so `since=<cursor>` always
+// returns only lines strictly after the cursor, and lines keep accruing for
+// as long as the tab stays open. -----------------------------------------
+
+const DOCKER_LOG_TEMPLATES: { stream: "stdout" | "stderr"; message: string }[] = [
+  { stream: "stdout", message: "GET /healthz 200 3ms" },
+  { stream: "stdout", message: "connection established from 10.20.0.14:51044" },
+  { stream: "stdout", message: "cache miss for key user:8841, fetching from origin" },
+  { stream: "stderr", message: "WARN slow query (812ms): SELECT * FROM orders WHERE status = 'pending'" },
+  { stream: "stdout", message: "worker pool: 4/8 busy" },
+  { stream: "stderr", message: "ERROR upstream timeout after 5000ms, retrying (1/3)" },
+  { stream: "stdout", message: "scheduled job 'cleanup-sessions' completed in 214ms" },
+  { stream: "stdout", message: "config reloaded (SIGHUP)" },
+  { stream: "stdout", message: "listening on 0.0.0.0:8080" },
+  { stream: "stderr", message: "panic recovered: runtime error: invalid memory address or nil pointer dereference" },
+  { stream: "stdout", message: "POST /api/v1/orders 201 44ms" },
+  { stream: "stdout", message: "checkpoint complete: wrote 128 buffers" },
+];
+
+const DOCKER_LOG_STEP_S = 5;
+const DOCKER_LOG_EPOCH_S = Math.floor(Date.parse("2020-01-01T00:00:00Z") / 1000);
+
+export interface DemoDockerLogLine {
+  ts: number;
+  stream: "stdout" | "stderr";
+  message: string;
+}
+
+function dockerLogLineAt(cid: string, index: number): DemoDockerLogLine {
+  const local = mulberry32(itemSeed(`${cid}:${index}`));
+  const tmpl = DOCKER_LOG_TEMPLATES[Math.floor(local() * DOCKER_LOG_TEMPLATES.length)]!;
+  return { ts: DOCKER_LOG_EPOCH_S + index * DOCKER_LOG_STEP_S, stream: tmpl.stream, message: tmpl.message };
+}
+
+/** Pure — exported for unit testing the cursor/since contract. */
+export function dockerLogLines(
+  cid: string,
+  sinceS: number | undefined,
+  untilS: number | undefined,
+  tail: number | undefined,
+): DemoDockerLogLine[] {
+  const nowS = Math.floor(Date.now() / 1000);
+  const effectiveUntil = Math.min(untilS ?? nowS, nowS);
+  const effectiveSince = sinceS ?? effectiveUntil - 3600;
+  const startIndex = Math.max(0, Math.floor((effectiveSince - DOCKER_LOG_EPOCH_S) / DOCKER_LOG_STEP_S) + 1);
+  const endIndex = Math.floor((effectiveUntil - DOCKER_LOG_EPOCH_S) / DOCKER_LOG_STEP_S);
+  const lines: DemoDockerLogLine[] = [];
+  for (let i = startIndex; i <= endIndex; i++) {
+    const line = dockerLogLineAt(cid, i);
+    if (line.ts > effectiveSince && line.ts <= effectiveUntil) lines.push(line);
+  }
+  if (tail && lines.length > tail) return lines.slice(lines.length - tail);
+  return lines;
+}
+
+// -- compose stacks (GET /stacks/{host}, GET .../config, POST .../action) ---
+
+export interface DemoDockerStackConfig {
+  path: string;
+  content: string;
+}
+
+export const demoDockerStackConfigs: Record<string, DemoDockerStackConfig> = {
+  "edge/shop": {
+    path: "/opt/stacks/shop/docker-compose.yml",
+    content:
+      'services:\n  db:\n    image: postgres:15\n    volumes:\n      - shop_db-data:/var/lib/postgresql/data\n    restart: unless-stopped\n  api:\n    image: ghcr.io/acme/shop-api:v4.2.0\n    depends_on: [db, cache]\n    ports:\n      - "8080:8080"\n    restart: unless-stopped\n  cache:\n    image: redis:7-alpine\n    restart: unless-stopped\n  worker:\n    image: ghcr.io/acme/shop-worker:v4.2.0\n    depends_on: [db, cache]\n    restart: "no"\n\nvolumes:\n  shop_db-data:\n',
+  },
+};
+
+export function dockerComposePsFor(project: string, containers: DemoDockerContainer[]): Record<string, unknown>[] {
+  return containers.map((c) => ({
+    ID: c.id,
+    Name: c.name,
+    Image: `${c.image}:${c.tag}`,
+    Command: "docker-entrypoint.sh",
+    Project: project,
+    Service: c.service,
+    State: c.state,
+    Status: c.status,
+    Health: c.health ?? "",
+    Publishers: c.ports
+      .filter((p) => p.public)
+      .map((p) => ({ URL: "0.0.0.0", TargetPort: p.private, PublishedPort: p.public, Protocol: p.type })),
+  }));
+}
+
+export function dockerStacksResult(hostId: string): { stacks: Record<string, unknown>[]; compose: boolean; errors: unknown[] } {
+  const host = demoDockerHosts.find((h) => h.id === hostId);
+  const groups = new Map<string, DemoDockerContainer[]>();
+  for (const c of demoDockerContainers) {
+    if (c.host_id !== hostId || !c.project) continue;
+    const list = groups.get(c.project) ?? [];
+    list.push(c);
+    groups.set(c.project, list);
+  }
+  const stacks = [...groups.entries()].map(([project, list]) => {
+    const stack: Record<string, unknown> = { project, containers: list.map(dockerContainerWire) };
+    if (host?.compose) stack.ps = dockerComposePsFor(project, list);
+    return stack;
+  });
+  return { stacks, compose: host?.compose ?? false, errors: [] };
+}
+
+/** Mutates demo state so container action mutations are visible in the next
+ * query (start -> running, stop -> exited, restart -> running); pull_recreate
+ * additionally flips this container's update status back to "current". */
+export function applyDockerContainerAction(c: DemoDockerContainer, action: string): Record<string, unknown> {
+  if (action === "start" || action === "restart") {
+    c.state = "running";
+    c.status = statusTextFor("running", c.health, 0);
+    return { action, container_id: c.id };
+  }
+  if (action === "stop") {
+    c.state = "exited";
+    c.health = null;
+    c.status = statusTextFor("exited", null, 0);
+    return { action, container_id: c.id };
+  }
+  if (action === "pull_recreate") {
+    const entry = demoDockerUpdates.get(c.id);
+    const wasOutdated = entry?.status === "outdated";
+    if (entry) {
+      entry.status = "current";
+      entry.local_digest = entry.remote_digest || entry.local_digest;
+    }
+    c.state = "running";
+    c.health = c.health ? "healthy" : null;
+    c.status = statusTextFor("running", c.health, 0);
+    return { updated: wasOutdated ?? false, digest: entry?.remote_digest ?? "", container_id: c.id };
+  }
+  return { action, container_id: c.id };
+}
+
+/** Mutates every container of the stack in place for `up`/`restart` (matches
+ * the real ComposeRunner semantics closely enough for the demo); `pull` is a
+ * read-only dry run that reports success without touching container state. */
+export function applyDockerStackAction(hostId: string, project: string, action: string): { stdout: string; stderr: string } {
+  const containers = demoDockerContainers.filter((c) => c.host_id === hostId && c.project === project);
+  if (action === "up" || action === "restart") {
+    for (const c of containers) {
+      c.state = "running";
+      c.status = statusTextFor("running", c.health, 0);
+    }
+  }
+  const verb = action === "pull" ? "Pulling" : action === "up" ? "Starting" : "Restarting";
+  const lines = containers.map((c) => `${verb.toLowerCase()} ${c.service || c.name} ... done`);
+  return { stdout: `${verb} ${project}\n${lines.join("\n")}`, stderr: "" };
+}
+
+export { findDockerContainer, DOCKER_UNREACHABLE_HOST_ID };
+
+// ---------------------------------------------------------------------------
 // Auth
 // ---------------------------------------------------------------------------
 

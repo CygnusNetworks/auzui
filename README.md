@@ -77,6 +77,11 @@ fast triage.
   export) — see [Time-series sources](#time-series-sources) below.
 - *Optional:* **Graylog logs** — a stream browser and host-scoped log panel
   synced to the same time range as the charts, entirely feature-gated.
+- *Optional:* **Docker container management** — container list/search/logs
+  across any number of Docker hosts (socket-proxy, TCP+mTLS, or `ssh://`),
+  live stats, start/stop/restart/pull-recreate, registry update checks, and
+  compose stack actions on SSH-connected hosts. Entirely feature-gated
+  behind `DOCKER_HOSTS`; see [docs/configuration.md](./docs/configuration.md#docker-integration).
 
 ## Architecture
 
@@ -176,12 +181,17 @@ services:
       # Optional integrations (all feature-gated, see docs/configuration.md):
       # INFLUX_URL / INFLUX_TOKEN / INFLUX_ORG   — InfluxDB time-series
       # GRAYLOG_URL / GRAYLOG_TOKEN              — Graylog log panels
+      # DOCKER_HOSTS / DOCKER_REGISTRIES         — Docker container management
       # SPNEGO_ENABLED / KRB5_KTNAME             — Kerberos SSO
 ```
 
-InfluxDB and Graylog stay disabled until their variables are set; the
-corresponding UI surfaces hide themselves. Reverse-proxy pattern with the
-recommended security headers: [docs/deployment.md](./docs/deployment.md).
+InfluxDB, Graylog, and Docker stay disabled until their variables are set;
+the corresponding UI surfaces hide themselves. Every setting above can also
+be provided via a mounted TOML/YAML config file instead of environment
+variables (`AUZUI_CONFIG_FILE`) — see
+[docs/configuration.md](./docs/configuration.md#configuration-files-tomlyaml)
+and [`examples/`](./examples). Reverse-proxy pattern with the recommended
+security headers: [docs/deployment.md](./docs/deployment.md).
 
 ## Development quickstart
 

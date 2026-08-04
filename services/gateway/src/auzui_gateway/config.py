@@ -5,7 +5,13 @@ from functools import lru_cache
 from urllib.parse import urlparse
 
 from pydantic import AliasChoices, Field
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import (
+    BaseSettings,
+    PydanticBaseSettingsSource,
+    SettingsConfigDict,
+)
+
+from .config_file import ConfigFileSource
 
 logger = logging.getLogger(__name__)
 
@@ -21,11 +27,53 @@ class GraylogServer:
     token: str
 
 
+@dataclass(frozen=True)
+class DockerHost:
+    """One Docker Engine the gateway can manage, reached via a docker-socket-
+    proxy (HTTP), TCP+mTLS, or an SSH tunnel (docker-py's ssh:// transport,
+    no ssh binary required in the image). `tls_*`/`ssh_key` are paths to
+    read-only mounted files, never inline secrets. Compose ops
+    (`docker_compose.py`) only run on `compose=True` hosts, which requires
+    an ssh:// URL — Compose needs a shell on the host, the other transports
+    don't have one."""
+
+    id: str
+    label: str
+    url: str
+    tls_ca: str = ""
+    tls_cert: str = ""
+    tls_key: str = ""
+    ssh_key: str = ""
+    readonly: bool = False
+    zabbix_host: str = ""
+    compose: bool = False
+
+
+@dataclass(frozen=True)
+class DockerRegistry:
+    """Credentials for an image registry the update checker (docker_updates.py)
+    authenticates against. Anonymous (Docker Hub) registries omit username/token."""
+
+    registry: str
+    username: str = ""
+    token: str = ""
+
+
 class Settings(BaseSettings):
     """Gateway configuration. Influx and Graylog are each feature-gated:
     without URL + token the corresponding endpoints report enabled=false."""
 
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    # populate_by_name: the config-file source (config_file.py) sets fields
+    # by their plain Python name even when a field also declares a
+    # validation_alias for its env var (serve_frontend, log_dedup_enabled) —
+    # without this, pydantic only accepts the alias key from ANY source.
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore", populate_by_name=True)
+
+    # Optional TOML/YAML file that can set any field below (see config_file.py
+    # for search paths, schema and the env > .env > file > default precedence).
+    config_file: str = Field(
+        default="", validation_alias=AliasChoices("AUZUI_CONFIG_FILE", "config_file")
+    )
 
     zabbix_api_url: str = "https://zabbix-api.example.com/api_jsonrpc.php"
     # Base URL of the Zabbix web frontend for the HTTP-auth SSO exchange
@@ -109,6 +157,20 @@ class Settings(BaseSettings):
 
     cors_origins: str = ""  # CSV; empty = CORS middleware disabled
 
+    # Docker hosts/registries as JSON lists, e.g.
+    # [{"id":"prod-a","url":"http://sockproxy-a:2375","readonly":true}].
+    # See DockerHost/DockerRegistry above for the full schema; docker_enabled
+    # (below) gates the whole feature the same way influx_enabled does.
+    docker_hosts: str = ""
+    docker_registries: str = ""
+    docker_timeout: float = 10.0
+    docker_cache_ttl: float = 10.0
+    docker_stats_cache_ttl: float = 5.0
+    docker_update_check_ttl: float = 3600.0
+    # Path to a known_hosts file (read-only mount) used for ssh:// hosts;
+    # paramiko verifies against it with RejectPolicy — never AutoAddPolicy.
+    docker_ssh_known_hosts: str = ""
+
     @property
     def effective_zabbix_web_url(self) -> str:
         if self.zabbix_web_url:
@@ -166,6 +228,113 @@ class Settings(BaseSettings):
     @property
     def default_stream_ids(self) -> list[str]:
         return [s.strip() for s in self.graylog_default_streams.split(",") if s.strip()]
+
+    @property
+    def docker_host_list(self) -> list[DockerHost]:
+        """Parsed DOCKER_HOSTS, exactly following graylog_server_list's
+        skip-and-warn shape: invalid entries (no url) or a repeated id are
+        dropped with a logger.warning, never raised — one bad entry must not
+        take down every other host."""
+        if not self.docker_hosts.strip():
+            return []
+        try:
+            raw = json.loads(self.docker_hosts)
+        except (ValueError, TypeError):
+            logger.warning("DOCKER_HOSTS is not valid JSON; ignoring it")
+            return []
+        hosts: list[DockerHost] = []
+        seen_ids: set[str] = set()
+        for i, entry in enumerate(raw if isinstance(raw, list) else []):
+            if not isinstance(entry, dict):
+                continue
+            url = str(entry.get("url", "")).strip()
+            if not url:
+                logger.warning("DOCKER_HOSTS entry %d missing url; skipped", i)
+                continue
+            hid = str(entry.get("id") or f"dh-{i}")
+            if hid in seen_ids:
+                logger.warning("DOCKER_HOSTS entry %d has duplicate id %r; skipped", i, hid)
+                continue
+            seen_ids.add(hid)
+            compose_default = url.startswith("ssh://")
+            hosts.append(
+                DockerHost(
+                    id=hid,
+                    label=str(entry.get("label") or hid),
+                    url=url,
+                    tls_ca=str(entry.get("tls_ca", "")),
+                    tls_cert=str(entry.get("tls_cert", "")),
+                    tls_key=str(entry.get("tls_key", "")),
+                    ssh_key=str(entry.get("ssh_key", "")),
+                    readonly=bool(entry.get("readonly", False)),
+                    zabbix_host=str(entry.get("zabbix_host", "")),
+                    compose=bool(entry.get("compose", compose_default)),
+                )
+            )
+        return hosts
+
+    @property
+    def docker_registry_list(self) -> list[DockerRegistry]:
+        """Parsed DOCKER_REGISTRIES; invalid entries (no registry) are
+        skipped with a warning, same shape as docker_host_list."""
+        if not self.docker_registries.strip():
+            return []
+        try:
+            raw = json.loads(self.docker_registries)
+        except (ValueError, TypeError):
+            logger.warning("DOCKER_REGISTRIES is not valid JSON; ignoring it")
+            return []
+        registries: list[DockerRegistry] = []
+        for i, entry in enumerate(raw if isinstance(raw, list) else []):
+            if not isinstance(entry, dict):
+                continue
+            registry = str(entry.get("registry", "")).strip()
+            if not registry:
+                logger.warning("DOCKER_REGISTRIES entry %d missing registry; skipped", i)
+                continue
+            registries.append(
+                DockerRegistry(
+                    registry=registry,
+                    username=str(entry.get("username", "")),
+                    token=str(entry.get("token", "")),
+                )
+            )
+        return registries
+
+    @property
+    def docker_enabled(self) -> bool:
+        return bool(self.docker_host_list)
+
+    @classmethod
+    def settings_customise_sources(
+        cls,
+        settings_cls: type[BaseSettings],
+        init_settings: PydanticBaseSettingsSource,
+        env_settings: PydanticBaseSettingsSource,
+        dotenv_settings: PydanticBaseSettingsSource,
+        file_secret_settings: PydanticBaseSettingsSource,
+    ) -> tuple[PydanticBaseSettingsSource, ...]:
+        # ENV > .env > config file > field default (see config_file.py's
+        # module docstring for the reasoning): the config file is the lowest-
+        # precedence override above the hardcoded defaults, so ENV/`.env`
+        # (Compose, Kubernetes) keep working unchanged and a mounted config
+        # file can still be overridden per-environment.
+        # A `Settings(config_file=...)` keyword has to be handed to the source
+        # by hand: it decides which file to read before the model (and thus the
+        # resolved `config_file` field) exists. pydantic-settings normalises
+        # init kwargs onto the field's *alias*, so look under both names —
+        # keying only on "config_file" silently ignores the argument.
+        init_kwargs = getattr(init_settings, "init_kwargs", {}) or {}
+        init_config_file = str(
+            init_kwargs.get("config_file") or init_kwargs.get("AUZUI_CONFIG_FILE") or ""
+        )
+        return (
+            init_settings,
+            env_settings,
+            dotenv_settings,
+            ConfigFileSource(settings_cls, init_config_file),
+            file_secret_settings,
+        )
 
 
 def _derive_label(url: str) -> str:

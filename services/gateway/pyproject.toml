@@ -1,6 +1,6 @@
 [project]
 name = "auzui-gateway"
-version = "0.2.1"
+version = "0.3.0"
 description = "auzui gateway — hides Influx/Graylog tokens, enforces Zabbix permissions, serves the SPA"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -17,11 +17,21 @@ dependencies = [
 kerberos = [
     "gssapi>=1.9.0",
 ]
+docker = [
+    "docker>=7",
+    "paramiko>=3",
+]
+yaml = [
+    "pyyaml>=6",
+]
 dev = [
     "pytest>=8.3",
     "pytest-asyncio>=0.25",
     "respx>=0.22",
     "ruff>=0.9",
+    # config_file.py's YAML path is exercised in tests; keep it installed in
+    # dev so those tests actually run instead of being importorskip'd.
+    "pyyaml>=6",
 ]
 
 [build-system]

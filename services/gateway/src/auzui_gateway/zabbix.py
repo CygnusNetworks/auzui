@@ -24,6 +24,7 @@ class ZabbixClient:
         self._host_cache: TTLCache[dict[str, Any] | None] = TTLCache(
             settings.host_mapping_cache_ttl
         )
+        self._role_cache: TTLCache[int] = TTLCache(settings.permission_cache_ttl)
 
     async def _call(self, token: str, method: str, params: Any) -> Any:
         payload = {"jsonrpc": "2.0", "id": 1, "method": method, "params": params}
@@ -131,6 +132,70 @@ class ZabbixClient:
         self._perm_cache.set(f"session:{token}", True)
         return username
 
+    async def get_user_role_type(self, token: str) -> int:
+        """Zabbix role "type" (0=user, 1=admin, 2=Admin, 3=Super Admin) behind
+        the session token — the gate `docker_routes.py` uses for write
+        actions (`type >= 2`). This is a permission CHECK, not an identity
+        lookup: unlike `validate_session`/`get_username`, it must NEVER raise
+        outward for a merely-undeterminable role — any failure (Zabbix
+        unreachable, unexpected response shape, ...) degrades to 0 (no
+        admin), the safe default, so a flaky Zabbix API can only ever make
+        actions MORE restrictive, never accidentally grant them. Cached in
+        `_role_cache` (`permission_cache_ttl`).
+
+        Zabbix ≤6.0's `user.checkAuthentication` returns the role `type`
+        directly; ≥6.4 returns a `roleid` instead, requiring a follow-up
+        `role.get` (with the caller's own token, so it can only see whatever
+        role.get already permits) to resolve the type. API tokens are not
+        session ids, so `checkAuthentication` fails for them the same way it
+        does in `get_username` — the fallback there (a self-scoped
+        `user.get`) is reused here, extended with `roleid`/`type`."""
+        cached = self._role_cache.get(token)
+        if cached is not None:
+            return cached
+        role_type = await self._resolve_role_type(token)
+        self._role_cache.set(token, role_type)
+        return role_type
+
+    async def _resolve_role_type(self, token: str) -> int:
+        auth: dict | None = None
+        try:
+            result = await self._call(token, "user.checkAuthentication", {"sessionid": token})
+            if isinstance(result, dict):
+                auth = result
+        except HTTPException:
+            pass  # API tokens are not session ids — fall back to user.get below
+        if auth is not None:
+            if "type" in auth:
+                return _as_int(auth.get("type"))
+            if auth.get("roleid"):
+                return await self._role_type_for_roleid(token, auth["roleid"])
+            return 0
+
+        try:
+            result = await self._call(
+                token, "user.get", {"output": ["userid", "roleid", "type"], "limit": 1}
+            )
+        except HTTPException:
+            return 0
+        if not result:
+            return 0
+        row = result[0]
+        if row.get("type") is not None:
+            return _as_int(row.get("type"))
+        if row.get("roleid"):
+            return await self._role_type_for_roleid(token, row["roleid"])
+        return 0
+
+    async def _role_type_for_roleid(self, token: str, roleid: Any) -> int:
+        try:
+            roles = await self._call(token, "role.get", {"output": ["type"], "roleids": [roleid]})
+        except HTTPException:
+            return 0
+        if not roles:
+            return 0
+        return _as_int(roles[0].get("type"))
+
     async def check_items_visible(self, token: str, itemids: list[str]) -> None:
         """403 unless the session token may see *all* requested items."""
         missing = [i for i in itemids if self._perm_cache.get(f"{token}:{i}") is not True]
@@ -170,3 +235,12 @@ class ZabbixClient:
         host = result[0]
         self._host_cache.set(cache_key, host)
         return host
+
+
+def _as_int(value: Any) -> int:
+    """Best-effort int coercion for a Zabbix `type` field — never raises;
+    an unparsable value means the role could not be determined (0)."""
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return 0

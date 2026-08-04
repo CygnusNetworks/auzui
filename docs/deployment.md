@@ -54,6 +54,50 @@ recommended once dashboards get dense or ranges get long.
 enabled. See `PLAN.md` section H for the host → Graylog `source` mapping
 heuristic.
 
+### Docker (optional — container management)
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `DOCKER_HOSTS` | *(empty)* | JSON array of Docker Engines to manage. Leave empty to disable the feature entirely. Full schema: [docs/configuration.md](./configuration.md#docker_hosts-schema). |
+| `DOCKER_REGISTRIES` | *(empty)* | JSON array of registry credentials for the update checker. Registries not listed (e.g. Docker Hub) are queried anonymously. |
+| `DOCKER_TIMEOUT` | `10.0` | HTTP/SSH timeout (seconds) per Docker host call. |
+| `DOCKER_CACHE_TTL` | `10.0` | Cache lifetime (seconds) for the host summary and container list. |
+| `DOCKER_STATS_CACHE_TTL` | `5.0` | Cache lifetime (seconds) for bulk container stats. |
+| `DOCKER_UPDATE_CHECK_TTL` | `3600.0` | Cache lifetime (seconds) for a resolved registry digest. |
+| `DOCKER_SSH_KNOWN_HOSTS` | *(empty)* | Path to a `known_hosts` file (read-only mount) used to verify `ssh://` hosts' keys. Required for any `ssh://` entry in `DOCKER_HOSTS`. |
+
+`DOCKER_HOSTS` must contain at least one valid entry for the Docker path to
+be enabled. See [docs/configuration.md](./configuration.md#docker-integration)
+for the full host schema, the three connection variants, and the
+authorization model, and the section below for how to deploy each variant.
+
+### Config file (optional — alternative to the variables above)
+
+Any variable on this page can instead be set via a mounted TOML/YAML file
+(`AUZUI_CONFIG_FILE`, or one of the default search paths) — precedence is
+ENV > `.env` > config file > default, so this never changes the behavior of
+an existing ENV-only deployment. See
+[docs/configuration.md](./configuration.md#configuration-files-tomlyaml)
+for the full schema; example files:
+[`examples/auzui.toml`](../examples/auzui.toml) /
+[`examples/auzui.yaml`](../examples/auzui.yaml).
+
+```yaml
+services:
+  auzui:
+    # ...
+    environment:
+      AUZUI_CONFIG_FILE: /config/auzui.toml
+    volumes:
+      - ./auzui.toml:/config/auzui.toml:ro
+```
+
+`.toml` files need no extra dependency; `.yaml`/`.yml` needs the gateway's
+`yaml` extra installed — already included in the official image alongside
+the `docker` extra (see the `Dockerfile`'s `uv sync ... --extra docker
+--extra yaml`). A custom build that only ever uses TOML can drop the `yaml`
+extra to save the PyYAML dependency.
+
 ### Serving the frontend from the gateway
 
 | Variable | Default | Purpose |
@@ -118,6 +162,116 @@ If `auzui-gateway` serves the built frontend itself
 (`AUZUI_SERVE_FRONTEND=true`), nginx only needs a single `proxy_pass` to
 the gateway container and no separate static file server.
 
+## Deploying the Docker plugin
+
+The Docker integration (`DOCKER_HOSTS`, see
+[docs/configuration.md](./configuration.md#docker-integration)) connects to
+each Docker Engine one of three ways; how you deploy it depends on which
+variant a given host uses.
+
+### Socket-proxy sidecar (recommended default)
+
+For a host reached over `http://`/`https://`, do not point `DOCKER_HOSTS`
+directly at `/var/run/docker.sock` or an unauthenticated TCP socket. Put
+[`tecnativa/docker-socket-proxy`](https://github.com/Tecnativa/docker-socket-proxy)
+in front of it as a sidecar, and point the `DOCKER_HOSTS` entry's `url` at
+the proxy instead. A read-only deployment (`CONTAINERS=1 POST=0`) is the
+safe default — the proxy itself rejects every write with `403`/`405`, which
+the gateway surfaces as a clean "read-only upstream" error even if a host's
+`readonly` flag were left `false` by mistake:
+
+```yaml
+services:
+  auzui:
+    # ...
+    environment:
+      DOCKER_HOSTS: >-
+        [{"id":"prod-a","label":"prod-a","url":"http://docker-socket-proxy:2375","readonly":true}]
+
+  docker-socket-proxy:
+    image: tecnativa/docker-socket-proxy:latest
+    restart: unless-stopped
+    environment:
+      # Read-only: only the endpoints Docker container management actually
+      # needs, and no writes at all.
+      CONTAINERS: 1
+      IMAGES: 1
+      NETWORKS: 1
+      VOLUMES: 1
+      INFO: 1
+      VERSION: 1
+      POST: 0
+      # To allow actions (start/stop/restart, pull/recreate) through this
+      # host: set POST: 1 here AND readonly: false on its DOCKER_HOSTS
+      # entry. The gateway still requires a Zabbix Admin/Super Admin caller
+      # on top of that — see the authorization model in configuration.md.
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    # No published ports: only auzui reaches it, over the compose network.
+```
+
+Run one socket-proxy sidecar per Docker host you manage this way (on that
+host's own Docker daemon), each with its own `DOCKER_HOSTS` entry pointing
+at it.
+
+### TCP + mutual TLS
+
+For a host with `dockerd --tlsverify` enabled, mount the CA certificate,
+client certificate, and client key **read-only** into the gateway container
+and point `tls_ca`/`tls_cert`/`tls_key` at their in-container paths:
+
+```yaml
+services:
+  auzui:
+    # ...
+    volumes:
+      - ./certs/db1:/certs/db1:ro
+    environment:
+      DOCKER_HOSTS: >-
+        [{"id":"db-1","url":"tcp://10.0.0.5:2376",
+          "tls_ca":"/certs/db1/ca.pem","tls_cert":"/certs/db1/cert.pem","tls_key":"/certs/db1/key.pem"}]
+```
+
+### `ssh://` (also required for Compose support)
+
+An `ssh://` host is the only variant that supports the Compose
+`pull`/`up`/`restart` actions (`compose: true`), since it's the only one
+with a real shell behind it. It needs its private key and a `known_hosts`
+file mounted **read-only** — the gateway's own container runs `read_only`,
+so it can never write these itself, and host-key verification always
+enforces paramiko's `RejectPolicy` against the mounted `known_hosts` (never
+`AutoAddPolicy`, i.e. an unrecognized host key fails the connection instead
+of being trusted on first use):
+
+```yaml
+services:
+  auzui:
+    # ...
+    volumes:
+      - ./ssh/edge_ed25519:/keys/edge_ed25519:ro
+      - ./ssh/known_hosts:/config/ssh/known_hosts:ro
+    environment:
+      DOCKER_SSH_KNOWN_HOSTS: /config/ssh/known_hosts
+      DOCKER_HOSTS: >-
+        [{"id":"edge","url":"ssh://deploy@edge.example.com","ssh_key":"/keys/edge_ed25519",
+          "zabbix_host":"edge.example.com","compose":true}]
+```
+
+Populate `known_hosts` the normal way (`ssh-keyscan edge.example.com >>
+known_hosts`, verified out of band) before mounting it — it is the entire
+trust anchor for that host's connection.
+
+### Image extras
+
+The official image (`ghcr.io/cygnusnetworks/auzui`, `cygnusnetworks/auzui`)
+is already built with the `docker` extra (`docker>=7`, `paramiko>=3`) and
+the `yaml` extra (PyYAML, for YAML config files) — no extra image
+configuration is needed to use `DOCKER_HOSTS` or a `.yaml` config file. A
+custom build that installs `auzui-gateway` itself needs
+`pip install auzui-gateway[docker]` (add `,yaml` for YAML config-file
+support); see the `Dockerfile`'s `uv sync ... --extra docker --extra yaml`
+for the exact invocation.
+
 ## Security notes
 
 Read these before exposing auzui to users.
@@ -146,6 +300,19 @@ Zabbix host permissions (the per-host and per-item paths *are* permission
 checked). Scope `GRAYLOG_DEFAULT_STREAMS` to the streams every auzui user is
 allowed to read; do not enable Graylog against streams containing logs that
 only a subset of your Zabbix users should see.
+
+### Docker host visibility is coarse-grained
+
+Any authenticated Zabbix session may list every host configured in
+`DOCKER_HOSTS` and see its containers, inspect data, logs, stats, and
+update status via `/api/docker/*` — Docker hosts are not mapped to Zabbix
+host permissions the way `/api/ts` (per-item) or `/api/logs/host`
+(per-host) are, because docker-py/the socket proxy have no concept of a
+Zabbix host/item at all. Do not put a host in `DOCKER_HOSTS` that some
+Zabbix users should not even know exists. Write actions (start/stop/
+restart, pull/recreate, compose pull/up/restart) narrow further: they
+require a Zabbix Admin/Super Admin session **and** a non-`readonly` host —
+see [docs/configuration.md](./configuration.md#authorization-model).
 
 ### Session revocation lag
 

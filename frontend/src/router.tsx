@@ -25,6 +25,8 @@ import { LogsPage } from "./features/logs/LogsPage";
 import { validateLogsSearch } from "./features/logs/search-params";
 import { WebScenariosPage } from "./features/web-scenarios/WebScenariosPage";
 import { validateWebScenariosSearch } from "./features/web-scenarios/search-params";
+import { DockerPage } from "./features/docker/DockerPage";
+import { validateDockerSearch } from "./features/docker/search-params";
 import { useAuthStore } from "./lib/auth/store";
 
 const rootRoute = createRootRoute({
@@ -126,6 +128,13 @@ const webScenariosRoute = createRoute({
   validateSearch: validateWebScenariosSearch,
 });
 
+const dockerRoute = createRoute({
+  getParentRoute: () => appLayoutRoute,
+  path: "/docker",
+  component: DockerPage,
+  validateSearch: validateDockerSearch,
+});
+
 const routeTree = rootRoute.addChildren([
   loginRoute,
   appLayoutRoute.addChildren([
@@ -139,6 +148,7 @@ const routeTree = rootRoute.addChildren([
     metricsRoute,
     logsRoute,
     webScenariosRoute,
+    dockerRoute,
   ]),
 ]);
 

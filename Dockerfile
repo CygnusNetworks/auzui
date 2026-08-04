@@ -47,7 +47,7 @@ COPY pyproject.toml uv.lock ./
 COPY services/gateway/pyproject.toml services/gateway/README.md services/gateway/
 COPY services/gateway/src services/gateway/src
 
-RUN uv sync --package auzui-gateway --no-dev --frozen --extra kerberos
+RUN uv sync --package auzui-gateway --no-dev --frozen --extra kerberos --extra docker --extra yaml
 
 # ---------- Runtime ----------
 FROM python:${PYTHON_VERSION}-slim AS runtime
