@@ -241,7 +241,6 @@ export const en = {
     sortName: "Name",
     sortStatus: "Status",
     colScenario: "Scenario",
-    colHost: "Host",
     colSteps: "Steps",
     colAvailability: "Availability 30d",
     colResponseTime: "Response time",
@@ -255,6 +254,12 @@ export const en = {
     retry: "Retry",
     summary: (total: number, failed: number, degraded: number) =>
       `${total} monitored · ${failed} failed · ${degraded} degraded`,
+    groupSummary: (total: number, failed: number, degraded: number) => {
+      const parts = [total === 1 ? "1 scenario" : `${total} scenarios`];
+      if (failed > 0) parts.push(`${failed} failed`);
+      if (degraded > 0) parts.push(`${degraded} degraded`);
+      return parts.join(" · ");
+    },
     status: {
       ok: "OK",
       degraded: "Degraded",

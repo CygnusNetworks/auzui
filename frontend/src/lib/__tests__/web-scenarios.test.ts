@@ -7,6 +7,8 @@ import {
   computeAvailability,
   countByStatus,
   enrichWebScenarios,
+  groupScenariosByHost,
+  type EnrichedWebScenario,
   matchesScenarioSearch,
   sortWebScenarios,
   totalResponseSeconds,
@@ -47,7 +49,8 @@ function item(overrides: Partial<ZabbixItem> = {}): ZabbixItem {
 describe("webTestKey / webTestStepKey", () => {
   it("builds Zabbix's auto-generated web-scenario item keys", () => {
     expect(webTestKey("fail", "Checkout flow")).toBe("web.test.fail[Checkout flow]");
-    expect(webTestStepKey("time", "Checkout flow", "2")).toBe("web.test.time[Checkout flow,2]");
+    expect(webTestStepKey("time", "Checkout flow", "Checkout")).toBe("web.test.time[Checkout flow,Checkout,resp]");
+    expect(webTestStepKey("rspcode", "Checkout flow", "Checkout")).toBe("web.test.rspcode[Checkout flow,Checkout]");
   });
 });
 
@@ -55,8 +58,8 @@ describe("enrichWebScenarios", () => {
   it("matches an OK scenario's step items and derives status ok", () => {
     const items: ZabbixItem[] = [
       item({ itemid: "1", key_: "web.test.fail[Checkout flow]", lastvalue: "0" }),
-      item({ itemid: "2", key_: "web.test.time[Checkout flow,1]", lastvalue: "0.08", value_type: "0" }),
-      item({ itemid: "3", key_: "web.test.time[Checkout flow,2]", lastvalue: "0.12", value_type: "0" }),
+      item({ itemid: "2", key_: "web.test.time[Checkout flow,Homepage,resp]", lastvalue: "0.08", value_type: "0" }),
+      item({ itemid: "3", key_: "web.test.time[Checkout flow,Checkout,resp]", lastvalue: "0.12", value_type: "0" }),
     ];
     const [scenario] = enrichWebScenarios([httptest()], items);
     expect(scenario!.status).toBe("ok");
@@ -80,7 +83,7 @@ describe("enrichWebScenarios", () => {
   it("reports degraded when a step's response time nears its timeout, even with no failure", () => {
     const items: ZabbixItem[] = [
       item({ itemid: "1", key_: "web.test.fail[Checkout flow]", lastvalue: "0" }),
-      item({ itemid: "2", key_: "web.test.time[Checkout flow,1]", lastvalue: "8.5", value_type: "0" }),
+      item({ itemid: "2", key_: "web.test.time[Checkout flow,Homepage,resp]", lastvalue: "8.5", value_type: "0" }),
     ];
     const [scenario] = enrichWebScenarios([httptest()], items);
     expect(scenario!.status).toBe("degraded");
@@ -103,8 +106,8 @@ describe("enrichWebScenarios", () => {
 describe("totalResponseSeconds", () => {
   it("sums every step's last response time", () => {
     const items: ZabbixItem[] = [
-      item({ itemid: "2", key_: "web.test.time[Checkout flow,1]", lastvalue: "0.10", value_type: "0" }),
-      item({ itemid: "3", key_: "web.test.time[Checkout flow,2]", lastvalue: "0.25", value_type: "0" }),
+      item({ itemid: "2", key_: "web.test.time[Checkout flow,Homepage,resp]", lastvalue: "0.10", value_type: "0" }),
+      item({ itemid: "3", key_: "web.test.time[Checkout flow,Checkout,resp]", lastvalue: "0.25", value_type: "0" }),
     ];
     const [scenario] = enrichWebScenarios([httptest()], items);
     expect(totalResponseSeconds(scenario!)).toBeCloseTo(0.35);
@@ -191,6 +194,43 @@ describe("bucketStepHistory", () => {
   it("returns zeros for a step with no points in range", () => {
     const buckets = bucketStepHistory([{ points: [] }], 0, 10, 1);
     expect(buckets[0]!.values).toEqual([0]);
+  });
+});
+
+describe("groupScenariosByHost", () => {
+  function onHost(hostid: string, hostName: string, name: string, failValue = "0"): EnrichedWebScenario {
+    return enrichWebScenarios(
+      [httptest({ httptestid: `${hostid}-${name}`, hostid, name, hosts: [{ hostid, host: hostName, name: hostName }] })],
+      [item({ hostid, key_: `web.test.fail[${name}]`, lastvalue: failValue })],
+    )[0]!;
+  }
+
+  it("puts every scenario of a host into one group", () => {
+    const groups = groupScenariosByHost([
+      onHost("10", "web-01", "A"),
+      onHost("20", "web-02", "B"),
+      onHost("10", "web-01", "C"),
+    ]);
+    expect(groups).toHaveLength(2);
+    const web01 = groups.find((g) => g.hostName === "web-01")!;
+    expect(web01.scenarios.map((s) => s.httptest.name)).toEqual(["A", "C"]);
+    expect(web01.counts.ok).toBe(2);
+  });
+
+  it("sorts hosts with a failing scenario first, then alphabetically", () => {
+    const groups = groupScenariosByHost([
+      onHost("10", "aaa-01", "A"),
+      onHost("30", "zzz-01", "Z", "2"),
+      onHost("20", "bbb-01", "B"),
+    ]);
+    expect(groups.map((g) => g.hostName)).toEqual(["zzz-01", "aaa-01", "bbb-01"]);
+    expect(groups[0]!.worstStatus).toBe("failed");
+    expect(groups[0]!.counts.failed).toBe(1);
+  });
+
+  it("takes the worst status in the group, not the first", () => {
+    const [group] = groupScenariosByHost([onHost("10", "web-01", "A"), onHost("10", "web-01", "B", "1")]);
+    expect(group!.worstStatus).toBe("failed");
   });
 });
 

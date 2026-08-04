@@ -645,7 +645,6 @@ for (const spec of SCENARIO_SPECS) {
   }
 
   spec.steps.forEach((st, idx) => {
-    const no = String(idx + 1);
     const failingStep = spec.outcome === "failed" && idx === failStepIndex;
     const degraded = spec.outcome === "degraded";
 
@@ -666,7 +665,7 @@ for (const spec of SCENARIO_SPECS) {
       itemid: timeId,
       hostid: host.hostid,
       name: `Response time for step "${st.name}" of scenario "${spec.name}"`,
-      key_: webTestStepKey("time", spec.name, no),
+      key_: webTestStepKey("time", spec.name, st.name),
       value_type: "0",
       units: "s",
       lastvalue: failingStep ? String(st.timeout) : lastValueFor(timeId),
@@ -680,7 +679,7 @@ for (const spec of SCENARIO_SPECS) {
       itemid: itemId(),
       hostid: host.hostid,
       name: `Response code for step "${st.name}" of scenario "${spec.name}"`,
-      key_: webTestStepKey("rspcode", spec.name, no),
+      key_: webTestStepKey("rspcode", spec.name, st.name),
       value_type: "3",
       units: "",
       lastvalue: failingStep ? "0" : "200",

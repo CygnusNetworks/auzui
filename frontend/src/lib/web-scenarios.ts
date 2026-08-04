@@ -13,8 +13,15 @@ export function webTestKey(kind: "fail" | "error", scenarioName: string): string
   return `web.test.${kind}[${scenarioName}]`;
 }
 
-export function webTestStepKey(kind: "time" | "rspcode", scenarioName: string, stepNo: string): string {
-  return `web.test.${kind}[${scenarioName},${stepNo}]`;
+/**
+ * Step items are keyed by the step's *name*, not its number, and the
+ * response-time key carries a trailing `resp` parameter:
+ * `web.test.time[Scenario,Step,resp]` / `web.test.rspcode[Scenario,Step]`.
+ */
+export function webTestStepKey(kind: "time" | "rspcode", scenarioName: string, stepName: string): string {
+  return kind === "time"
+    ? `web.test.time[${scenarioName},${stepName},resp]`
+    : `web.test.rspcode[${scenarioName},${stepName}]`;
 }
 
 export interface WebScenarioStep {
@@ -93,8 +100,8 @@ export function enrichWebScenarios(
       .sort((a, b) => Number(a.no) - Number(b.no))
       .map((step) => ({
         step,
-        responseTimeItem: itemByKey.get(webTestStepKey("time", httptest.name, step.no)),
-        responseCodeItem: itemByKey.get(webTestStepKey("rspcode", httptest.name, step.no)),
+        responseTimeItem: itemByKey.get(webTestStepKey("time", httptest.name, step.name)),
+        responseCodeItem: itemByKey.get(webTestStepKey("rspcode", httptest.name, step.name)),
       }));
 
     const enabled = httptest.status === "0";
@@ -206,6 +213,50 @@ export function sortWebScenarios(
     return a.httptest.name.localeCompare(b.httptest.name);
   });
   return copy;
+}
+
+export interface WebScenarioHostGroup {
+  hostId: string;
+  hostName: string;
+  scenarios: EnrichedWebScenario[];
+  /** Worst status in the group — drives the header dot and the group order. */
+  worstStatus: WebScenarioStatus;
+  counts: Record<WebScenarioStatus, number>;
+}
+
+/**
+ * Groups scenarios by their host. Hosts with a failing scenario come first
+ * (same rank as the row sort), then alphabetically; within a group the rows
+ * keep the order they were passed in. Pure.
+ */
+export function groupScenariosByHost(scenarios: EnrichedWebScenario[]): WebScenarioHostGroup[] {
+  const byHost = new Map<string, EnrichedWebScenario[]>();
+  for (const s of scenarios) {
+    const list = byHost.get(s.hostId);
+    if (list) list.push(s);
+    else byHost.set(s.hostId, [s]);
+  }
+
+  return [...byHost.values()]
+    .map((group) => {
+      const worstStatus = group.reduce<WebScenarioStatus>(
+        (worst, s) => (STATUS_RANK[s.status] < STATUS_RANK[worst] ? s.status : worst),
+        "disabled",
+      );
+      return {
+        hostId: group[0]!.hostId,
+        hostName: group[0]!.hostName,
+        scenarios: group,
+        worstStatus,
+        counts: countByStatus(group),
+      };
+    })
+    .sort((a, b) => {
+      const ra = STATUS_RANK[a.worstStatus];
+      const rb = STATUS_RANK[b.worstStatus];
+      if (ra !== rb) return ra - rb;
+      return a.hostName.localeCompare(b.hostName);
+    });
 }
 
 export function countByStatus(scenarios: EnrichedWebScenario[]): Record<WebScenarioStatus, number> {

@@ -1,11 +1,13 @@
 import { useMemo } from "react";
-import { useNavigate, useSearch } from "@tanstack/react-router";
+import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import {
   countByStatus,
+  groupScenariosByHost,
   matchesScenarioSearch,
   sortWebScenarios,
   totalResponseSeconds,
   type EnrichedWebScenario,
+  type WebScenarioHostGroup,
   type WebScenarioSortKey,
 } from "../../lib/web-scenarios";
 import { formatAge } from "../../lib/problems";
@@ -38,6 +40,8 @@ export function WebScenariosPage() {
     const matching = query.trim() ? scenarios.filter((s) => matchesScenarioSearch(s, query)) : scenarios;
     return sortWebScenarios(matching, sortKey);
   }, [scenarios, query]);
+
+  const groups = useMemo(() => groupScenariosByHost(filtered), [filtered]);
 
   const selected = useMemo(() => {
     if (search.scenario !== undefined) {
@@ -75,10 +79,9 @@ export function WebScenariosPage() {
               />
             </div>
 
-            <div className="grid grid-cols-[20px_1fr_100px_60px_100px_90px] gap-2.5 border-b border-line-soft px-3.5 py-2 font-mono text-[10px] uppercase tracking-wider text-ink-muted">
+            <div className={`${ROW_GRID} border-b border-line-soft px-3.5 py-2 font-mono text-[10px] uppercase tracking-wider text-ink-muted`}>
               <span />
               <span>{t("webScenarios.colScenario")}</span>
-              <span className="hidden min-[900px]:block">{t("webScenarios.colHost")}</span>
               <span className="hidden min-[700px]:block">{t("webScenarios.colSteps")}</span>
               <span>{t("webScenarios.colResponseTime")}</span>
               <span>{t("webScenarios.colLastCheck")}</span>
@@ -93,14 +96,19 @@ export function WebScenariosPage() {
               </div>
             ) : (
               <div>
-                {filtered.map((s) => (
-                  <ScenarioRow
-                    key={s.httptest.httptestid}
-                    scenario={s}
-                    selected={selected?.httptest.httptestid === s.httptest.httptestid}
-                    onSelect={() => updateSearch({ scenario: s.httptest.httptestid })}
-                    locale={locale}
-                  />
+                {groups.map((group) => (
+                  <section key={group.hostId}>
+                    <HostGroupHeader group={group} />
+                    {group.scenarios.map((s) => (
+                      <ScenarioRow
+                        key={s.httptest.httptestid}
+                        scenario={s}
+                        selected={selected?.httptest.httptestid === s.httptest.httptestid}
+                        onSelect={() => updateSearch({ scenario: s.httptest.httptestid })}
+                        locale={locale}
+                      />
+                    ))}
+                  </section>
                 ))}
               </div>
             )}
@@ -111,6 +119,29 @@ export function WebScenariosPage() {
           </aside>
         </div>
       )}
+    </div>
+  );
+}
+
+/** Shared by the column header and every row so they stay aligned. */
+const ROW_GRID = "grid grid-cols-[20px_1fr_60px_100px_90px] items-center gap-2.5";
+
+function HostGroupHeader({ group }: { group: WebScenarioHostGroup }) {
+  const t = useT();
+  return (
+    // top-[52px] parks the header just under AppShell's sticky top bar.
+    <div className="sticky top-[52px] z-10 flex items-center gap-2 border-b border-line-soft bg-surface-2/95 px-3.5 py-1.5 backdrop-blur">
+      <span className={`h-2 w-2 flex-shrink-0 rounded-full ${statusDotClass(group.worstStatus)}`} />
+      <Link
+        to="/hosts/$hostId"
+        params={{ hostId: group.hostId }}
+        className="min-w-0 truncate font-mono text-[12px] font-semibold text-ink hover:text-accent"
+      >
+        {group.hostName}
+      </Link>
+      <span className="ml-auto flex-shrink-0 font-mono text-[10.5px] text-ink-muted">
+        {t("webScenarios.groupSummary", group.scenarios.length, group.counts.failed, group.counts.degraded)}
+      </span>
     </div>
   );
 }
@@ -134,15 +165,12 @@ function ScenarioRow({
     <button
       type="button"
       onClick={onSelect}
-      className={`grid w-full grid-cols-[20px_1fr_100px_60px_100px_90px] items-center gap-2.5 border-b border-line-soft px-3.5 py-2.5 text-left text-[12.5px] last:border-b-0 hover:bg-surface-2 ${selected ? "bg-accent-soft" : ""}`}
+      className={`${ROW_GRID} w-full border-b border-line-soft px-3.5 py-2.5 text-left text-[12.5px] last:border-b-0 hover:bg-surface-2 ${selected ? "bg-accent-soft" : ""}`}
     >
       <span className={`h-2 w-2 rounded-sm ${statusDotClass(scenario.status)}`} />
       <span className="min-w-0">
         <div className="truncate font-semibold text-ink">{scenario.httptest.name}</div>
         <div className="truncate font-mono text-[11px] text-ink-muted">{scenario.steps[0]?.step.url ?? ""}</div>
-      </span>
-      <span className="hidden truncate font-mono text-[11px] text-ink-2 min-[900px]:block">
-        {scenario.hostName}
       </span>
       <span className="hidden font-mono text-[12px] text-ink-2 min-[700px]:block">
         {t("webScenarios.stepCount", scenario.steps.length)}
