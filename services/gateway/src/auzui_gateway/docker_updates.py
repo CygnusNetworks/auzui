@@ -111,6 +111,16 @@ def parse_image_ref(ref: str) -> ImageRef:
     return ImageRef(registry=registry, repo=repo, tag=tag, digest=digest)
 
 
+def bare_digest(digest: str) -> str:
+    """Strips a RepoDigest's `repo@` prefix, leaving the bare `sha256:...`.
+
+    Docker reports a container's image digest as a full RepoDigest
+    (`ghcr.io/org/app@sha256:...`), while a registry's `Docker-Content-Digest`
+    header carries only the digest. Comparing the two forms verbatim never
+    matches, which reported *every* container as outdated."""
+    return digest.rsplit("@", 1)[-1].strip()
+
+
 _CHALLENGE_RE = re.compile(r'(\w+)="([^"]*)"')
 
 
@@ -184,6 +194,9 @@ class UpdateChecker:
         image = parse_image_ref(ref)
         if not local_digest:
             return {"tag": image.tag, "local_digest": "", "remote_digest": "", "status": "unknown"}
+        # Callers pass Docker's RepoDigest form; normalize so the comparison
+        # below — and the digest this reports back — are like for like.
+        local_digest = bare_digest(local_digest)
 
         cache_key = f"{image.registry}/{image.repo}:{image.tag}"
         remote_digest = self._cache.get(cache_key)

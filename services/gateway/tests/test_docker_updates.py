@@ -6,6 +6,7 @@ from auzui_gateway.config import Settings
 from auzui_gateway.docker_updates import (
     DEFAULT_REGISTRY,
     UpdateChecker,
+    bare_digest,
     parse_image_ref,
 )
 
@@ -226,3 +227,44 @@ async def test_check_unknown_on_401_without_credentials():
 
     result = await checker.check([("ghcr.io/org/app:tag", LOCAL_DIGEST)])
     assert result["ghcr.io/org/app:tag"]["status"] == "unknown"
+
+
+# --- RepoDigest normalization ----------------------------------------------
+
+REPO_DIGEST = f"ghcr.io/org/app@{LOCAL_DIGEST}"
+
+
+def test_bare_digest_strips_the_repo_prefix():
+    assert bare_digest(REPO_DIGEST) == LOCAL_DIGEST
+    assert bare_digest(LOCAL_DIGEST) == LOCAL_DIGEST  # already bare
+    assert bare_digest("") == ""
+
+
+@respx.mock
+async def test_check_current_when_local_is_a_full_repodigest():
+    """Regression: docker_routes._local_digest hands over Docker's RepoDigest
+    form (`repo@sha256:...`), the registry header carries the bare digest.
+    Comparing them verbatim marked every container outdated — on the instance
+    this was found on, all 19 of them, every hash identical bar the prefix."""
+    checker = UpdateChecker(make_settings())
+
+    respx.head("https://ghcr.io/v2/org/app/manifests/1.25").mock(
+        return_value=httpx.Response(200, headers={"Docker-Content-Digest": REMOTE_DIGEST_SAME})
+    )
+
+    result = await checker.check([("ghcr.io/org/app:1.25", REPO_DIGEST)])
+    assert result["ghcr.io/org/app:1.25"]["status"] == "current"
+    # Reported back in the same shape as remote_digest, so the two are comparable.
+    assert result["ghcr.io/org/app:1.25"]["local_digest"] == LOCAL_DIGEST
+
+
+@respx.mock
+async def test_check_still_detects_a_real_update_through_a_repodigest():
+    checker = UpdateChecker(make_settings())
+
+    respx.head("https://ghcr.io/v2/org/app/manifests/1.25").mock(
+        return_value=httpx.Response(200, headers={"Docker-Content-Digest": REMOTE_DIGEST_NEW})
+    )
+
+    result = await checker.check([("ghcr.io/org/app:1.25", REPO_DIGEST)])
+    assert result["ghcr.io/org/app:1.25"]["status"] == "outdated"
