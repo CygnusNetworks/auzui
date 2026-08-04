@@ -112,7 +112,7 @@ export function MapView({
     return { x: bounds.minX - padW, y: bounds.minY - padH, w: rawW + padW * 2, h: rawH + padH * 2 };
   }, [located]);
 
-  const { viewBox, svgRef, onWheel, onDoubleClick, onBackgroundPointerDown, onPointerMove, onPointerUp, scale, zoomBy, fitTo } =
+  const { viewBox, svgRef, onWheel, onDoubleClick, onBackgroundPointerDown, onPointerMove, onPointerUp, scale, unitsPerPx, zoomBy, fitTo } =
     usePanZoom(initialViewBox, PAN_ZOOM_OPTS);
 
   const q = query.trim().toLowerCase();
@@ -156,7 +156,7 @@ export function MapView({
           onPointerLeave={onPointerUp}
         >
           {landPaths.map((d, i) => (
-            <path key={i} d={d} fill="var(--color-map-land)" stroke="var(--color-line-soft)" strokeWidth={0.3 / scale} />
+            <path key={i} d={d} fill="var(--color-map-land)" stroke="var(--color-line-soft)" strokeWidth={0.3 * unitsPerPx} />
           ))}
           {clusters.map((cluster) => {
             const members = cluster.ids.map((id) => hostById.get(id)!);
@@ -167,7 +167,7 @@ export function MapView({
             const selected = selectedNodeId !== undefined && cluster.ids.includes(selectedNodeId);
             const p = projectEquirectangular(cluster.lat, cluster.lon);
             const basePx = members.length > 1 ? 7 : 5;
-            const r = basePx / scale;
+            const r = basePx * unitsPerPx;
             return (
               <g
                 key={cluster.id}
@@ -183,13 +183,13 @@ export function MapView({
                   r={r}
                   fill={severityNodeColor(severity)}
                   stroke={selected || matched ? "var(--color-accent)" : "var(--color-surface)"}
-                  strokeWidth={(selected ? 2.5 : 1.5) / scale}
+                  strokeWidth={(selected ? 2.5 : 1.5) * unitsPerPx}
                 />
                 {members.length > 1 && (
                   <text
-                    y={2.5 / scale}
+                    y={2.5 * unitsPerPx}
                     textAnchor="middle"
-                    fontSize={6.5 / scale}
+                    fontSize={6.5 * unitsPerPx}
                     fontWeight={700}
                     fill="var(--color-accent-ink)"
                     style={{ pointerEvents: "none" }}
@@ -199,12 +199,12 @@ export function MapView({
                 )}
                 {showLabels && (
                   <text
-                    y={16 / scale}
+                    y={16 * unitsPerPx}
                     textAnchor="middle"
-                    fontSize={9 / scale}
+                    fontSize={9 * unitsPerPx}
                     fill="var(--color-ink-2)"
                     stroke="var(--color-surface-2)"
-                    strokeWidth={3 / scale}
+                    strokeWidth={3 * unitsPerPx}
                     paintOrder="stroke"
                     style={{ pointerEvents: "none" }}
                   >

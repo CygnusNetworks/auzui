@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { fitViewBox, lerpViewBox, zoomAtCursor, type Bounds, type ViewBox } from "../../lib/geo";
 
 export type { ViewBox } from "../../lib/geo";
@@ -45,16 +45,53 @@ export function zoomBoundsFromFit(
 }
 
 /**
+ * World units per rendered CSS pixel. Multiplying a pixel size by this yields
+ * an SVG length that is visually constant regardless of zoom *and* of the
+ * content's own coordinate span — a 1400-unit-wide Zabbix map and a
+ * 0.2°-wide geo bounding box both get the same on-screen marker size.
+ *
+ * `fallbackScale` (usePanZoom's relative `scale`) is only used before the SVG
+ * has been measured, and reproduces the previous span-dependent behaviour
+ * rather than collapsing everything to zero. Pure.
+ */
+export function worldUnitsPerPixel(
+  viewBox: { w: number; h: number },
+  svgWidthPx: number,
+  svgHeightPx: number,
+  fallbackScale: number,
+): number {
+  // The SVGs render with the default preserveAspectRatio ("xMidYMid meet"),
+  // so the viewBox is scaled by the *smaller* of the two axis ratios — using
+  // width alone is off by the aspect mismatch (~2× on a 1084×560 stage).
+  const okW = svgWidthPx > 0 && Number.isFinite(viewBox.w) && viewBox.w > 0;
+  const okH = svgHeightPx > 0 && Number.isFinite(viewBox.h) && viewBox.h > 0;
+  if (okW || okH) {
+    const pxPerUnit = Math.min(
+      okW ? svgWidthPx / viewBox.w : Infinity,
+      okH ? svgHeightPx / viewBox.h : Infinity,
+    );
+    if (pxPerUnit > 0 && Number.isFinite(pxPerUnit)) return 1 / pxPerUnit;
+  }
+  return Number.isFinite(fallbackScale) && fallbackScale > 0 ? 1 / fallbackScale : 1;
+}
+
+/**
  * Shared pan/zoom mechanics for FocusStage/MapStage/MapView (PLAN.md "Gemeinsame
  * Interaktion"): wheel-zoom centered on the cursor, pinch-to-zoom (2-pointer
  * distance), pan via drag, double-click zoom-in, and an animated fit() that
- * lerps the viewBox over ~250ms via requestAnimationFrame. `scale` is
- * `initial.w / viewBox.w`, used by callers to keep label/marker sizes
- * constant in screen space.
+ * lerps the viewBox over ~250ms via requestAnimationFrame.
+ *
+ * `scale` is `initial.w / viewBox.w` — a *relative* zoom factor (1 = initial
+ * view), for zoom-dependent behaviour like detail levels. It is NOT a
+ * pixels-to-world conversion: use `unitsPerPx` for that (see below), or a
+ * marker sized `8 / scale` renders 8 world units, whose on-screen size then
+ * depends on the content's own coordinate span.
  */
 export function usePanZoom(initial: ViewBox, opts: PanZoomOptions) {
   const [viewBox, setViewBox] = useState<ViewBox>(initial);
-  const svgRef = useRef<SVGSVGElement>(null);
+  const svgNodeRef = useRef<SVGSVGElement | null>(null);
+  const resizeObsRef = useRef<ResizeObserver | null>(null);
+  const [svgSizePx, setSvgSizePx] = useState({ w: 0, h: 0 });
   const panRef = useRef<{ startX: number; startY: number; origin: ViewBox } | null>(null);
   const pointersRef = useRef<Map<number, { x: number; y: number }>>(new Map());
   const pinchRef = useRef<{ startDist: number; origin: ViewBox; midX: number; midY: number } | null>(null);
@@ -67,14 +104,58 @@ export function usePanZoom(initial: ViewBox, opts: PanZoomOptions) {
     [],
   );
 
+  /**
+   * Callback ref rather than an effect: FocusStage mounts its <svg> only once a
+   * cluster is selected, so an effect with `[]` deps would run against a null
+   * ref and never measure — leaving `unitsPerPx` stuck on the fallback.
+   * ResizeObserver is absent in jsdom; there the one-shot measure suffices.
+   */
+  const svgRef = useCallback((el: SVGSVGElement | null) => {
+    svgNodeRef.current = el;
+    resizeObsRef.current?.disconnect();
+    resizeObsRef.current = null;
+    if (!el) return;
+    const measure = () => {
+      const r = el.getBoundingClientRect();
+      setSvgSizePx((cur) => (cur.w === r.width && cur.h === r.height ? cur : { w: r.width, h: r.height }));
+    };
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    resizeObsRef.current = new ResizeObserver(measure);
+    resizeObsRef.current.observe(el);
+  }, []);
+
+  useEffect(() => () => resizeObsRef.current?.disconnect(), []);
+
+  /**
+   * `initial` is only the *initial* state, so a stage whose framing is derived
+   * from data would keep the placeholder view forever: MapStage first renders
+   * with no map selected (800×600 default, then never the map's real canvas),
+   * MapView first renders with no geocoded hosts (whole world, then never the
+   * hosts' bounding box). Re-adopt the framing whenever it actually changes —
+   * a constant `initial` (FocusStage) never triggers this, so user panning is
+   * left alone.
+   */
+  const initialKey = `${initial.x},${initial.y},${initial.w},${initial.h}`;
+  const adoptedKeyRef = useRef(initialKey);
+  useEffect(() => {
+    if (adoptedKeyRef.current === initialKey) return;
+    adoptedKeyRef.current = initialKey;
+    stopAnimation();
+    setViewBox(initial);
+    // `initial` is intentionally not a dependency — its identity changes every
+    // render in callers that build it inline; the value key is what matters.
+
+  }, [initialKey]);
+
   function rectFraction(clientX: number, clientY: number): { px: number; py: number } {
-    const rect = svgRef.current?.getBoundingClientRect();
+    const rect = svgNodeRef.current?.getBoundingClientRect();
     if (!rect || rect.width === 0 || rect.height === 0) return { px: 0.5, py: 0.5 };
     return { px: (clientX - rect.left) / rect.width, py: (clientY - rect.top) / rect.height };
   }
 
   function screenToUnits(dxPx: number, dyPx: number): { dx: number; dy: number } {
-    const rect = svgRef.current?.getBoundingClientRect();
+    const rect = svgNodeRef.current?.getBoundingClientRect();
     if (!rect || rect.width === 0 || rect.height === 0) return { dx: 0, dy: 0 };
     return { dx: (dxPx / rect.width) * viewBox.w, dy: (dyPx / rect.height) * viewBox.h };
   }
@@ -170,10 +251,13 @@ export function usePanZoom(initial: ViewBox, opts: PanZoomOptions) {
 
   const scale = useMemo(() => initial.w / viewBox.w, [initial.w, viewBox.w]);
 
+  const unitsPerPx = worldUnitsPerPixel(viewBox, svgSizePx.w, svgSizePx.h, scale);
+
   return {
     viewBox,
     setViewBox,
     svgRef,
+    unitsPerPx,
     onWheel,
     onDoubleClick,
     onBackgroundPointerDown,

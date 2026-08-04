@@ -144,7 +144,7 @@ export function FocusStage({ cluster }: { cluster: ClusterSummary | undefined })
   const fitBox = useMemo(() => fitViewBox(ringBounds(radius), 0.05, 40), [radius]);
   const zoomOpts = useMemo(() => zoomBoundsFromFit(fitBox.w, fitBox.h), [fitBox.w, fitBox.h]);
 
-  const { viewBox, svgRef, onWheel, onBackgroundPointerDown, onPointerMove, onPointerUp, scale, zoomBy, fitTo } =
+  const { viewBox, svgRef, onWheel, onBackgroundPointerDown, onPointerMove, onPointerUp, scale, unitsPerPx, zoomBy, fitTo } =
     usePanZoom(INITIAL_VIEWBOX, zoomOpts);
 
   // Detail level (semantic mode) from the current zoom relative to the fit scale.
@@ -220,22 +220,22 @@ export function FocusStage({ cluster }: { cluster: ClusterSummary | undefined })
             y2={p.y}
             stroke="var(--color-line)"
             strokeOpacity={0.5}
-            strokeWidth={1.2 / scale}
+            strokeWidth={1.2 * unitsPerPx}
             style={{ pointerEvents: "none" }}
           />
         ))}
 
         {/* Hub */}
         <g>
-          <circle r={HUB_R_PX / scale} fill="var(--color-surface-3)" stroke="var(--color-ink-muted)" strokeWidth={1.5 / scale} />
+          <circle r={HUB_R_PX * unitsPerPx} fill="var(--color-surface-3)" stroke="var(--color-ink-muted)" strokeWidth={1.5 * unitsPerPx} />
           <text
-            y={-(HUB_R_PX + 10) / scale}
+            y={-(HUB_R_PX + 10) * unitsPerPx}
             textAnchor="middle"
-            fontSize={11 / scale}
+            fontSize={11 * unitsPerPx}
             fontWeight={700}
             fill="var(--color-ink)"
             stroke="var(--color-surface-2)"
-            strokeWidth={3 / scale}
+            strokeWidth={3 * unitsPerPx}
             paintOrder="stroke"
             style={{ pointerEvents: "none" }}
           >
@@ -256,8 +256,8 @@ export function FocusStage({ cluster }: { cluster: ClusterSummary | undefined })
                     y={p.y}
                     angle={p.angle}
                     index={i}
-                    r={HOST_R_PX / scale}
-                    scale={scale}
+                    r={HOST_R_PX * unitsPerPx}
+                    unitsPerPx={unitsPerPx}
                     label={truncateLabel(host.label)}
                     color={severityDotColor(host.severity)}
                     isProblem
@@ -303,8 +303,8 @@ export function FocusStage({ cluster }: { cluster: ClusterSummary | undefined })
                           y={sp.y}
                           angle={sp.angle}
                           index={si}
-                          r={HOST_R_PX / scale}
-                          scale={scale}
+                          r={HOST_R_PX * unitsPerPx}
+                          unitsPerPx={unitsPerPx}
                           label={truncateLabel(m.label)}
                           color={severityDotColor(m.severity)}
                           isProblem={isProblem}
@@ -322,7 +322,7 @@ export function FocusStage({ cluster }: { cluster: ClusterSummary | undefined })
 
               const worst = representedWorstSeverity(represented);
               const problemCount = representedProblemCount(represented);
-              const metaR = metaNodeRadius(represented.length) / scale;
+              const metaR = metaNodeRadius(represented.length) * unitsPerPx;
               return (
                 <g
                   key={entry.id}
@@ -336,14 +336,14 @@ export function FocusStage({ cluster }: { cluster: ClusterSummary | undefined })
                   style={{ cursor: "pointer", transition: nodeTransition }}
                 >
                   {worst !== undefined && (
-                    <circle r={metaR + 3 / scale} fill="none" stroke={severityDotColor(worst)} strokeWidth={2.5 / scale} />
+                    <circle r={metaR + 3 * unitsPerPx} fill="none" stroke={severityDotColor(worst)} strokeWidth={2.5 * unitsPerPx} />
                   )}
-                  <circle r={metaR} fill="var(--color-sev-ok)" fillOpacity={0.28} stroke="var(--color-sev-ok)" strokeWidth={1.5 / scale} />
+                  <circle r={metaR} fill="var(--color-sev-ok)" fillOpacity={0.28} stroke="var(--color-sev-ok)" strokeWidth={1.5 * unitsPerPx} />
                   {problemCount > 0 && (
                     <text
                       textAnchor="middle"
-                      y={3.5 / scale}
-                      fontSize={9 / scale}
+                      y={3.5 * unitsPerPx}
+                      fontSize={9 * unitsPerPx}
                       fontWeight={700}
                       fill="var(--color-ink)"
                       style={{ pointerEvents: "none" }}
@@ -352,12 +352,12 @@ export function FocusStage({ cluster }: { cluster: ClusterSummary | undefined })
                     </text>
                   )}
                   <text
-                    y={(metaNodeRadius(represented.length) + 12) / scale}
+                    y={(metaNodeRadius(represented.length) + 12) * unitsPerPx}
                     textAnchor="middle"
-                    fontSize={9.5 / scale}
+                    fontSize={9.5 * unitsPerPx}
                     fill="var(--color-ink-2)"
                     stroke="var(--color-surface-2)"
-                    strokeWidth={3 / scale}
+                    strokeWidth={3 * unitsPerPx}
                     paintOrder="stroke"
                     style={{ pointerEvents: "none" }}
                   >
@@ -378,14 +378,14 @@ export function FocusStage({ cluster }: { cluster: ClusterSummary | undefined })
                     }}
                     style={{ cursor: "pointer" }}
                   >
-                    <circle r={HOST_R_PX / scale} fill="var(--color-surface-3)" stroke="var(--color-ink-muted)" strokeWidth={1.5 / scale} />
+                    <circle r={HOST_R_PX * unitsPerPx} fill="var(--color-surface-3)" stroke="var(--color-ink-muted)" strokeWidth={1.5 * unitsPerPx} />
                     <text
-                      y={16 / scale}
+                      y={16 * unitsPerPx}
                       textAnchor="middle"
-                      fontSize={9.5 / scale}
+                      fontSize={9.5 * unitsPerPx}
                       fill="var(--color-ink-2)"
                       stroke="var(--color-surface-2)"
-                      strokeWidth={3 / scale}
+                      strokeWidth={3 * unitsPerPx}
                       paintOrder="stroke"
                       style={{ pointerEvents: "none" }}
                     >
@@ -403,8 +403,8 @@ export function FocusStage({ cluster }: { cluster: ClusterSummary | undefined })
                   y={p.y}
                   angle={p.angle}
                   index={i}
-                  r={HOST_R_PX / scale}
-                  scale={scale}
+                  r={HOST_R_PX * unitsPerPx}
+                  unitsPerPx={unitsPerPx}
                   label={truncateLabel(host.label)}
                   color={severityDotColor(host.severity)}
                   isProblem={host.severity !== undefined}
@@ -499,7 +499,7 @@ function HostNode({
   angle,
   index,
   r,
-  scale,
+  unitsPerPx,
   label,
   color,
   isProblem,
@@ -514,7 +514,8 @@ function HostNode({
   angle: number;
   index: number;
   r: number;
-  scale: number;
+  /** World units per rendered pixel (usePanZoom) — keeps dot outline and label at a constant on-screen size. */
+  unitsPerPx: number;
   label: string;
   color: string;
   isProblem: boolean;
@@ -535,16 +536,16 @@ function HostNode({
       }}
       style={{ cursor: "pointer", transition }}
     >
-      <circle r={r} fill={color} stroke="var(--color-surface)" strokeWidth={1.5 / scale} />
+      <circle r={r} fill={color} stroke="var(--color-surface)" strokeWidth={1.5 * unitsPerPx} />
       {showLabel && (
         <text
-          x={(labelRadiusOffset(index) * Math.cos(angle)) / scale}
-          y={(labelRadiusOffset(index) * Math.sin(angle)) / scale}
+          x={labelRadiusOffset(index) * Math.cos(angle) * unitsPerPx}
+          y={labelRadiusOffset(index) * Math.sin(angle) * unitsPerPx}
           textAnchor="middle"
-          fontSize={9 / scale}
+          fontSize={9 * unitsPerPx}
           fill={isProblem ? "var(--color-ink)" : "var(--color-ink-2)"}
           stroke="var(--color-surface-2)"
-          strokeWidth={3 / scale}
+          strokeWidth={3 * unitsPerPx}
           paintOrder="stroke"
           style={{ pointerEvents: "none" }}
         >

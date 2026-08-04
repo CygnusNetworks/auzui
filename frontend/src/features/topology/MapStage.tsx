@@ -72,7 +72,7 @@ export function MapStage({
     return { x: 0, y: 0, w: width || 800, h: height || 600 };
   }, [map]);
 
-  const { viewBox, svgRef, onWheel, onDoubleClick, onBackgroundPointerDown, onPointerMove, onPointerUp, scale, zoomBy, fitTo } =
+  const { viewBox, svgRef, onWheel, onDoubleClick, onBackgroundPointerDown, onPointerMove, onPointerUp, unitsPerPx, zoomBy, fitTo } =
     usePanZoom(initialViewBox, PAN_ZOOM_OPTS);
 
   function fitToMap() {
@@ -120,7 +120,7 @@ export function MapStage({
               y2={b.y}
               stroke="var(--color-line)"
               strokeOpacity={0.6}
-              strokeWidth={1.4 / scale}
+              strokeWidth={1.4 * unitsPerPx}
               onPointerEnter={(e) => showTooltip(e.clientX, e.clientY, undefined, `${a.label} ↔ ${b.label}`)}
               onPointerLeave={() => setTooltip(undefined)}
             />
@@ -143,18 +143,18 @@ export function MapStage({
               style={{ cursor: p.hostid ? "pointer" : "default" }}
             >
               <circle
-                r={NODE_R_PX / scale}
+                r={NODE_R_PX * unitsPerPx}
                 fill={host ? severityDotColor(severity) : "var(--color-surface-3)"}
                 stroke="var(--color-surface)"
-                strokeWidth={1.5 / scale}
+                strokeWidth={1.5 * unitsPerPx}
               />
               <text
-                y={18 / scale}
+                y={18 * unitsPerPx}
                 textAnchor="middle"
-                fontSize={9.5 / scale}
+                fontSize={9.5 * unitsPerPx}
                 fill="var(--color-ink-2)"
                 stroke="var(--color-surface-2)"
-                strokeWidth={3 / scale}
+                strokeWidth={3 * unitsPerPx}
                 paintOrder="stroke"
                 style={{ pointerEvents: "none" }}
               >
