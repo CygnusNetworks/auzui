@@ -33,6 +33,14 @@ jobs:
       # Multi-arch on release tags, or when workflow_dispatch forces it.
       MULTIARCH: ${{ (startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.multiarch)) && 'true' || 'false' }}
     steps:
+      - name: Harden runner
+        # Ueberwacht ausgehende Verbindungen des Jobs. Bewusst "audit":
+        # blockiert nichts, meldet aber ungewoehnliche Ziele. Auf "block"
+        # umstellen erst, wenn die Allowlist aus den Audit-Berichten steht --
+        # sonst brechen Builds an harmlosen Zielen.
+        uses: step-security/harden-runner@f808768d1510423e83855289c910610ca9b43176  # v2.17.0
+        with:
+          egress-policy: audit
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
         with:
           # Full history + tags so `git describe` can compute the tag distance.

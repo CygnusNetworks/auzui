@@ -23,6 +23,14 @@ jobs:
     name: Generate & commit screenshots
     runs-on: ubuntu-latest
     steps:
+      - name: Harden runner
+        # Ueberwacht ausgehende Verbindungen des Jobs. Bewusst "audit":
+        # blockiert nichts, meldet aber ungewoehnliche Ziele. Auf "block"
+        # umstellen erst, wenn die Allowlist aus den Audit-Berichten steht --
+        # sonst brechen Builds an harmlosen Zielen.
+        uses: step-security/harden-runner@f808768d1510423e83855289c910610ca9b43176  # v2.17.0
+        with:
+          egress-policy: audit
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
         with:
           # A tag is not a branch — check out main and commit the results there.
