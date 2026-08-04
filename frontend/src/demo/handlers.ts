@@ -12,6 +12,7 @@ import {
   demoFilterSets,
   demoHostGroups,
   demoHosts,
+  demoHttpTests,
   demoItems,
   demoLogMessages,
   demoLogServers,
@@ -112,6 +113,24 @@ function filterTriggers(params: Record<string, unknown>): ZabbixTrigger[] {
   return triggers;
 }
 
+function filterHttpTests(params: Record<string, unknown>) {
+  let httptests = demoHttpTests;
+  const hostids = asStringArray(params.hostids);
+  if (hostids) httptests = httptests.filter((t) => hostids.includes(t.hostid));
+  const httptestids = asStringArray(params.httptestids);
+  if (httptestids) httptests = httptests.filter((t) => httptestids.includes(t.httptestid));
+  return httptests;
+}
+
+function resolveHttptestUpdate(params: Record<string, unknown>) {
+  const httptestid = String(params.httptestid);
+  const httptest = demoHttpTests.find((t) => t.httptestid === httptestid);
+  if (httptest && (params.status === "0" || params.status === "1" || params.status === 0 || params.status === 1)) {
+    httptest.status = String(params.status) === "1" ? "1" : "0";
+  }
+  return { httptestids: [httptestid] };
+}
+
 function filterProblems(params: Record<string, unknown>) {
   let problems = demoProblems;
   const hostids = asStringArray(params.hostids);
@@ -178,6 +197,10 @@ function resolveRpcMethod(method: string, params: Record<string, unknown>): unkn
     }
     case "discoveryrule.get":
       return [];
+    case "httptest.get":
+      return filterHttpTests(params);
+    case "httptest.update":
+      return resolveHttptestUpdate(params);
     default:
       return [];
   }

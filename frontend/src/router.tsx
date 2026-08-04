@@ -23,6 +23,8 @@ import { MetricsPage } from "./features/metrics/MetricsPage";
 import { validateMetricsSearch } from "./features/metrics/search-params";
 import { LogsPage } from "./features/logs/LogsPage";
 import { validateLogsSearch } from "./features/logs/search-params";
+import { WebScenariosPage } from "./features/web-scenarios/WebScenariosPage";
+import { validateWebScenariosSearch } from "./features/web-scenarios/search-params";
 import { useAuthStore } from "./lib/auth/store";
 
 const rootRoute = createRootRoute({
@@ -117,6 +119,13 @@ const logsRoute = createRoute({
   validateSearch: validateLogsSearch,
 });
 
+const webScenariosRoute = createRoute({
+  getParentRoute: () => appLayoutRoute,
+  path: "/web-scenarios",
+  component: WebScenariosPage,
+  validateSearch: validateWebScenariosSearch,
+});
+
 const routeTree = rootRoute.addChildren([
   loginRoute,
   appLayoutRoute.addChildren([
@@ -129,6 +138,7 @@ const routeTree = rootRoute.addChildren([
     topologyRoute,
     metricsRoute,
     logsRoute,
+    webScenariosRoute,
   ]),
 ]);
 

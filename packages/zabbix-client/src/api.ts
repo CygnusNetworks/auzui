@@ -6,6 +6,7 @@ import type {
   ZabbixHistoryPoint,
   ZabbixHost,
   ZabbixHostGroup,
+  ZabbixHttpTest,
   ZabbixId,
   ZabbixItem,
   ZabbixMaintenance,
@@ -179,6 +180,24 @@ export class ZabbixApi {
     } = {},
   ): Promise<ZabbixTrigger[]> {
     return this.client.call("trigger.get", params);
+  }
+
+  httptestGet(
+    params: GetParamsBase & {
+      hostids?: ZabbixId[];
+      httptestids?: ZabbixId[];
+      groupids?: ZabbixId[];
+      selectSteps?: "extend" | string[];
+      selectHosts?: "extend" | string[];
+      monitored?: boolean;
+    } = {},
+  ): Promise<ZabbixHttpTest[]> {
+    return this.client.call("httptest.get", params);
+  }
+
+  /** Partial update — only httptestid + the fields passed are changed. Used by auzui to enable/disable a scenario. */
+  httptestUpdate(params: { httptestid: ZabbixId; status: "0" | "1" }): Promise<{ httptestids: ZabbixId[] }> {
+    return this.client.call("httptest.update", params);
   }
 
   discoveryruleGet(

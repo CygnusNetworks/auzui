@@ -87,7 +87,7 @@ build target.
 Yes. Without the gateway (or with it running but Influx/Graylog left
 unconfigured), the SPA talks straight to `api_jsonrpc.php` and every core
 monitoring workflow — Problems, Hosts, Latest Data, Explorer, Topology,
-Metrics, command palette — works normally. You lose only the InfluxDB fast
+Metrics, Web Scenarios, command palette — works normally. You lose only the InfluxDB fast
 path and Graylog log panels, and (if you were relying on it)
 `AUZUI_SERVE_FRONTEND`'s single-container serving. See
 [getting-started.md](getting-started.md#what-works-without-auzui-gateway).

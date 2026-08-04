@@ -10,7 +10,7 @@ import { test, type Page } from "@playwright/test";
  *
  * Writes PNGs to ../docs/images/. Fixed naming contract (do not rename):
  * problems, host-detail, latest-data, explorer, topology, metrics, logs,
- * command-palette — each as <name>.png and <name>-dark.png.
+ * web-scenarios, command-palette — each as <name>.png and <name>-dark.png.
  */
 
 const OUT = "../docs/images";
@@ -57,6 +57,7 @@ test("auzui screenshots", async ({ page }) => {
     [`/hosts/${HERO_HOST_ID}`, "host-detail"],
     ["/explorer", "explorer"],
     ["/logs", "logs"],
+    ["/web-scenarios?scenario=70002", "web-scenarios"],
   ] as const) {
     await shot(page, route, name);
   }

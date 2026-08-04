@@ -82,7 +82,10 @@ curl -fs http://127.0.0.1:8080/health
    hosts/items/triggers plus quick actions.
 7. **Logs** (`/logs`) only appears once Graylog is configured (see below);
    otherwise the route and its nav entry are hidden entirely.
-8. **Maintenance** (`/maintenance`) manages Zabbix maintenance windows.
+8. **Web Scenarios** (`/web-scenarios`) lists every Zabbix web scenario
+   (HTTP check) with live status, and a detail panel with per-step response
+   time and 14-day availability.
+9. **Maintenance** (`/maintenance`) manages Zabbix maintenance windows.
 
 ## What works without `auzui-gateway`
 
@@ -92,7 +95,7 @@ to `api_jsonrpc.php` and every core monitoring workflow works normally:
 
 | Feature | Without gateway / without Influx / without Graylog |
 |---|---|
-| Problems, Hosts, Latest Data, Explorer, Topology, Metrics, command palette | **Fully functional** — driven entirely by the Zabbix JSON-RPC API |
+| Problems, Hosts, Latest Data, Explorer, Topology, Metrics, Web Scenarios, command palette | **Fully functional** — driven entirely by the Zabbix JSON-RPC API |
 | Chart time-series | Falls back to `history.get`/`trend.get` (see [timeseries-sources.md](timeseries-sources.md)) |
 | Log panels (`/logs`, host-scoped log tab) | Hidden entirely — `/api/logs/status` reports `enabled: false` |
 | Kerberos/SPNEGO SSO | Falls back to the password login form — `/api/auth/methods` reports `spnego: false` |

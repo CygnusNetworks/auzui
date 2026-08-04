@@ -226,6 +226,35 @@ export interface ZabbixMaintenance {
   timeperiods?: ZabbixTimeperiod[];
 }
 
+export interface ZabbixHttpStep {
+  httpstepid: ZabbixId;
+  httptestid: ZabbixId;
+  name: string;
+  /** 1-based step order within the scenario. */
+  no: string;
+  url: string;
+  /** Seconds. */
+  timeout: string;
+  /** Text/regex the response body must contain — empty if unset. */
+  required?: string;
+  /** Comma-separated list of accepted HTTP codes, e.g. "200,301" — empty if unset. */
+  status_codes?: string;
+}
+
+export interface ZabbixHttpTest {
+  httptestid: ZabbixId;
+  name: string;
+  hostid: ZabbixId;
+  /** Check interval, e.g. "1m". */
+  delay: string;
+  retries: string;
+  /** 0 enabled, 1 disabled. */
+  status: "0" | "1";
+  agent: string;
+  steps?: ZabbixHttpStep[];
+  hosts?: Pick<ZabbixHost, "hostid" | "host" | "name">[];
+}
+
 /** Common "get" parameter shapes (subset). */
 export interface GetParamsBase {
   output?: "extend" | string[];

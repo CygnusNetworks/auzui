@@ -13,12 +13,15 @@
 import type {
   ZabbixHost,
   ZabbixHostGroup,
+  ZabbixHttpStep,
+  ZabbixHttpTest,
   ZabbixItem,
   ZabbixMaintenance,
   ZabbixProblem,
   ZabbixProxy,
   ZabbixTrigger,
 } from "@auzui/zabbix-client";
+import { webTestKey, webTestStepKey } from "../lib/web-scenarios";
 
 // ---------------------------------------------------------------------------
 // Deterministic PRNG (mulberry32) — same seed on every load/build.
@@ -114,7 +117,9 @@ export type SeriesKind =
   | "icmp-rtt"
   | "icmp-loss"
   | "counter"
-  | "status";
+  | "status"
+  | "web-response-time"
+  | "web-fail";
 
 interface SeriesSpec {
   kind: SeriesKind;
@@ -151,6 +156,8 @@ function waveValue(spec: SeriesSpec, seed: number, tSeconds: number): number {
   }
   if (spec.kind === "net-bps") v = Math.max(0, v);
   if (spec.kind === "counter" || spec.kind === "status") v = Math.max(0, Math.round(v));
+  if (spec.kind === "web-response-time") v = Math.max(0.005, v);
+  if (spec.kind === "web-fail") v = Math.max(0, Math.round(v));
   if (spec.kind === "cpu" || spec.kind === "memory-pct" || spec.kind === "disk-pct") {
     v = Math.min(99.5, Math.max(0.2, v));
   }
@@ -478,6 +485,212 @@ export const demoMaintenances: ZabbixMaintenance[] = [
     timeperiods: [{ timeperiod_type: "0", period: String(3600 * 6), start_date: String(DEMO_NOW - 86400 * 10) }],
   },
 ];
+
+// ---------------------------------------------------------------------------
+// Web scenarios (httptest) — one auto-created item per Zabbix web-monitoring
+// signal (web.test.fail/error/time/rspcode), matched by scenario/step name.
+// ---------------------------------------------------------------------------
+
+interface DemoStepSpec {
+  name: string;
+  url: string;
+  /** Seconds. */
+  timeout: number;
+}
+
+interface DemoScenarioSpec {
+  name: string;
+  hostname: string;
+  steps: DemoStepSpec[];
+  outcome: "ok" | "degraded" | "failed";
+}
+
+const SCENARIO_SPECS: DemoScenarioSpec[] = [
+  {
+    name: "Checkout flow",
+    hostname: "web-01",
+    outcome: "ok",
+    steps: [
+      { name: "Homepage", url: "https://shop.example.com/", timeout: 10 },
+      { name: "Add to cart", url: "https://shop.example.com/cart/add", timeout: 10 },
+      { name: "Login", url: "https://shop.example.com/session", timeout: 10 },
+      { name: "Place order", url: "https://shop.example.com/checkout/submit", timeout: 10 },
+    ],
+  },
+  {
+    name: "Payment gateway",
+    hostname: "web-01",
+    outcome: "failed",
+    steps: [
+      { name: "Reach gateway", url: "https://pay.example.com/health", timeout: 5 },
+      { name: "Auth token exchange", url: "https://pay.example.com/oauth/token", timeout: 3 },
+    ],
+  },
+  {
+    name: "Homepage uptime",
+    hostname: "web-02",
+    outcome: "ok",
+    steps: [{ name: "Homepage", url: "https://www.example.com/", timeout: 10 }],
+  },
+  {
+    name: "Admin login",
+    hostname: "app-03",
+    outcome: "ok",
+    steps: [
+      { name: "Login form", url: "https://admin.example.com/login", timeout: 10 },
+      { name: "Authenticate", url: "https://admin.example.com/login", timeout: 10 },
+    ],
+  },
+  {
+    name: "API health",
+    hostname: "app-05",
+    outcome: "ok",
+    steps: [{ name: "Health probe", url: "https://api.example.com/v1/health", timeout: 5 }],
+  },
+  {
+    name: "Docs site",
+    hostname: "web-04",
+    outcome: "degraded",
+    steps: [{ name: "Homepage", url: "https://docs.example.com/", timeout: 1 }],
+  },
+  {
+    name: "Marketing site",
+    hostname: "web-05",
+    outcome: "ok",
+    steps: [{ name: "Homepage", url: "https://example.com/", timeout: 10 }],
+  },
+  {
+    name: "Support portal",
+    hostname: "app-02",
+    outcome: "ok",
+    steps: [
+      { name: "Homepage", url: "https://support.example.com/", timeout: 10 },
+      { name: "Search ticket", url: "https://support.example.com/search?q=test", timeout: 10 },
+      { name: "View article", url: "https://support.example.com/kb/12345", timeout: 10 },
+    ],
+  },
+];
+
+export const demoHttpTests: ZabbixHttpTest[] = [];
+
+let nextHttptestId = 70001;
+let nextHttpstepId = 71001;
+
+for (const spec of SCENARIO_SPECS) {
+  const host = demoHosts.find((h) => h.host === spec.hostname);
+  if (!host) continue;
+  const httptestid = String(nextHttptestId++);
+
+  const steps: ZabbixHttpStep[] = spec.steps.map((st, idx) => ({
+    httpstepid: String(nextHttpstepId++),
+    httptestid,
+    name: st.name,
+    no: String(idx + 1),
+    url: st.url,
+    timeout: String(st.timeout),
+    status_codes: "200",
+  }));
+
+  demoHttpTests.push({
+    httptestid,
+    name: spec.name,
+    hostid: host.hostid,
+    delay: "1m",
+    retries: "1",
+    status: "0",
+    agent: "auzui-demo",
+    steps,
+    hosts: [{ hostid: host.hostid, host: host.host, name: host.name }],
+  });
+
+  const failStepIndex = spec.outcome === "failed" ? spec.steps.length - 1 : -1;
+  const failValue = failStepIndex >= 0 ? failStepIndex + 1 : 0;
+
+  const failId = itemId();
+  registerSeries(failId, {
+    kind: "web-fail",
+    base: spec.outcome === "failed" ? 0.35 : spec.outcome === "degraded" ? 0.03 : 0.005,
+    amplitude: spec.outcome === "failed" ? 0.9 : 0.05,
+    unit: "",
+    valueType: "3",
+  });
+  demoItems.push({
+    itemid: failId,
+    hostid: host.hostid,
+    name: `Failed step of scenario "${spec.name}"`,
+    key_: webTestKey("fail", spec.name),
+    value_type: "3",
+    units: "",
+    lastvalue: String(failValue),
+    lastclock: String(DEMO_NOW - randInt(5, 60)),
+    tags: [],
+    status: "0",
+    state: "0",
+  });
+
+  if (spec.outcome === "failed") {
+    demoItems.push({
+      itemid: itemId(),
+      hostid: host.hostid,
+      name: `Last error message of scenario "${spec.name}"`,
+      key_: webTestKey("error", spec.name),
+      value_type: "1",
+      units: "",
+      lastvalue: "connect timed out after 3000 ms",
+      lastclock: String(DEMO_NOW - randInt(5, 60)),
+      tags: [],
+      status: "0",
+      state: "0",
+    });
+  }
+
+  spec.steps.forEach((st, idx) => {
+    const no = String(idx + 1);
+    const failingStep = spec.outcome === "failed" && idx === failStepIndex;
+    const degraded = spec.outcome === "degraded";
+
+    const timeId = itemId();
+    const baseSeconds = failingStep
+      ? st.timeout * 1.1
+      : degraded
+        ? st.timeout * 0.78
+        : randRange(0.04, 0.25);
+    registerSeries(timeId, {
+      kind: "web-response-time",
+      base: baseSeconds,
+      amplitude: failingStep ? st.timeout * 0.5 : degraded ? st.timeout * 0.25 : baseSeconds * 0.35,
+      unit: "s",
+      valueType: "0",
+    });
+    demoItems.push({
+      itemid: timeId,
+      hostid: host.hostid,
+      name: `Response time for step "${st.name}" of scenario "${spec.name}"`,
+      key_: webTestStepKey("time", spec.name, no),
+      value_type: "0",
+      units: "s",
+      lastvalue: failingStep ? String(st.timeout) : lastValueFor(timeId),
+      lastclock: String(DEMO_NOW - randInt(5, 60)),
+      tags: [],
+      status: "0",
+      state: "0",
+    });
+
+    demoItems.push({
+      itemid: itemId(),
+      hostid: host.hostid,
+      name: `Response code for step "${st.name}" of scenario "${spec.name}"`,
+      key_: webTestStepKey("rspcode", spec.name, no),
+      value_type: "3",
+      units: "",
+      lastvalue: failingStep ? "0" : "200",
+      lastclock: String(DEMO_NOW - randInt(5, 60)),
+      tags: [],
+      status: "0",
+      state: "0",
+    });
+  });
+}
 
 // ---------------------------------------------------------------------------
 // Logs

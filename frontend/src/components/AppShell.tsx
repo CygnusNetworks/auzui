@@ -73,6 +73,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     { to: "/metrics", label: t("appShell.nav.metrics") },
     { to: "/latest-data", label: t("appShell.nav.latestData") },
     { to: "/logs", label: t("appShell.nav.logs"), show: logsEnabled },
+    { to: "/web-scenarios", label: t("appShell.nav.webScenarios") },
     { to: "/maintenance", label: t("appShell.nav.maintenance") },
   ];
 

@@ -31,7 +31,8 @@ Live, click-through demo (mocked data, no backend required):
 | ![Problems triage board](./docs/images/problems.png) **Problems** — live triage board | ![Host deep-dive dashboard](./docs/images/host-detail.png) **Host detail** — auto-generated dashboard |
 | ![Latest Data view](./docs/images/latest-data.png) **Latest Data** | ![Infrastructure Explorer heatmap](./docs/images/explorer.png) **Explorer** — heatmap drill-down |
 | ![Auto-Topology graph](./docs/images/topology.png) **Topology** — dependency graph | ![Metric Browser](./docs/images/metrics.png) **Metrics** — faceted metric browser |
-| ![Log panel](./docs/images/logs.png) **Logs** — Graylog-backed log panel (optional) | ![Command palette](./docs/images/command-palette.png) **⌘K** — command palette |
+| ![Log panel](./docs/images/logs.png) **Logs** — Graylog-backed log panel (optional) | ![Web Scenarios](./docs/images/web-scenarios.png) **Web Scenarios** — HTTP-check status, per-step timing, availability |
+| ![Command palette](./docs/images/command-palette.png) **⌘K** — command palette | |
 
 ## Why auzui
 
@@ -66,6 +67,10 @@ fast triage.
 - **⌘K command palette** — global search over hosts/items/triggers/
   dashboards plus actions ("Ack problem…", "Go to host…"), replacing deep
   menu navigation.
+- **Web Scenarios** — live status for every Zabbix HTTP-check (web
+  scenario), a master-detail view with per-step response time (stacked, so
+  one slow step isn't buried in the total), pass/fail codes, and 14-day
+  availability — plus a one-click enable/disable toggle.
 - **Dark-mode first**, high information density, consistent severity color
   semantics, skeleton loading instead of spinners.
 - *Optional:* **InfluxDB fast path** for time-series (via an `effluence`
