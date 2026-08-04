@@ -225,7 +225,14 @@ class DockerHostClient:
         return self._get_client().info()
 
     def list_containers(self, all: bool = True) -> list[dict]:
-        return [c.attrs for c in self._get_client().containers.list(all=all)]
+        # sparse=True is required, not an optimization: docker-py defaults to
+        # sparse=False, which issues an extra inspect per container and leaves
+        # `attrs` in the INSPECT shape. That shape differs from the list shape
+        # _normalize_container expects -- notably `Created` is an RFC3339
+        # string there but a unix int here, so normalizing blows up with
+        # ValueError: invalid literal for int(). It also turns one request
+        # into N+1, which is expensive across a WireGuard tunnel.
+        return [c.attrs for c in self._get_client().containers.list(all=all, sparse=True)]
 
     def inspect_container(self, cid: str) -> dict:
         return self._get_client().containers.get(cid).attrs

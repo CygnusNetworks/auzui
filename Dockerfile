@@ -3,7 +3,7 @@
 
 ARG PYTHON_VERSION=3.12
 ARG NODE_VERSION=22
-ARG PNPM_VERSION=10.14.0
+ARG PNPM_VERSION=11.20.0
 
 # ---------- Frontend build ----------
 # frontend/ is part of a pnpm workspace together with packages/* (workspace:*

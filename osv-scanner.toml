@@ -1,0 +1,22 @@
+# Bekannte, bewusst zurueckgestellte Funde des OSV-Scanners.
+#
+# Sinn dieser Datei: der Supply-Chain-Workflow soll GRUEN starten. Ein Scanner,
+# der wegen Altlasten dauerhaft rot steht, wird nach zwei Wochen ignoriert --
+# und genau dann uebersieht man den einen Fund, auf den es ankommt.
+#
+# Jeder Eintrag hat ein ignoreUntil. Danach schlaegt der Scan wieder an, der
+# Fund kommt also automatisch zurueck auf den Tisch statt still zu verschwinden.
+# Neue Funde sind von dieser Datei nicht betroffen und brechen den Workflow
+# sofort.
+
+[[IgnoredVulns]]
+id = "GHSA-rgw5-rvv9-x895"
+ignoreUntil = 2026-09-03
+reason = """
+brace-expansion: DoS durch unbegrenzte Zwischenarrays. Transitiv ueber eslint
+und typescript-eslint, also reines Entwicklungswerkzeug -- der Pfad wird nie
+mit Angreifereingaben aufgerufen, und im Produktions-Image ist das Paket gar
+nicht enthalten. Behebbar durch ein eslint-Update; zurueckgestellt, um die
+Supply-Chain-Haertung vom 2026-08-04 nicht mit einem Dependency-Update zu
+vermischen.
+"""

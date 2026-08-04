@@ -1,0 +1,56 @@
+version: 2
+
+# Warum Dependabot trotz der Karenzzeit in pnpm-workspace.yaml:
+#
+# minimumReleaseAge verhindert, dass eine frische Version INSTALLIERT wird --
+# es sorgt aber nicht dafuer, dass ueberhaupt aktualisiert wird. Genau das war
+# bisher die Lage: das Lockfile blieb monatelang stehen, was uns bei der
+# keyv-Welle am 2026-08-04 zufaellig gerettet hat, aber eben nur zufaellig.
+# Veraltete Abhaengigkeiten sind ihrerseits ein Risiko.
+#
+# Dependabot wartet seit Juli 2026 von sich aus drei Tage, bevor es eine neue
+# Version vorschlaegt (cooldown), und nimmt Sicherheitsupdates ausdruecklich
+# davon aus. Das deckt sich mit minimumReleaseAge: 4320 in pnpm-workspace.yaml
+# -- beide Werte sollten zusammen bewegt werden.
+#
+# Der github-actions-Block ist der Gegenpart zum SHA-Pinning der Workflows:
+# Dependabot erkennt gepinnte SHAs, hebt sie an und zieht den Versionskommentar
+# mit. Ohne ihn muesste man das von Hand nachhalten und wuerde es vergessen.
+
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    cooldown:
+      default-days: 3
+    # Ein PR pro Oekosystem statt einer pro Paket -- sonst geht der eine PR,
+    # den man wirklich pruefen sollte, in der Masse unter.
+    groups:
+      frontend:
+        patterns: ["*"]
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: uv
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    cooldown:
+      default-days: 3
+    groups:
+      backend:
+        patterns: ["*"]
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    cooldown:
+      default-days: 3
+    groups:
+      actions:
+        patterns: ["*"]
