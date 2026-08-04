@@ -1,3 +1,34 @@
 packages:
   - frontend
   - packages/*
+
+# --- Supply-Chain-Härtung -------------------------------------------------
+#
+# Karenzzeit (Minuten): pnpm loest keine Version auf, die juenger als 3 Tage
+# ist -- und prueft ausserdem bei JEDEM install das bestehende Lockfile gegen
+# diese Grenze. Die npm-Wuermer der letzten Monate (Shai-Hulud/TanStack im Mai
+# 2026, keyv im August 2026) waren jeweils nur Stunden online, bevor die
+# boesartigen Versionen auffielen und entfernt wurden; 3 Tage liegen weit
+# jenseits dieses Fensters.
+#
+# Warum nicht die oft empfohlenen 7 Tage: die Lockfile-Pruefung gilt auch
+# rueckwirkend. Beim Einfuehren waren fuenf Eintraege 6 Tage alt, 7 Tage haetten
+# also einen kompletten Lockfile-Rebuild erzwungen. Sobald das Lockfile
+# turnusmaessig erneuert wird, kann der Wert auf 10080 steigen.
+#
+# Wenn ein SICHERHEITSFIX schneller eingespielt werden muss, den Wert einmalig
+# per Flag aushebeln statt ihn dauerhaft zu senken:
+#   pnpm update <paket> --config.minimumReleaseAge=0
+minimumReleaseAge: 4320
+
+# Lifecycle-Skripte (preinstall/postinstall) sind der Verbreitungsweg dieser
+# Wuermer -- der keyv-Wurm vom 2026-08-04 lief als "preinstall: node setup.mjs".
+# pnpm blockiert sie seit v10 standardmaessig; hier steht, was ausdruecklich
+# erlaubt ist.
+#
+# esbuild = false ist kein Provisorium: seine plattformspezifischen Binaries
+# kommen ueber optionalDependencies, nicht ueber das Install-Skript. auzui hat
+# unter pnpm 10 bereits mit blockierten Skripten gebaut. Vor jedem "true" hier
+# pruefen, ob der Build ohne wirklich scheitert.
+allowBuilds:
+  esbuild: false
