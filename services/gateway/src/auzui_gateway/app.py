@@ -11,6 +11,12 @@ from pydantic import BaseModel, Field, field_validator
 
 from . import __version__
 from .config import Settings, get_settings
+from .deps import bearer_token
+from .docker_compose import ComposeRunner
+from .docker_hosts import ClientFactory as DockerClientFactory
+from .docker_hosts import DockerService
+from .docker_routes import create_docker_router
+from .docker_updates import UpdateChecker
 from .filter_sets import FilterSetStore
 from .graylog import GraylogService, LogFilter, apply_filters, build_host_query, parens_balanced
 from .influx import VALID_FNS, InfluxClient
@@ -19,12 +25,11 @@ from .zabbix import ZabbixClient
 
 logger = logging.getLogger(__name__)
 
-
-def bearer_token(authorization: str | None = Header(default=None)) -> str:
-    """The caller's Zabbix session token — required on every data endpoint."""
-    if not authorization or not authorization.lower().startswith("bearer "):
-        raise HTTPException(401, "missing bearer token (Zabbix session)")
-    return authorization[7:].strip()
+# bearer_token now lives in deps.py (docker_routes.py needs it too, and
+# importing it from app.py would be a circular import). Re-exported here,
+# unchanged, so existing tests that do
+# `from auzui_gateway.app import bearer_token` keep working.
+__all__ = ["bearer_token", "create_app"]
 
 
 class TsQueryRequest(BaseModel):
@@ -102,7 +107,11 @@ class FilterSetCreate(BaseModel):
     filters: FilterSetPayload = Field(default_factory=FilterSetPayload)
 
 
-def create_app(settings: Settings | None = None) -> FastAPI:
+def create_app(
+    settings: Settings | None = None,
+    *,
+    docker_client_factory: DockerClientFactory | None = None,
+) -> FastAPI:
     settings = settings or get_settings()
     app = FastAPI(title="auzui-gateway", version=__version__, docs_url=None, redoc_url=None)
 
@@ -110,6 +119,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     influx = InfluxClient(settings)
     graylog = GraylogService(settings)
     filter_store = FilterSetStore(settings.filter_sets_path)
+
+    # Docker (plan.md D1-D8): instantiated unconditionally like Influx/Graylog
+    # above — DockerService.enabled / settings.docker_enabled just report
+    # false without DOCKER_HOSTS, and docker-py/paramiko are only imported
+    # lazily inside docker_hosts.py once a host is actually reached, so this
+    # stays a no-op (and importable) install without the 'docker' extra.
+    # docker_client_factory exists solely so tests can inject a fake
+    # DockerHostClient without docker-py installed (see test_docker.py); it
+    # is None (-> DockerService's real docker-py factory) in production.
+    docker_service = DockerService(settings, client_factory=docker_client_factory)
+    update_checker = UpdateChecker(settings)
+    compose_runner = ComposeRunner(docker_service, settings)
+    app.include_router(
+        create_docker_router(settings, zabbix, docker_service, update_checker, compose_runner)
+    )
 
     if settings.cors_origins:
         from fastapi.middleware.cors import CORSMiddleware
@@ -189,6 +213,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "version": settings.auzui_version or __version__,
             "influx": settings.influx_enabled,
             "graylog": settings.graylog_enabled,
+            "docker": settings.docker_enabled,
         }
 
     # ---- time series -----------------------------------------------------

@@ -16,6 +16,7 @@
     "e2e:ui": "playwright test --ui"
   },
   "dependencies": {
+    "@auzui/docker": "workspace:*",
     "@auzui/logs": "workspace:*",
     "@auzui/timeseries": "workspace:*",
     "@auzui/zabbix-client": "workspace:*",

@@ -10,7 +10,8 @@ import { test, type Page } from "@playwright/test";
  *
  * Writes PNGs to ../docs/images/. Fixed naming contract (do not rename):
  * problems, host-detail, latest-data, explorer, topology, metrics, logs,
- * web-scenarios, command-palette — each as <name>.png and <name>-dark.png.
+ * web-scenarios, command-palette, docker, docker-detail — each as <name>.png
+ * and <name>-dark.png.
  */
 
 const OUT = "../docs/images";
@@ -58,8 +59,22 @@ test("auzui screenshots", async ({ page }) => {
     ["/explorer", "explorer"],
     ["/logs", "logs"],
     ["/web-scenarios?scenario=70002", "web-scenarios"],
+    ["/docker", "docker"],
   ] as const) {
     await shot(page, route, name);
+  }
+
+  // Docker container detail panel: select the first row in the first host
+  // lane (prod-a's web-nginx, group-by-host is the default) so the Info tab
+  // + update badge + action buttons render alongside the lane list.
+  try {
+    await page.goto("/docker", { waitUntil: "domcontentloaded" });
+    await page.waitForLoadState("networkidle").catch(() => undefined);
+    await page.getByRole("row").first().click();
+    await page.waitForTimeout(600);
+    await page.screenshot({ path: `${OUT}/docker-detail${SUFFIX}.png`, fullPage: false });
+  } catch (err) {
+    console.warn("screenshot 'docker-detail' failed:", err);
   }
 
   // Latest Data: empty until a host is picked — select one via the host combobox.

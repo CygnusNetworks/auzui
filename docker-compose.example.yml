@@ -1,12 +1,12 @@
 # Example deployment for auzui (gateway + SPA in one image).
 # Copy to docker-compose.yml and adjust for your environment.
 #
-# Only ZABBIX_API_URL is required. InfluxDB and Graylog are optional and
-# feature-gated in services/gateway/src/auzui_gateway/config.py: leaving
-# their URL/token unset simply disables the corresponding endpoints
-# (/api/ts/*, /api/logs/*) and the SPA panels that depend on them — the
-# core monitoring UI (Problems, Hosts, Latest Data via the Zabbix API)
-# works without either.
+# Only ZABBIX_API_URL is required. InfluxDB, Graylog, and Docker are optional
+# and feature-gated in services/gateway/src/auzui_gateway/config.py: leaving
+# their URL/token/DOCKER_HOSTS unset simply disables the corresponding
+# endpoints (/api/ts/*, /api/logs/*, /api/docker/*) and the SPA panels that
+# depend on them — the core monitoring UI (Problems, Hosts, Latest Data via
+# the Zabbix API) works without any of them.
 
 services:
   auzui:
@@ -47,9 +47,61 @@ services:
       # the gateway (CORS). Leave unset when the gateway also serves the
       # built SPA (the default — see SERVE_FRONTEND in the image).
       # CORS_ORIGINS: "https://auzui.example.com"
+
+      # Optional: Docker container management. Leave DOCKER_HOSTS unset to
+      # disable the feature entirely. The example below points at the
+      # docker-socket-proxy sidecar defined further down — see
+      # docs/configuration.md#docker-integration for the full schema
+      # (mTLS/ssh:// hosts, registries, TTLs) and docs/deployment.md for how
+      # to deploy each connection variant.
+      # DOCKER_HOSTS: >-
+      #   [{"id":"local","label":"local","url":"http://docker-socket-proxy:2375","readonly":true}]
+      # DOCKER_REGISTRIES: '[{"registry":"ghcr.io","username":"bot","token":"changeme"}]'
+
+      # Optional: point at a mounted TOML/YAML config file instead of (or in
+      # addition to) the ENV variables above — it can set ANY setting, not
+      # just Docker. Precedence: ENV > .env > config file > default. See
+      # docs/configuration.md#configuration-files-tomlyaml and
+      # examples/auzui.toml / examples/auzui.yaml.
+      # AUZUI_CONFIG_FILE: "/config/auzui.toml"
+    # volumes:
+    #   # Read-only config file mount (matches AUZUI_CONFIG_FILE above).
+    #   - ./auzui.toml:/config/auzui.toml:ro
+    #   # Read-only SSH key + known_hosts for any ssh:// entry in
+    #   # DOCKER_HOSTS (paramiko verifies against known_hosts with
+    #   # RejectPolicy — populate it with `ssh-keyscan`, verified out of
+    #   # band, before mounting).
+    #   - ./ssh/edge_ed25519:/keys/edge_ed25519:ro
+    #   - ./ssh/known_hosts:/config/ssh/known_hosts:ro
     healthcheck:
       test: ["CMD", "curl", "-fs", "http://localhost:8000/health"]
       interval: 30s
       timeout: 5s
       retries: 3
       start_period: 10s
+
+  # Optional: docker-socket-proxy sidecar for the DOCKER_HOSTS example above.
+  # Fronts this host's Docker socket over HTTP so the gateway never touches
+  # /var/run/docker.sock directly. Read-only by default (CONTAINERS=1
+  # POST=0) — the proxy itself rejects any write with 403/405, which the
+  # gateway surfaces as a clean "read-only upstream" error. Run one such
+  # sidecar per Docker host you manage this way.
+  # docker-socket-proxy:
+  #   image: tecnativa/docker-socket-proxy:latest
+  #   restart: unless-stopped
+  #   environment:
+  #     CONTAINERS: 1
+  #     IMAGES: 1
+  #     NETWORKS: 1
+  #     VOLUMES: 1
+  #     INFO: 1
+  #     VERSION: 1
+  #     POST: 0
+  #     # Set POST: 1 (and readonly: false on the matching DOCKER_HOSTS
+  #     # entry) only once you actually want start/stop/restart/
+  #     # pull_recreate to work through this host — the gateway still
+  #     # requires a Zabbix Admin/Super Admin caller on top of that, see
+  #     # docs/configuration.md#authorization-model.
+  #   volumes:
+  #     - /var/run/docker.sock:/var/run/docker.sock:ro
+  #   # No published ports: only auzui reaches it, over this compose network.
