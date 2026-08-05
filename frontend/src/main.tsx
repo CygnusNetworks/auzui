@@ -14,6 +14,20 @@ function handleQueryError(error: unknown) {
   }
 }
 
+/**
+ * A silent Kerberos re-auth (store.handleSessionExpired) swaps the token
+ * without unmounting anything, so the queries that failed on the dead session
+ * have to be told to try again — otherwise the user stares at error states
+ * until the next poll interval.
+ */
+function watchSilentReauth(client: QueryClient) {
+  useAuthStore.subscribe((state, prev) => {
+    if (prev.reauthenticating && !state.reauthenticating && state.token) {
+      void client.refetchQueries({ type: "active" });
+    }
+  });
+}
+
 const queryClient = new QueryClient({
   queryCache: new QueryCache({ onError: handleQueryError }),
   defaultOptions: {
@@ -26,6 +40,8 @@ const queryClient = new QueryClient({
     },
   },
 });
+
+watchSilentReauth(queryClient);
 
 // Dark mode first: default to dark unless the user chose otherwise.
 const storedTheme = localStorage.getItem("auzui-theme");

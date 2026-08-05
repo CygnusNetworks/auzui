@@ -83,6 +83,36 @@ network segment; point `ZABBIX_WEB_URL` at that restricted vhost while
   re-authenticate the user right back in on the next page load — suppression
   clears on a hard reload or an explicit forced SSO attempt.
 
+### Silent re-auth when a Kerberos session expires
+
+auzui does not own the session lifetime — Zabbix decides when a token dies
+(the user's *Auto-logout* setting). For a Kerberos user that expiry is pure
+friction: the KDC ticket is still valid, so a new Zabbix session can be minted
+without asking anything. `handleSessionExpired()`
+(`frontend/src/lib/auth/store.ts`) therefore does not send a Kerberos user to
+the login form at all:
+
+1. `frontend/src/lib/auth/login-method.ts` records how *this browser* last
+   signed in (`auzui-login-method` in `localStorage`: `password` | `spnego`) —
+   the token itself carries no hint about its origin. Only `spnego` is renewed
+   silently; a password login still lands on the form.
+2. On expiry, the store runs `attemptSso({ force: true })` **while keeping the
+   stale token in place**, so the router's `beforeLoad` guard doesn't bounce
+   the user to `/login` and lose the current route mid-handshake.
+3. On success the new token is adopted via `loginWithSso()` and `main.tsx`
+   refetches all active queries, so the views that failed on the dead session
+   recover by themselves. The user sees nothing but a brief loading state.
+4. On failure (no ticket, SPNEGO disabled, gateway down) the session is
+   cleared as before and the login form appears with "session expired".
+
+Two guards keep this from turning into a loop: a re-entrancy flag
+(`reauthenticating`) collapses the burst of 401s a dead session produces into
+a single handshake, and `REAUTH_COOLDOWN_MS` (30 s) means a *second* expiry
+right after a successful renewal — i.e. Zabbix is broken, not merely
+expired — falls through to the normal expiry path instead of hammering the KDC.
+An explicit logout clears the remembered method, so sign-out is never undone
+by a silent renewal.
+
 ## Session storage in the frontend
 
 `frontend/src/lib/auth/store.ts` (`useAuthStore`, a Zustand store) is the
@@ -102,6 +132,11 @@ single source of truth for the current session:
 - `handleSessionExpired()` is called by query/mutation error handling when
   the API rejects the token (expired/revoked session) — it clears storage
   and surfaces a "session expired" message, routing the user back to login.
+  Kerberos sessions are renewed silently first, see
+  [Silent re-auth](#silent-re-auth-when-a-kerberos-session-expires).
+- `auzui-login-method` (`localStorage`) is the one auth-related value that is
+  deliberately *not* per-tab. It is not a credential — just "this browser uses
+  Kerberos" — and it is cleared on explicit logout.
 
 Because the Bearer token sits in `sessionStorage`, the reverse-proxy-level
 Content-Security-Policy hardening in
