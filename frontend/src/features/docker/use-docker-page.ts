@@ -80,7 +80,7 @@ export function useDockerSearch(
     queryKey: ["docker-search", debouncedQ, types, hostIds],
     queryFn: ({ signal }) =>
       source.search({ q: debouncedQ, types, hostIds: hostIds.length > 0 ? hostIds : undefined, signal }),
-    enabled: source.enabled && debouncedQ.trim().length > 0,
+    enabled: source.enabled,
     staleTime: 15_000,
     placeholderData: keepPreviousData,
   });
