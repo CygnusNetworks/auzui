@@ -33,6 +33,16 @@ function formatIec(value: number, suffix: string, digits = 1): string {
   return `${scaled.toFixed(exp === 0 ? 0 : digits)} ${IEC_PREFIXES[exp]}${suffix}`;
 }
 
+function formatUnixDateTime(seconds: number, locale: Locale): string {
+  return new Date(seconds * 1000).toLocaleString(intlLocaleTag(locale), {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 function formatDuration(seconds: number): string {
   const abs = Math.abs(seconds);
   if (abs < 1) return `${(seconds * 1000).toFixed(0)} ms`;
@@ -69,6 +79,7 @@ export function formatUnitValue(
 
   if (unit === "%") return `${value.toFixed(digits)} %`;
   if (unit === "°C" || unit === "C") return `${value.toFixed(digits)} °C`;
+  if (unit === "unixtime") return formatUnixDateTime(value, locale);
   if (unit === "s" || unit === "uptime") return formatDuration(value);
   if (unit === "ms") return formatDuration(value / 1000);
   if (unit === "bps" || unit === "Bps") return formatSi(value, unit, digits);

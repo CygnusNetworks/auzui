@@ -57,6 +57,18 @@ describe("formatUnitValue", () => {
     expect(formatUnitValue(1500, "!")).toBe("1.500");
   });
 
+  it("formats unixtime as a localized date/time instead of scaling it", () => {
+    expect(formatUnitValue(1755000000, "unixtime", 1, "de")).toBe(
+      new Date(1755000000 * 1000).toLocaleString("de-DE", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      }),
+    );
+  });
+
   it("returns a placeholder for non-finite values", () => {
     expect(formatUnitValue(NaN, "%")).toBe("–");
     expect(formatUnitValue(Infinity, "B")).toBe("–");
