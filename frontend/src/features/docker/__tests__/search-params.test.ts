@@ -21,7 +21,7 @@ describe("docker search params: validation & defaults", () => {
       view: "cards",
       sel: "c:prod-a:abc123",
       dtab: "stats",
-      live: "1",
+      live: "0",
       bogus: "ignored",
     });
     expect(search).toEqual({
@@ -33,7 +33,7 @@ describe("docker search params: validation & defaults", () => {
       view: "cards",
       sel: "c:prod-a:abc123",
       dtab: "stats",
-      live: "1",
+      live: "0",
     });
   });
 
@@ -49,10 +49,12 @@ describe("docker search params: validation & defaults", () => {
     expect(validateDockerSearch({ dtab: "bogus" }).dtab).toBeUndefined();
   });
 
-  it("only accepts live=1, never a stray truthy string", () => {
-    expect(validateDockerSearch({ live: "1" }).live).toBe("1");
-    expect(validateDockerSearch({ live: "true" }).live).toBeUndefined();
-    expect(validateDockerSearch({ live: "0" }).live).toBeUndefined();
+  // Live ist der Default: nur das explizite Abschalten (live=0) wird
+  // persistiert, alles andere (auch "1") bleibt implizit = an.
+  it("only accepts live=0, never a stray falsy string", () => {
+    expect(validateDockerSearch({ live: "0" }).live).toBe("0");
+    expect(validateDockerSearch({ live: "false" }).live).toBeUndefined();
+    expect(validateDockerSearch({ live: "1" }).live).toBeUndefined();
   });
 
   it("only accepts group host/stack and view rows/cards", () => {

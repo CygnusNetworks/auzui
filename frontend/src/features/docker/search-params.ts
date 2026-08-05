@@ -41,7 +41,11 @@ export interface DockerSearch {
    * about for `sev`.
    */
   dtab?: DockerDetailTab;
-  /** "1" = live log poll is on. Absent/"0" = off (the default; historical range is shown). */
+  /**
+   * Live log poll. Absent = ON (the default — a container's log panel is
+   * opened to watch what it is doing right now); only an explicit opt-out is
+   * persisted as `"0"`, so the shareable URL stays clean in the common case.
+   */
   live?: string;
 }
 
@@ -59,7 +63,7 @@ export function validateDockerSearch(search: Record<string, unknown>): DockerSea
   if (typeof search.dtab === "string" && (DOCKER_DETAIL_TABS as string[]).includes(search.dtab)) {
     result.dtab = search.dtab as DockerDetailTab;
   }
-  if (search.live === "1") result.live = "1";
+  if (search.live === "0") result.live = "0";
   return result;
 }
 

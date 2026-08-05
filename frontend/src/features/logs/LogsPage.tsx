@@ -112,8 +112,14 @@ function LogsBrowser() {
   // is more than one server to deduplicate across.
   const dedupConfigured = (serversQuery.data?.dedupEnabled ?? false) && multiServer;
 
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(search.q ?? "");
   const debouncedQuery = useDebouncedValue(query, DEBOUNCE_MS);
+  // A deep link (?q=…, e.g. from the Docker logs panel) primes the search box.
+  // Handled as an effect, not just as initial state, because arriving from
+  // another ?q= while /logs is already mounted does not remount this component.
+  useEffect(() => {
+    if (search.q !== undefined) setQuery(search.q);
+  }, [search.q]);
   const [range, setRange] = useState<RangeValue>(() => rangeFromPreset("1h"));
   const [live, setLive] = useState(true);
   const [maxLevel, setMaxLevel] = useState<number | undefined>(undefined);
@@ -169,6 +175,8 @@ function LogsBrowser() {
         void navigate({
           to: "/logs",
           search: {
+            // Keep a deep link's ?q= — restoring stored filters must not drop it.
+            q: search.q,
             stream: stored.stream,
             host: stored.host,
             include: stored.include,

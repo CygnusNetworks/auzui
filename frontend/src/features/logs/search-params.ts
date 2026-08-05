@@ -1,6 +1,12 @@
 import type { LogFilter, LogFilterField } from "@auzui/logs";
 
 export interface LogsSearch {
+  /**
+   * Free-text search seeded from a deep link (e.g. the Docker detail panel's
+   * "open in Graylog" button passes the container name). The search box owns
+   * its value locally once the page is open; this param only primes it.
+   */
+  q?: string;
   /** Selected Graylog stream id. */
   stream?: string;
   /** Comma-separated Zabbix host technical names, OR-combined into the query as source:"<host>". */
@@ -41,6 +47,7 @@ export function validateLogsSearch(search: Record<string, unknown>): LogsSearch 
         : NaN;
   const size = Number.isFinite(rawSize) && rawSize >= 10 && rawSize <= 1000 ? rawSize : undefined;
   return {
+    q: typeof search.q === "string" && search.q !== "" ? search.q : undefined,
     stream: typeof search.stream === "string" ? search.stream : undefined,
     host: typeof search.host === "string" ? search.host : undefined,
     include: typeof search.include === "string" ? search.include : undefined,

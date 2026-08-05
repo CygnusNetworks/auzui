@@ -1,10 +1,10 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import type { DockerContainer, DockerSource, DockerUpdateInfo } from "@auzui/docker";
 import { RangePicker, type RangeValue } from "../../components/RangePicker";
 import { TimeChartPanel } from "../../components/charts/TimeChartPanel";
 import { rangeFromPreset } from "@auzui/timeseries";
-import { formatImageTag, formatPorts, type DockerBadgeTone } from "../../lib/docker";
+import { formatImageTag, formatPorts, logLineKey, type DockerBadgeTone } from "../../lib/docker";
 import { useLogsEnabled } from "../../lib/use-logs";
 import { useT } from "../../lib/i18n";
 import { ActionButtons } from "./ActionButtons";
@@ -310,6 +310,11 @@ function StatsTab({
 
 const LOGS_TAIL = 500;
 
+/** Below this scroll offset the log view is considered "at the tail" and keeps
+ * following new lines; scrolling further down means the user is reading back
+ * and must not be yanked to the top by the next poll. */
+const FOLLOW_THRESHOLD_PX = 24;
+
 function LogsTab({
   source,
   container,
@@ -326,16 +331,24 @@ function LogsTab({
   const [range, setRange] = useState<RangeValue>(() => rangeFromPreset("1h"));
   const history = live ? { tail: LOGS_TAIL } : { since: range.from, until: range.to, tail: LOGS_TAIL };
   const { lines, isLoading } = useDockerLogs(source, container.hostId, container.id, history, live);
-  const bottomRef = useRef<HTMLDivElement>(null);
+  // Newest first (like /logs and the host Logs panel): the buffer itself stays
+  // chronological — the cursor poll appends to it — only the view is flipped.
+  const newestFirst = useMemo(() => [...lines].reverse(), [lines]);
+  const scrollRef = useRef<HTMLDivElement>(null);
 
+  // With the newest line at the top, "follow the tail" means staying at scroll
+  // position 0. Only nudge when the user hasn't scrolled down to read history.
   useEffect(() => {
-    if (live) bottomRef.current?.scrollIntoView({ block: "end" });
+    const el = scrollRef.current;
+    if (live && el && el.scrollTop < FOLLOW_THRESHOLD_PX) el.scrollTop = 0;
   }, [live, lines.length]);
 
   return (
     <div>
       <div className="flex flex-wrap items-center gap-2 border-b border-line-soft p-2.5">
-        <RangePicker value={range} onChange={setRange} live={false} onLiveChange={() => {}} />
+        {/* In live mode the range is ignored (the poll always tails), so the
+            picker only appears once the user opts out of live. */}
+        {!live && <RangePicker value={range} onChange={setRange} live={false} onLiveChange={() => {}} />}
         <button
           type="button"
           onClick={() => onLiveChange(!live)}
@@ -347,29 +360,36 @@ function LogsTab({
           {t("docker.detailPanel.liveToggle")} {live ? "✓" : ""}
         </button>
         {logsEnabled && (
-          <a
-            href={`${import.meta.env.BASE_URL}logs?q=${encodeURIComponent(container.name)}`}
-            target="_blank"
-            rel="noreferrer"
+          // Router link, not an <a target="_blank">: the session token lives in
+          // sessionStorage (docs/authentication.md), which a new tab opened with
+          // rel="noreferrer" does NOT inherit — that link landed on the login
+          // form. Same tab, client-side navigation, session intact.
+          <Link
+            to="/logs"
+            search={{ q: container.name }}
             className="rounded-md border border-line bg-surface-2 px-2.5 py-1 font-mono text-[10.5px] text-ink-2"
           >
             {t("docker.detailPanel.graylogLink")}
-          </a>
+          </Link>
         )}
       </div>
-      <div className="max-h-[420px] overflow-y-auto p-2.5 font-mono text-[11px]">
+      <div ref={scrollRef} className="max-h-[420px] overflow-y-auto p-2.5 font-mono text-[11px]">
         {isLoading && lines.length === 0 ? (
           <div className="text-ink-2">{t("docker.detailPanel.logsLoading")}</div>
         ) : lines.length === 0 ? (
           <div className="text-ink-muted">{t("docker.detailPanel.logsEmpty")}</div>
         ) : (
-          lines.map((l, i) => (
-            <div key={i} className={`whitespace-pre-wrap ${l.stream === "stderr" ? "text-sev-high" : "text-ink-2"}`}>
+          newestFirst.map((l) => (
+            <div
+              key={logLineKey(l)}
+              className={`animate-log-row-in whitespace-pre-wrap ${
+                l.stream === "stderr" ? "text-sev-high" : "text-ink-2"
+              }`}
+            >
               <span className="text-ink-muted">{new Date(l.ts * 1000).toLocaleTimeString()}</span> {l.message}
             </div>
           ))
         )}
-        <div ref={bottomRef} />
       </div>
     </div>
   );

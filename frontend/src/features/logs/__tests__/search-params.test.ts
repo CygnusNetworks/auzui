@@ -53,6 +53,13 @@ describe("logs search params: include/exclude filter chips", () => {
     expect(validateLogsSearch({ page: "abc" }).page).toBeUndefined();
   });
 
+  it("validateLogsSearch keeps a deep link's q, dropping empty/non-string ones", () => {
+    expect(validateLogsSearch({ q: "web-1" }).q).toBe("web-1");
+    expect(validateLogsSearch({ q: "" }).q).toBeUndefined();
+    expect(validateLogsSearch({ q: 42 }).q).toBeUndefined();
+    expect(validateLogsSearch({}).q).toBeUndefined();
+  });
+
   it("validateLogsSearch keeps servers and set as strings", () => {
     const search = validateLogsSearch({ servers: "gl-a,gl-b", set: "abc123" });
     expect(search.servers).toBe("gl-a,gl-b");

@@ -370,7 +370,7 @@ export const en = {
       cpuTitle: "CPU — live",
       memTitle: "Memory — live",
       liveToggle: "Live",
-      graylogLink: "open in Graylog ↗",
+      graylogLink: "open in Graylog",
       logsLoading: "Loading logs…",
       logsEmpty: "No logs in the selected range.",
     },

@@ -341,8 +341,9 @@ function DockerBrowser() {
               canAct={canAct}
               tab={search.dtab ?? "info"}
               onTabChange={(dtab: DockerDetailTab) => patchSearch({ dtab })}
-              live={search.live === "1"}
-              onLiveChange={(live) => patchSearch({ live: live ? "1" : undefined })}
+              // Live is the default; only the opt-out lands in the URL (?live=0).
+              live={search.live !== "0"}
+              onLiveChange={(live) => patchSearch({ live: live ? undefined : "0" })}
             />
           )}
         </aside>
