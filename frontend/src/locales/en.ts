@@ -307,6 +307,7 @@ export const en = {
     groupByHost: "by host",
     groupByStack: "by stack",
     updateBadge: "Update available",
+    updateBadgeShort: "Update",
     partialErrors: (n: number) => `${n} host(s) could not be queried.`,
     searchType: {
       containers: "Containers",
@@ -333,6 +334,8 @@ export const en = {
       compose: "compose",
       counts: (running: number, stopped: number) => `${running} running · ${stopped} stopped`,
       empty: "No containers on this host.",
+      engine: (version: string) => `Engine ${version}`,
+      unreachable: "Host unreachable",
       ungrouped: "ungrouped",
     },
     actions: {
@@ -341,6 +344,7 @@ export const en = {
       restart: "Restart",
       pullRecreate: "Pull + Recreate",
       unknownError: "Unknown error",
+      readonlyHost: "Host is read-only — actions are disabled.",
       confirm: {
         stop: (cid: string) => `Stop container ${cid}?`,
         restart: (cid: string) => `Restart container ${cid}?`,

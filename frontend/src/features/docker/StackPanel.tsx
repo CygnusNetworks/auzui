@@ -32,11 +32,14 @@ export function StackPanel({
   hostId,
   project,
   canAct,
+  readonlyReason,
 }: {
   source: DockerSource;
   hostId: string;
   project: string;
   canAct: boolean;
+  /** Set when the host is readonly — stack actions render disabled. */
+  readonlyReason?: string;
 }) {
   const t = useT();
   const stacksQuery = useDockerStacks(source, hostId);
@@ -133,7 +136,8 @@ export function StackPanel({
               <button
                 key={action}
                 type="button"
-                disabled={mutation.isPending}
+                disabled={mutation.isPending || readonlyReason !== undefined}
+                title={readonlyReason}
                 onClick={() => run(action)}
                 className="rounded-md border border-line bg-surface-2 px-2.5 py-1 text-xs text-ink-2 hover:bg-surface-3 disabled:cursor-not-allowed disabled:opacity-40"
               >
@@ -141,6 +145,9 @@ export function StackPanel({
               </button>
             ))}
           </div>
+        )}
+        {readonlyReason && canAct && composeCapable && (
+          <div className="mt-2 text-[11.5px] text-ink-muted">{readonlyReason}</div>
         )}
         {mutation.isError && (
           <div className="mt-2 text-[11.5px] text-sev-high">

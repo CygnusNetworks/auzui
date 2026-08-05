@@ -307,6 +307,7 @@ export const de = {
     groupByHost: "nach Host",
     groupByStack: "nach Stack",
     updateBadge: "Update verfügbar",
+    updateBadgeShort: "Update",
     partialErrors: (n: number) => `${n} Host(s) konnten nicht abgefragt werden.`,
     searchType: {
       containers: "Container",
@@ -333,6 +334,8 @@ export const de = {
       compose: "compose",
       counts: (running: number, stopped: number) => `${running} laufend · ${stopped} gestoppt`,
       empty: "Keine Container auf diesem Host.",
+      engine: (version: string) => `Engine ${version}`,
+      unreachable: "Host nicht erreichbar",
       ungrouped: "ohne Stack",
     },
     actions: {
@@ -341,6 +344,7 @@ export const de = {
       restart: "Restart",
       pullRecreate: "Pull + Recreate",
       unknownError: "Unbekannter Fehler",
+      readonlyHost: "Host ist schreibgeschützt — Aktionen sind deaktiviert.",
       confirm: {
         stop: (cid: string) => `Container ${cid} stoppen?`,
         restart: (cid: string) => `Container ${cid} neu starten?`,

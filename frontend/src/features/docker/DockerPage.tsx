@@ -3,7 +3,6 @@ import { useNavigate, useSearch } from "@tanstack/react-router";
 import type { DockerContainer, DockerSearchType, DockerUpdateInfo, DockerUpdatesMap } from "@auzui/docker";
 import {
   containerBadgeTone,
-  formatImageTag,
   formatPorts,
   groupContainersByStack,
   sortContainersByState,
@@ -12,7 +11,7 @@ import {
 import { useDockerEnabled, useDockerHosts, useDockerPermissions, useDockerSource } from "../../lib/use-docker";
 import { useT } from "../../lib/i18n";
 import { ActionButtons } from "./ActionButtons";
-import { ContainerDetailPanel, BG_TONE_CLASS, DOT_TONE_CLASS } from "./ContainerDetailPanel";
+import { ContainerDetailPanel, DOT_TONE_CLASS } from "./ContainerDetailPanel";
 import { StackPanel } from "./StackPanel";
 import {
   useDockerBulkStats,
@@ -189,6 +188,20 @@ function DockerBrowser() {
 
   const visibleHosts = hostIds.length > 0 ? hosts.filter((h) => hostIds.includes(h.id)) : hosts;
 
+  /** Fan-out error for one host, if the last container query failed for it — feeds its header dot. */
+  function errorFor(hostId: string): string | undefined {
+    return containerErrors.find((e) => e.hostId === hostId)?.message;
+  }
+  /**
+   * Why actions are blocked on this host, or undefined when they aren't.
+   * `canAct` alone is the global Zabbix-role gate; a `readonly: true` host
+   * rejects every action server-side (docker_routes.py) whatever the role, so
+   * the buttons have to mirror that too.
+   */
+  function readonlyReasonFor(hostId: string): string | undefined {
+    return hosts.find((h) => h.id === hostId)?.readonly ? t("docker.actions.readonlyHost") : undefined;
+  }
+
   return (
     <div className="mx-auto max-w-[1400px] px-3 pb-16 pt-4.5 min-[700px]:px-5">
       <div className="mb-4 mt-1.5 flex flex-wrap items-baseline gap-3">
@@ -197,139 +210,152 @@ function DockerBrowser() {
       </div>
 
       <div className="grid grid-cols-[1fr_350px] items-start gap-3.5 max-[1100px]:grid-cols-1">
-        <div className="rounded-lg border border-line bg-surface">
-          <div className="flex flex-wrap items-center gap-2 border-b border-line-soft px-3.5 py-2.5">
-            <div className="flex overflow-hidden rounded-md border border-line">
-              {DOCKER_SEARCH_TYPES.map((typ) => (
-                <button
-                  key={typ}
-                  type="button"
-                  onClick={() => patchSearch({ type: typ === "containers" ? undefined : typ })}
-                  aria-pressed={searchType === typ}
-                  className={`px-2 py-1 font-mono text-[10.5px] ${
-                    searchType === typ ? "bg-accent-soft text-accent" : "text-ink-muted hover:bg-surface-2"
-                  }`}
-                >
-                  {t(`docker.searchType.${typ}`)}
-                </button>
-              ))}
-            </div>
-            <input
-              type="text"
-              value={query}
-              onChange={(e) => patchSearch({ q: e.target.value || undefined })}
-              placeholder={t("docker.searchPlaceholder")}
-              className="min-w-[200px] flex-1 rounded-md border border-line bg-surface-2 px-2.5 py-1.5 text-[12.5px] text-ink max-[700px]:w-full"
-            />
-            <div className="flex overflow-hidden rounded-md border border-line">
-              <button
-                type="button"
-                onClick={() => patchSearch({ group: undefined })}
-                aria-pressed={group === "host"}
-                className={`px-2.5 py-1 font-mono text-[10.5px] ${
-                  group === "host" ? "bg-accent-soft text-accent" : "text-ink-muted hover:bg-surface-2"
-                }`}
-              >
-                {t("docker.groupByHost")}
-              </button>
-              <button
-                type="button"
-                onClick={() => patchSearch({ group: "stack" })}
-                aria-pressed={group === "stack"}
-                className={`px-2.5 py-1 font-mono text-[10.5px] ${
-                  group === "stack" ? "bg-accent-soft text-accent" : "text-ink-muted hover:bg-surface-2"
-                }`}
-              >
-                {t("docker.groupByStack")}
-              </button>
-            </div>
-          </div>
-
-          {searchType === "containers" && (
-            <div className="flex flex-wrap items-center gap-1.5 border-b border-line-soft px-3.5 py-2">
-              {STATE_CHIPS.map((chip) => {
-                const on = stateChips.has(chip);
-                return (
+        {/* Toolbar card, then one card per host: the page background between
+            the cards is what separates the servers from one another. */}
+        <div className="flex min-w-0 flex-col gap-2.5">
+          <div className="rounded-lg border border-line bg-surface">
+            <div className="flex flex-wrap items-center gap-2 border-b border-line-soft px-3.5 py-2.5">
+              <div className="flex overflow-hidden rounded-md border border-line">
+                {DOCKER_SEARCH_TYPES.map((typ) => (
                   <button
-                    key={chip}
+                    key={typ}
                     type="button"
-                    onClick={() => toggleChip(chip)}
-                    aria-pressed={on}
-                    className={`rounded-full border px-2.5 py-1 font-mono text-[10.5px] ${
-                      on ? "border-accent/50 bg-accent-soft font-semibold text-accent" : "border-line text-ink-2"
+                    onClick={() => patchSearch({ type: typ === "containers" ? undefined : typ })}
+                    aria-pressed={searchType === typ}
+                    className={`px-2 py-1 font-mono text-[10.5px] ${
+                      searchType === typ ? "bg-accent-soft text-accent" : "text-ink-muted hover:bg-surface-2"
                     }`}
                   >
-                    {t(`docker.stateChip.${chip}`)}
+                    {t(`docker.searchType.${typ}`)}
                   </button>
-                );
-              })}
-              {hosts.length > 1 && (
-                <span className="ml-auto flex flex-wrap items-center gap-1">
-                  {hosts.map((h) => {
-                    const on = hostIds.length === 0 || hostIds.includes(h.id);
-                    return (
-                      <button
-                        key={h.id}
-                        type="button"
-                        onClick={() => toggleHost(h.id)}
-                        aria-pressed={on}
-                        className={`rounded-full border px-2 py-0.5 font-mono text-[10.5px] ${
-                          on ? "border-accent/40 bg-accent-soft text-accent" : "border-line text-ink-muted"
-                        }`}
-                      >
-                        {h.label}
-                      </button>
-                    );
-                  })}
-                </span>
-              )}
+                ))}
+              </div>
+              <input
+                type="text"
+                value={query}
+                onChange={(e) => patchSearch({ q: e.target.value || undefined })}
+                placeholder={t("docker.searchPlaceholder")}
+                className="min-w-[200px] flex-1 rounded-md border border-line bg-surface-2 px-2.5 py-1.5 text-[12.5px] text-ink max-[700px]:w-full"
+              />
+              <div className="flex overflow-hidden rounded-md border border-line">
+                <button
+                  type="button"
+                  onClick={() => patchSearch({ group: undefined })}
+                  aria-pressed={group === "host"}
+                  className={`px-2.5 py-1 font-mono text-[10.5px] ${
+                    group === "host" ? "bg-accent-soft text-accent" : "text-ink-muted hover:bg-surface-2"
+                  }`}
+                >
+                  {t("docker.groupByHost")}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => patchSearch({ group: "stack" })}
+                  aria-pressed={group === "stack"}
+                  className={`px-2.5 py-1 font-mono text-[10.5px] ${
+                    group === "stack" ? "bg-accent-soft text-accent" : "text-ink-muted hover:bg-surface-2"
+                  }`}
+                >
+                  {t("docker.groupByStack")}
+                </button>
+              </div>
             </div>
-          )}
 
-          {containerErrors.length > 0 && (
-            <div className="border-b border-line-soft bg-sev-warn/10 px-3.5 py-1.5 font-mono text-[10.5px] text-sev-warn">
-              {t("docker.partialErrors", containerErrors.length)}
-            </div>
-          )}
+            {searchType === "containers" && (
+              <div className="flex flex-wrap items-center gap-1.5 border-b border-line-soft px-3.5 py-2">
+                {STATE_CHIPS.map((chip) => {
+                  const on = stateChips.has(chip);
+                  return (
+                    <button
+                      key={chip}
+                      type="button"
+                      onClick={() => toggleChip(chip)}
+                      aria-pressed={on}
+                      className={`rounded-full border px-2.5 py-1 font-mono text-[10.5px] ${
+                        on ? "border-accent/50 bg-accent-soft font-semibold text-accent" : "border-line text-ink-2"
+                      }`}
+                    >
+                      {t(`docker.stateChip.${chip}`)}
+                    </button>
+                  );
+                })}
+                {hosts.length > 1 && (
+                  <span className="ml-auto flex flex-wrap items-center gap-1">
+                    {hosts.map((h) => {
+                      const on = hostIds.length === 0 || hostIds.includes(h.id);
+                      return (
+                        <button
+                          key={h.id}
+                          type="button"
+                          onClick={() => toggleHost(h.id)}
+                          aria-pressed={on}
+                          className={`rounded-full border px-2 py-0.5 font-mono text-[10.5px] ${
+                            on ? "border-accent/40 bg-accent-soft text-accent" : "border-line text-ink-muted"
+                          }`}
+                        >
+                          {h.label}
+                        </button>
+                      );
+                    })}
+                  </span>
+                )}
+              </div>
+            )}
+
+            {containerErrors.length > 0 && (
+              <div className="bg-sev-warn/10 px-3.5 py-1.5 font-mono text-[10.5px] text-sev-warn">
+                {t("docker.partialErrors", containerErrors.length)}
+              </div>
+            )}
+          </div>
 
           {searchType !== "containers" ? (
-            <CrossTypeResults
-              type={searchType}
-              isLoading={crossTypeSearch.isLoading}
-              hasQuery={query.trim().length > 0}
-              results={crossTypeSearch.data}
-            />
+            <div className="rounded-lg border border-line bg-surface">
+              <CrossTypeResults
+                type={searchType}
+                isLoading={crossTypeSearch.isLoading}
+                hasQuery={query.trim().length > 0}
+                results={crossTypeSearch.data}
+              />
+            </div>
           ) : containersQuery.isLoading ? (
-            <div className="p-6 text-sm text-ink-2">{t("docker.loading")}</div>
+            <div className="rounded-lg border border-line bg-surface p-6 text-sm text-ink-2">
+              {t("docker.loading")}
+            </div>
           ) : visibleHosts.length === 0 ? (
-            <div className="flex flex-col items-center gap-1.5 px-6 py-16 text-center">
+            <div className="flex flex-col items-center gap-1.5 rounded-lg border border-line bg-surface px-6 py-16 text-center">
               <div className="text-sm font-semibold">{t("docker.empty")}</div>
             </div>
           ) : (
-            <div>
-              {visibleHosts.map((host) => (
-                <HostLane
-                  key={host.id}
-                  host={host}
-                  containers={filteredContainers.filter((c) => c.hostId === host.id)}
-                  group={group}
-                  updates={updates}
-                  stats={statsMap[host.id] ?? {}}
-                  canAct={canAct}
-                  source={source}
-                  selectedId={selection?.kind === "container" ? selection.cid : undefined}
-                  selectedProject={selection?.kind === "stack" ? selection.project : undefined}
-                  onSelectContainer={selectContainer}
-                  onSelectStack={(project) => selectStack(host.id, project)}
-                />
-              ))}
-            </div>
+            visibleHosts.map((host) => (
+              <HostLane
+                key={host.id}
+                host={host}
+                containers={filteredContainers.filter((c) => c.hostId === host.id)}
+                group={group}
+                updates={updates}
+                stats={statsMap[host.id] ?? {}}
+                canAct={canAct}
+                error={errorFor(host.id)}
+                source={source}
+                selectedId={selection?.kind === "container" ? selection.cid : undefined}
+                selectedProject={selection?.kind === "stack" ? selection.project : undefined}
+                onSelectContainer={selectContainer}
+                onSelectStack={(project) => selectStack(host.id, project)}
+              />
+            ))
           )}
         </div>
 
         <aside className="rounded-lg border border-line bg-surface">
           {selection?.kind === "stack" ? (
-            <StackPanel source={source} hostId={selection.hostId} project={selection.project} canAct={canAct} />
+            <StackPanel
+              source={source}
+              hostId={selection.hostId}
+              project={selection.project}
+              canAct={canAct}
+              readonlyReason={readonlyReasonFor(selection.hostId)}
+            />
           ) : (
             <ContainerDetailPanel
               source={source}
@@ -339,6 +365,7 @@ function DockerBrowser() {
               }
               zabbixHost={hosts.find((h) => h.id === selectedContainer?.hostId)?.zabbixHost ?? ""}
               canAct={canAct}
+              readonlyReason={selectedContainer ? readonlyReasonFor(selectedContainer.hostId) : undefined}
               tab={search.dtab ?? "info"}
               onTabChange={(dtab: DockerDetailTab) => patchSearch({ dtab })}
               // Live is the default; only the opt-out lands in the URL (?live=0).
@@ -352,6 +379,13 @@ function DockerBrowser() {
   );
 }
 
+/**
+ * One Docker host as its own card: a `surface-2` header bar (reachability dot,
+ * label, flags, engine version, counts) above that host's containers. Each
+ * host being a separate card — instead of all hosts sharing one — is what
+ * separates the servers visually; the hairline rule this replaces did that
+ * job badly once a host had more than a handful of containers.
+ */
 function HostLane({
   host,
   containers,
@@ -359,6 +393,7 @@ function HostLane({
   updates,
   stats,
   canAct,
+  error,
   source,
   selectedId,
   selectedProject,
@@ -371,6 +406,8 @@ function HostLane({
   updates: DockerUpdatesMap;
   stats: Record<string, { cpuPct: number; memUsed: number; memLimit: number }>;
   canAct: boolean;
+  /** Fan-out error for this host, if any — turns the header dot amber. */
+  error: string | undefined;
   source: ReturnType<typeof useDockerSource>;
   selectedId: string | undefined;
   selectedProject: string | undefined;
@@ -380,37 +417,54 @@ function HostLane({
   const t = useT();
   const [open, setOpen] = useState(true);
   const sorted = sortContainersByState(containers);
+  // Readonly is a per-host fact, so it is resolved once here rather than per row.
+  const readonlyReason = host.readonly ? t("docker.actions.readonlyHost") : undefined;
 
   return (
-    <div>
-      <div className="flex items-baseline gap-2.5 px-3.5 pt-3">
+    <div className="rounded-lg border border-line bg-surface">
+      <div
+        className={`flex flex-wrap items-center gap-2.5 border-line bg-surface-2 px-3 py-2 ${
+          open ? "rounded-t-lg border-b" : "rounded-lg"
+        }`}
+      >
         <button
           type="button"
           onClick={() => setOpen((v) => !v)}
           aria-expanded={open}
-          className="w-[18px] font-mono text-xs text-ink-muted"
+          className="w-[14px] font-mono text-[11px] text-ink-muted"
         >
           {open ? "▾" : "▸"}
         </button>
-        <span className="font-mono text-xs font-semibold">{host.label}</span>
+        <span
+          title={error}
+          aria-label={error ? t("docker.hostLane.unreachable") : undefined}
+          className={`h-[7px] w-[7px] shrink-0 rounded-full ring-3 ${
+            error ? "bg-sev-avg ring-sev-avg/20" : "bg-sev-ok ring-sev-ok/20"
+          }`}
+        />
+        <span className="font-mono text-[12.5px] font-semibold tracking-tight">{host.label}</span>
         {host.readonly && (
-          <span className="rounded bg-surface-3 px-1.5 font-mono text-[9.5px] text-ink-muted">
+          <span className="rounded bg-surface-3 px-1.5 font-mono text-[9.5px] uppercase tracking-wider text-ink-muted">
             {t("docker.hostLane.readonly")}
           </span>
         )}
         {host.compose && (
-          <span className="rounded bg-surface-3 px-1.5 font-mono text-[9.5px] text-ink-muted">
+          <span className="rounded bg-surface-3 px-1.5 font-mono text-[9.5px] uppercase tracking-wider text-ink-muted">
             {t("docker.hostLane.compose")}
           </span>
         )}
-        <span className="font-mono text-[11px] text-ink-muted">
+        {host.engineVersion && (
+          <span className="font-mono text-[10.5px] text-ink-muted">
+            {t("docker.hostLane.engine", host.engineVersion)}
+          </span>
+        )}
+        <span className="ml-auto font-mono text-[10.5px] text-ink-2">
           {t("docker.hostLane.counts", host.containersRunning, host.containersStopped)}
         </span>
-        <span className="h-px flex-1 bg-line-soft" />
       </div>
 
       {open && (
-        <div className="px-3.5 pb-1 pt-1.5">
+        <div className="px-3 pb-1.5 pt-0.5">
           {group === "host" ? (
             <div className="overflow-x-auto">
               {sorted.map((c) => (
@@ -421,6 +475,7 @@ function HostLane({
                   stats={stats[c.id]}
                   selected={selectedId === c.id}
                   canAct={canAct}
+                  readonlyReason={readonlyReason}
                   source={source}
                   onSelect={() => onSelectContainer(c)}
                 />
@@ -436,7 +491,7 @@ function HostLane({
                   type="button"
                   onClick={() => stackGroup.project !== UNGROUPED_STACK && onSelectStack(stackGroup.project)}
                   disabled={stackGroup.project === UNGROUPED_STACK}
-                  className={`mb-1 flex items-center gap-1.5 font-mono text-[10.5px] uppercase tracking-wider ${
+                  className={`mb-0.5 mt-1.5 flex items-center gap-1.5 font-mono text-[10.5px] uppercase tracking-wider ${
                     selectedProject === stackGroup.project ? "text-accent" : "text-ink-muted"
                   } ${stackGroup.project === UNGROUPED_STACK ? "" : "hover:text-ink"}`}
                 >
@@ -453,6 +508,7 @@ function HostLane({
                       stats={stats[c.id]}
                       selected={selectedId === c.id}
                       canAct={canAct}
+                      readonlyReason={readonlyReason}
                       source={source}
                       onSelect={() => onSelectContainer(c)}
                     />
@@ -467,7 +523,9 @@ function HostLane({
   );
 }
 
-const ROW_GRID_COLS = "16px minmax(200px,1fr) 90px 70px 90px";
+/** The update badge no longer owns a column of its own — it sits next to the
+ * name, where a container property belongs, and CPU/memory take the width. */
+const ROW_GRID_COLS = "16px minmax(210px,1fr) 62px 78px";
 
 function ContainerRow({
   container,
@@ -475,6 +533,7 @@ function ContainerRow({
   stats,
   selected,
   canAct,
+  readonlyReason,
   source,
   onSelect,
 }: {
@@ -483,44 +542,65 @@ function ContainerRow({
   stats: { cpuPct: number; memUsed: number; memLimit: number } | undefined;
   selected: boolean;
   canAct: boolean;
+  /** Set when this container's host is readonly — actions render disabled. */
+  readonlyReason: string | undefined;
   source: ReturnType<typeof useDockerSource>;
   onSelect: () => void;
 }) {
   const t = useT();
   const tone = containerBadgeTone(container.state, container.health);
+  const ports = formatPorts(container.ports);
   return (
     <div
       role="row"
       onClick={onSelect}
       aria-selected={selected}
-      className={`flex cursor-pointer items-center gap-2.5 border-b border-line-soft py-1.5 pl-1 text-xs hover:bg-surface-2 ${
+      className={`flex cursor-pointer items-center gap-2.5 border-b border-line-soft py-1.5 pl-1 text-xs last:border-b-0 hover:bg-surface-2 ${
         selected ? "bg-accent-soft" : ""
       }`}
     >
       <div className="grid flex-1 items-center gap-2.5" style={{ gridTemplateColumns: ROW_GRID_COLS }}>
         <i className={`inline-block h-1.5 w-1.5 rounded-sm ${DOT_TONE_CLASS[tone]}`} />
         <span className="min-w-0">
-          <span className="block truncate font-semibold text-ink">{container.name}</span>
-          <span className="block truncate font-mono text-[10.5px] text-ink-muted">
-            {formatImageTag(container.image, container.tag)}
-            {container.ports.length > 0 ? ` · ${formatPorts(container.ports)}` : ""}
+          <span className="flex min-w-0 items-center gap-1.5">
+            <span className="truncate font-semibold text-ink">{container.name}</span>
+            {updateInfo?.status === "outdated" && (
+              // Short label, full one in the tooltip: "Update verfügbar" next to
+              // a container name eats the width the name itself needs.
+              <span
+                title={t("docker.updateBadge")}
+                className="shrink-0 whitespace-nowrap rounded-full border border-sev-warn/35 bg-sev-warn/15 px-1.5 font-mono text-[9.5px] leading-[15px] text-sev-warn"
+              >
+                ↑ {t("docker.updateBadgeShort")}
+              </span>
+            )}
+          </span>
+          {/* The image is the second-most important thing in the row; sharing
+              one muted line with the ports made it read as an afterthought.
+              Chip + full-ink tag separates "what runs" from "which version". */}
+          <span className="mt-0.5 flex min-w-0 items-center gap-2">
+            <span className="flex min-w-0 items-baseline overflow-hidden rounded border border-line bg-surface-2 px-1.5 font-mono text-[11px]">
+              <span className="truncate text-ink-2">{container.image}</span>
+              {container.tag && <span className="shrink-0 font-semibold text-ink">:{container.tag}</span>}
+            </span>
+            {ports && <span className="truncate font-mono text-[10.5px] text-ink-muted">{ports}</span>}
           </span>
         </span>
-        <span>
-          {updateInfo?.status === "outdated" && (
-            <span className={`whitespace-nowrap rounded px-1.5 font-mono text-[10px] ${BG_TONE_CLASS.warn}`}>
-              {t("docker.updateBadge")}
-            </span>
-          )}
-        </span>
-        <span className="font-mono text-[11px] tabular-nums text-ink-2">
+        <span className="text-right font-mono text-[11px] tabular-nums text-ink-2">
           {stats ? `${stats.cpuPct.toFixed(1)}%` : "—"}
         </span>
-        <span className="font-mono text-[11px] tabular-nums text-ink-2">
+        <span className="text-right font-mono text-[11px] tabular-nums text-ink-2">
           {stats ? formatMem(stats.memUsed) : "—"}
         </span>
       </div>
-      <ActionButtons source={source} hostId={container.hostId} cid={container.id} state={container.state} canAct={canAct} />
+      <ActionButtons
+        source={source}
+        hostId={container.hostId}
+        cid={container.id}
+        state={container.state}
+        canAct={canAct}
+        disabledReason={readonlyReason}
+      />
     </div>
   );
 }

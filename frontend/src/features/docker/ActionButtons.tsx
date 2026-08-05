@@ -34,6 +34,12 @@ const ACTION_BUTTON_CLASS =
  * is purely a display-level mirror of GET /api/docker/permissions (plan D4).
  * start/stop toggle by current `state`; restart and pull_recreate are always
  * offered while any action is possible.
+ *
+ * `disabledReason` is the second half of that gate: the user may act in
+ * general, but not on THIS host (`readonly: true`, which docker_routes.py
+ * rejects server-side). The buttons then stay visible but disabled, with the
+ * reason as their tooltip — actions that silently vanish look like a bug,
+ * a disabled button explains itself.
  */
 export function ActionButtons({
   source,
@@ -41,6 +47,7 @@ export function ActionButtons({
   cid,
   state,
   canAct,
+  disabledReason,
   className = "",
 }: {
   source: DockerSource;
@@ -48,6 +55,8 @@ export function ActionButtons({
   cid: string;
   state: string;
   canAct: boolean;
+  /** Set when this host rejects actions (readonly) — buttons render disabled. */
+  disabledReason?: string;
   className?: string;
 }) {
   const t = useT();
@@ -74,7 +83,7 @@ export function ActionButtons({
   }
 
   const running = state === "running";
-  const busy = mutation.isPending;
+  const busy = mutation.isPending || disabledReason !== undefined;
   const errorTitle = mutation.isError
     ? mutation.error instanceof Error
       ? mutation.error.message
@@ -85,7 +94,7 @@ export function ActionButtons({
     <div
       className={`flex items-center gap-1 ${className}`}
       onClick={(e) => e.stopPropagation()}
-      title={errorTitle}
+      title={disabledReason ?? errorTitle}
     >
       {running ? (
         <button type="button" disabled={busy} onClick={() => run("stop")} className={ACTION_BUTTON_CLASS}>

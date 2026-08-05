@@ -82,6 +82,7 @@ export function ContainerDetailPanel({
   updateInfo,
   zabbixHost,
   canAct,
+  readonlyReason,
   tab,
   onTabChange,
   live,
@@ -93,6 +94,8 @@ export function ContainerDetailPanel({
   /** Zabbix host technical name mapped to this container's Docker host, "" if unmapped. */
   zabbixHost: string;
   canAct: boolean;
+  /** Set when this container's host is readonly — actions render disabled. */
+  readonlyReason?: string;
   tab: DockerDetailTab;
   onTabChange: (tab: DockerDetailTab) => void;
   live: boolean;
@@ -118,7 +121,11 @@ export function ContainerDetailPanel({
             cid={container.id}
             state={container.state}
             canAct={canAct}
+            disabledReason={readonlyReason}
           />
+          {readonlyReason && canAct && (
+            <div className="mt-1.5 text-[11px] text-ink-muted">{readonlyReason}</div>
+          )}
         </div>
       </div>
 
