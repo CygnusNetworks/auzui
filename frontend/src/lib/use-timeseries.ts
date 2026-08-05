@@ -18,7 +18,7 @@ const zabbixSource = new ZabbixApiSource(zabbixApi);
  * "Messung"). A query stuck past this budget is treated the same as a
  * failure — callers get `slow: true` and stop showing an endless spinner.
  */
-const QUERY_TIMEOUT_MS = 30_000;
+export const QUERY_TIMEOUT_MS = 30_000;
 
 class TimeseriesTimeoutError extends Error {
   constructor() {
@@ -27,7 +27,8 @@ class TimeseriesTimeoutError extends Error {
   }
 }
 
-function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+/** Exported for callers (e.g. web-scenarios) that query history.get/trend.get directly instead of through ZabbixApiSource. */
+export function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => reject(new TimeseriesTimeoutError()), ms);
     promise.then(

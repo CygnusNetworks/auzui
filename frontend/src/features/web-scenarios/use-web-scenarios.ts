@@ -1,11 +1,24 @@
 import { useMemo } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { zabbixApi } from "../../lib/auth/store";
+import { QUERY_TIMEOUT_MS, withTimeout } from "../../lib/use-timeseries";
 import { aggregateDailyAvailability, enrichWebScenarios, type EnrichedWebScenario } from "../../lib/web-scenarios";
 
 const DAY_SECONDS = 86_400;
 
-/** Every web (HTTP) scenario, joined with its live status items (web.test.*). */
+/**
+ * Every web (HTTP) scenario, joined with its live status items (web.test.*).
+ *
+ * `webitems: true` is required here — Zabbix's `item.get` excludes
+ * web-monitoring items by default (undocumented in the method's main param
+ * list, only mentioned under the flag itself). Without it this query always
+ * returns `[]` for any `web.test.*` search, so every scenario's
+ * `responseTimeItem`/`failItem` stays undefined and the detail panel's
+ * history/trend queries never even fire (they're gated on those being
+ * present) — verified against the live deployment, where item.get with this
+ * host's `web.test.` search returned zero rows, and returned the expected
+ * items only once `webitems: true` was added.
+ */
 export function useWebScenarios(): {
   scenarios: EnrichedWebScenario[];
   isLoading: boolean;
@@ -32,6 +45,7 @@ export function useWebScenarios(): {
     queryFn: () =>
       zabbixApi.itemGet({
         hostids,
+        webitems: true,
         search: { key_: "web.test." },
         output: ["itemid", "hostid", "key_", "name", "value_type", "units", "lastvalue", "lastclock"],
       }),
@@ -80,11 +94,19 @@ export interface StepHistorySeries {
  * Per-step response-time history (last 24h, for the stacked chart) and daily
  * availability (last 14 days, from web.test.fail's trend average) for one
  * selected scenario. Disabled entirely while nothing is selected.
+ *
+ * Both calls are wrapped in the same timeout used by the shared timeseries
+ * path (lib/use-timeseries.ts) purely as defensive insurance against a slow
+ * Zabbix instance — measured fast (~160ms/~330ms) against the live
+ * deployment, so this isn't expected to bite, but a stall should surface as
+ * `slow` instead of silently rendering as empty.
  */
 export function useWebScenarioDetail(scenario: EnrichedWebScenario | undefined): {
   stepHistory: StepHistorySeries[];
   availability: ReturnType<typeof aggregateDailyAvailability>;
   isLoading: boolean;
+  slow: boolean;
+  refetch: () => void;
 } {
   const stepItemIds = useMemo(
     () => (scenario?.steps ?? []).map((s) => s.responseTimeItem?.itemid).filter((id): id is string => !!id),
@@ -95,29 +117,37 @@ export function useWebScenarioDetail(scenario: EnrichedWebScenario | undefined):
     queryKey: ["web-scenarios", "step-history", stepItemIds],
     queryFn: () => {
       const till = Math.floor(Date.now() / 1000);
-      return zabbixApi.historyGet({
-        itemids: stepItemIds,
-        history: 0,
-        time_from: till - DAY_SECONDS,
-        time_till: till,
-      });
+      return withTimeout(
+        zabbixApi.historyGet({
+          itemids: stepItemIds,
+          history: 0,
+          time_from: till - DAY_SECONDS,
+          time_till: till,
+        }),
+        QUERY_TIMEOUT_MS,
+      );
     },
     enabled: stepItemIds.length > 0,
     staleTime: 30_000,
+    retry: false,
   });
 
   const trendQuery = useQuery({
     queryKey: ["web-scenarios", "fail-trend", scenario?.failItem?.itemid],
     queryFn: () => {
       const till = Math.floor(Date.now() / 1000);
-      return zabbixApi.trendGet({
-        itemids: [scenario!.failItem!.itemid],
-        time_from: till - 14 * DAY_SECONDS,
-        time_till: till,
-      });
+      return withTimeout(
+        zabbixApi.trendGet({
+          itemids: [scenario!.failItem!.itemid],
+          time_from: till - 14 * DAY_SECONDS,
+          time_till: till,
+        }),
+        QUERY_TIMEOUT_MS,
+      );
     },
     enabled: !!scenario?.failItem,
     staleTime: 60_000,
+    retry: false,
   });
 
   const stepHistory = useMemo<StepHistorySeries[]>(() => {
@@ -144,5 +174,10 @@ export function useWebScenarioDetail(scenario: EnrichedWebScenario | undefined):
     stepHistory,
     availability,
     isLoading: historyQuery.isLoading || trendQuery.isLoading,
+    slow: historyQuery.isError || trendQuery.isError,
+    refetch: () => {
+      void historyQuery.refetch();
+      void trendQuery.refetch();
+    },
   };
 }

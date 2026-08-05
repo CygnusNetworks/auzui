@@ -8,10 +8,27 @@ import { useToggleWebScenario, useWebScenarioDetail } from "./use-web-scenarios"
 
 const DAY_SECONDS = 86_400;
 
+/** Shared with TimeChartPanel's slow/failed state — same wording, same escape hatch. */
+function SlowOrFailedHint({ onRetry }: { onRetry: () => void }) {
+  const t = useT();
+  return (
+    <div className="flex items-center justify-between gap-2 rounded-md border border-line-soft bg-surface-2 px-2.5 py-2 text-[11.5px] text-ink-2">
+      <span>{t("timeChart.slowOrFailed")}</span>
+      <button
+        type="button"
+        onClick={onRetry}
+        className="flex-shrink-0 rounded-md border border-line bg-surface px-2 py-0.5 text-[11px] font-semibold text-ink-2"
+      >
+        {t("timeChart.retry")}
+      </button>
+    </div>
+  );
+}
+
 export function DetailPanel({ scenario }: { scenario: EnrichedWebScenario | undefined }) {
   const t = useT();
   const { data: config } = useAppConfig();
-  const { stepHistory, availability } = useWebScenarioDetail(scenario);
+  const { stepHistory, availability, slow, refetch } = useWebScenarioDetail(scenario);
   const toggle = useToggleWebScenario();
 
   if (!scenario) {
@@ -100,8 +117,12 @@ export function DetailPanel({ scenario }: { scenario: EnrichedWebScenario | unde
             <span>{t("webScenarios.detailPanel.avgTotal", avgTotalMs)}</span>
           )}
         </div>
-        <StepResponseChart stepHistory={stepHistory} from={now - DAY_SECONDS} to={now} />
-        {stepHistory.length > 0 && (
+        {slow ? (
+          <SlowOrFailedHint onRetry={refetch} />
+        ) : (
+          <StepResponseChart stepHistory={stepHistory} from={now - DAY_SECONDS} to={now} />
+        )}
+        {!slow && stepHistory.length > 0 && (
           <>
             <div className="mt-1 flex justify-between font-mono text-[10px] text-ink-muted">
               <span>{t("webScenarios.detailPanel.hoursAgo")}</span>
@@ -132,7 +153,9 @@ export function DetailPanel({ scenario }: { scenario: EnrichedWebScenario | unde
         <div className="mb-2 font-mono text-[10px] uppercase tracking-wider text-ink-muted">
           {t("webScenarios.detailPanel.availabilityTitle")}
         </div>
-        {availability.length > 0 ? (
+        {slow ? (
+          <SlowOrFailedHint onRetry={refetch} />
+        ) : availability.length > 0 ? (
           <>
             <div className="flex h-[34px] items-end gap-0.5">
               {availability.map((day) => {
