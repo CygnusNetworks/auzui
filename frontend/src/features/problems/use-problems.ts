@@ -7,9 +7,10 @@ const POLL_INTERVAL_MS = 30_000;
 
 /**
  * problem.get (all active problems) joined with trigger.get (host identity +
- * expanded expression + first item, batched by triggerid). Polls every 30s,
- * paused while the tab is hidden (TanStack Query default for
- * refetchIntervalInBackground).
+ * expanded expression + first item, batched by triggerid). Both queries poll
+ * every 30s — trigger.get included, since its item data backs the "current
+ * value" chip — paused while the tab is hidden (refetchIntervalInBackground:
+ * false on both).
  *
  * Sichtbarkeit wie die Zabbix-UI: standardmäßig keine per Maintenance oder
  * manuell supprimierten Probleme, und nur Probleme, deren Trigger aktiv und
@@ -54,9 +55,11 @@ export function useProblems({ showSuppressed = false }: { showSuppressed?: boole
         monitored: true,
       }),
     enabled: triggerIds.length > 0,
-    // Trigger metadata (host, expression, item) barely changes; avoid
-    // refetching it on every 30s problems poll.
-    staleTime: 5 * 60_000,
+    // items[].lastvalue backs the Problems page's "current value" chip, so this
+    // must stay on the same 30s cadence as problemsQuery — it's not just static
+    // trigger/host metadata anymore.
+    refetchInterval: POLL_INTERVAL_MS,
+    refetchIntervalInBackground: false,
   });
 
   const enriched: EnrichedProblem[] = useMemo(() => {
