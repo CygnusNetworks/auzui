@@ -8,6 +8,7 @@ import { useAnimatedPresence } from "../../lib/use-animated-presence";
 import { useLocale, useT } from "../../lib/i18n";
 import { shouldShowSparkline } from "./use-sparklines";
 import { laneTriState, type TriState } from "./selection";
+import { ValueChip } from "./ValueChip";
 import type { Series } from "@auzui/timeseries";
 
 export type ViewMode = "rows" | "cards";
@@ -314,7 +315,7 @@ export function LaneSection({
   );
 }
 
-const ROW_GRID_COLS = "70px 170px minmax(220px,1fr) 170px 90px";
+const ROW_GRID_COLS = "70px 170px minmax(220px,1fr) 100px 170px 90px";
 
 function ProblemRow({
   problem,
@@ -371,6 +372,9 @@ function ProblemRow({
         </span>
         <span className={`flex items-center gap-1.5 pr-2.5 ${dimClass}`}>
           <span className="truncate">{problem.name}</span>
+        </span>
+        <span className={`pr-2.5 ${dimClass}`}>
+          <ValueChip problem={problem} />
         </span>
         <span className={`pr-2.5 ${dimClass}`}>
           {problem.tags.slice(0, 1).map((tag) => (
@@ -465,7 +469,10 @@ function ProblemCard({
             {problem.tags[0]?.tag ?? ""}
           </span>
         </span>
-        <StatusChips problem={problem} />
+        <span className="flex items-center gap-1.5">
+          <ValueChip problem={problem} />
+          <StatusChips problem={problem} />
+        </span>
       </span>
     </div>
   );

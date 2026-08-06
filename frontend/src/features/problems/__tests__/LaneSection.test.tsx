@@ -286,4 +286,84 @@ describe("LaneSection (rows mode)", () => {
 
     expect(screen.getByRole("checkbox", { name: "Alle in High auswählen" })).toBeChecked();
   });
+
+  it("shows a colored value chip in the row when the problem has a numeric value", () => {
+    const problems = [
+      mkProblem({
+        eventid: "5",
+        itemValueType: "0",
+        itemLastValue: "63.4",
+        itemUnits: "°C",
+        triggerExpression: "avg(/host/synoSystem.temperature,#4)>60",
+      }),
+    ];
+
+    render(
+      <LaneSection
+        severity={4}
+        problems={problems}
+        mode="rows"
+        open={true}
+        onToggleOpen={vi.fn()}
+        selectedEventId={undefined}
+        onSelect={vi.fn()}
+        sparklines={new Map()}
+        {...bulkProps()}
+      />,
+    );
+
+    const chip = screen.getByText(/63\.4 °C/);
+    expect(chip).toHaveClass("text-sev-high");
+  });
+
+  it("shows no value chip in the row when the problem has no numeric value", () => {
+    const problems = [mkProblem({ eventid: "6" })];
+
+    render(
+      <LaneSection
+        severity={4}
+        problems={problems}
+        mode="rows"
+        open={true}
+        onToggleOpen={vi.fn()}
+        selectedEventId={undefined}
+        onSelect={vi.fn()}
+        sparklines={new Map()}
+        {...bulkProps()}
+      />,
+    );
+
+    expect(screen.queryByText(/°C|%/)).not.toBeInTheDocument();
+  });
+});
+
+describe("LaneSection (cards mode)", () => {
+  it("shows a colored value chip on the card when the problem has a numeric value", () => {
+    const problems = [
+      mkProblem({
+        eventid: "9",
+        itemValueType: "0",
+        itemLastValue: "57.1",
+        itemUnits: "°C",
+        triggerExpression: "avg(/host/synoSystem.temperature,#4)>60",
+      }),
+    ];
+
+    render(
+      <LaneSection
+        severity={4}
+        problems={problems}
+        mode="cards"
+        open={true}
+        onToggleOpen={vi.fn()}
+        selectedEventId={undefined}
+        onSelect={vi.fn()}
+        sparklines={new Map()}
+        {...bulkProps()}
+      />,
+    );
+
+    const chip = screen.getByText(/57\.1 °C/);
+    expect(chip).toHaveClass("text-sev-ok");
+  });
 });
