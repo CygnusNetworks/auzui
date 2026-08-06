@@ -7,6 +7,7 @@ import {
   formatAge,
   groupIntoLanes,
   joinProblemsWithTriggers,
+  parseThreshold,
   visibilityBreakdown,
 } from "../problems";
 import { ALL_SEVERITIES } from "../severity";
@@ -290,5 +291,39 @@ describe("formatAge", () => {
 
   it("formats days", () => {
     expect(formatAge(0, 2 * 86400 + 3600)).toBe("2 d");
+  });
+});
+
+describe("parseThreshold", () => {
+  it("extracts a simple greater-than comparison", () => {
+    expect(parseThreshold("avg(/host/synoSystem.temperature,#4)>60")).toEqual({
+      op: ">",
+      value: 60,
+    });
+  });
+
+  it("extracts greater-than-or-equal, less-than and less-than-or-equal", () => {
+    expect(parseThreshold("last(/host/item)>=90")?.op).toBe(">=");
+    expect(parseThreshold("last(/host/item)<5")?.op).toBe("<");
+    expect(parseThreshold("last(/host/item)<=5")?.op).toBe("<=");
+  });
+
+  it("parses a negative and a decimal threshold", () => {
+    expect(parseThreshold("last(/host/item)<-10")).toEqual({ op: "<", value: -10 });
+    expect(parseThreshold("last(/host/item)>3.5")).toEqual({ op: ">", value: 3.5 });
+  });
+
+  it("returns undefined for a compound and/or expression", () => {
+    expect(
+      parseThreshold("min(/host/vm.memory.util,5m)>90 and last(/host/vm.memory.size[available])<1G"),
+    ).toBeUndefined();
+  });
+
+  it("returns undefined for a non-numeric right-hand side (Zabbix size suffix)", () => {
+    expect(parseThreshold("last(/host/vm.memory.size[available])<1G")).toBeUndefined();
+  });
+
+  it("returns undefined for undefined input", () => {
+    expect(parseThreshold(undefined)).toBeUndefined();
   });
 });

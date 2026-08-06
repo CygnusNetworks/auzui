@@ -106,6 +106,34 @@ export function formatSuppressUntil(
   return `${date}, ${time}`;
 }
 
+export type ThresholdOp = ">" | ">=" | "<" | "<=";
+
+const COMPARISON_OPERATOR_PATTERN = />=|<=|>|</g;
+
+/**
+ * Extracts a comparison operator + numeric threshold from a SIMPLE,
+ * single-condition trigger expression (e.g. "avg(/host/key,#4)>60").
+ * Returns undefined for compound expressions (and/or, more than one
+ * comparison) or a non-purely-numeric right-hand side (e.g. Zabbix size
+ * suffixes like "1G") — in both cases "over/under threshold" isn't
+ * well-defined enough for a color to be trustworthy.
+ */
+export function parseThreshold(
+  expression: string | undefined,
+): { op: ThresholdOp; value: number } | undefined {
+  if (!expression) return undefined;
+  if (/\b(and|or)\b/i.test(expression)) return undefined;
+
+  const matches = expression.match(COMPARISON_OPERATOR_PATTERN);
+  if (!matches || matches.length !== 1) return undefined;
+
+  const op = matches[0] as ThresholdOp;
+  const right = expression.slice(expression.indexOf(op) + op.length).trim();
+  if (!/^-?\d+(\.\d+)?$/.test(right)) return undefined;
+
+  return { op, value: Number(right) };
+}
+
 export interface ProblemFilter {
   /** Empty/undefined = no severity filter (show all). */
   severities?: Set<Severity> | Severity[];
