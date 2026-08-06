@@ -421,7 +421,19 @@ for (const spec of PROBLEM_SPECS) {
     status: "0",
     manual_close: MANUAL_CLOSE_NAMES.has(spec.name) ? "1" : "0",
     hosts: [{ hostid: host.hostid, host: host.host }],
-    items: item ? [{ itemid: item.itemid, key_: item.key_, name: item.name, value_type: item.value_type }] : [],
+    items: item
+      ? [
+          {
+            itemid: item.itemid,
+            key_: item.key_,
+            name: item.name,
+            value_type: item.value_type,
+            lastvalue: item.lastvalue,
+            lastclock: item.lastclock,
+            units: item.units,
+          },
+        ]
+      : [],
   });
   demoProblems.push({
     eventid,
