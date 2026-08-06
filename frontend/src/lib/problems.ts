@@ -31,6 +31,12 @@ export interface EnrichedProblem {
   /** First item on the trigger — candidate for the sparkline, if numeric. */
   itemId?: string;
   itemValueType?: "0" | "3";
+  /** Current value of the trigger's item, as returned by trigger.get's expanded item (Zabbix's raw string form — parse before comparing). */
+  itemLastValue?: string;
+  /** Unix seconds of the item's last poll. */
+  itemLastClock?: string;
+  /** Zabbix `units` string for the item (e.g. "°C", "%", "" for a bare number). */
+  itemUnits?: string;
 }
 
 /**
@@ -67,6 +73,9 @@ export function joinProblemsWithTriggers(
       manualClose: trigger?.manual_close === "1",
       itemId: numericItem?.itemid,
       itemValueType: numericItem?.value_type as "0" | "3" | undefined,
+      itemLastValue: numericItem?.lastvalue,
+      itemLastClock: numericItem?.lastclock,
+      itemUnits: numericItem?.units,
     };
   });
 }

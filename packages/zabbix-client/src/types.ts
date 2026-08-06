@@ -162,7 +162,8 @@ export interface ZabbixTrigger {
   /** "1" = the trigger allows manual problem closing (event.acknowledge action 1). */
   manual_close?: "0" | "1";
   hosts?: Pick<ZabbixHost, "hostid" | "host">[];
-  items?: Pick<ZabbixItem, "itemid" | "key_" | "name" | "value_type">[];
+  items?: (Pick<ZabbixItem, "itemid" | "key_" | "name" | "value_type" | "lastvalue" | "lastclock"> &
+    Partial<Pick<ZabbixItem, "units">>)[];
 }
 
 export interface ZabbixHistoryPoint {

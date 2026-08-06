@@ -81,6 +81,28 @@ describe("joinProblemsWithTriggers", () => {
     const joined = joinProblemsWithTriggers([tagged], [trigger()]);
     expect(joined[0]?.tags).toEqual([{ tag: "component", value: "system" }]);
   });
+
+  it("attaches the current item value, its units and last-poll timestamp", () => {
+    const valueTrigger = trigger({
+      items: [
+        {
+          itemid: "500",
+          key_: "item.key",
+          name: "Item",
+          value_type: "3",
+          lastvalue: "63.4",
+          lastclock: "1699999999",
+          units: "°C",
+        },
+      ],
+    });
+    const joined = joinProblemsWithTriggers([problem()], [valueTrigger]);
+    expect(joined[0]).toMatchObject({
+      itemLastValue: "63.4",
+      itemLastClock: "1699999999",
+      itemUnits: "°C",
+    });
+  });
 });
 
 describe("filterProblems", () => {
