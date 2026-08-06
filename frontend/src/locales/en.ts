@@ -127,6 +127,7 @@ export const en = {
     detailPanel: {
       noneSelected: "No problem selected.",
       since: (age: string) => `since ${age}`,
+      valueAsOf: (age: string) => `updated ${age} ago`,
       event: (id: string) => `Event #${id}`,
       trigger: "Trigger",
       timeline: "Timeline",

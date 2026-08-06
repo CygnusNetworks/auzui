@@ -2,8 +2,9 @@ import { useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { SeverityBadge } from "../../components/SeverityBadge";
 import { severityFromWire, severityLabel, type Severity } from "../../lib/severity";
-import { formatAge, type EnrichedProblem } from "../../lib/problems";
+import { formatAge, hasNumericValue, type EnrichedProblem } from "../../lib/problems";
 import { useAcknowledge, type AcknowledgeInput } from "./use-acknowledge";
+import { ValueChip } from "./ValueChip";
 import { SuppressButton } from "./SuppressButton";
 import { SeverityPills } from "./SeverityPills";
 import { useEventTimeline } from "./use-event-timeline";
@@ -90,6 +91,19 @@ export function DetailPanel({ problem }: { problem: EnrichedProblem | undefined 
         <div className="break-all font-mono text-[11.5px] text-ink-2">
           {problem.triggerExpression ?? "—"}
         </div>
+        {hasNumericValue(problem) && (
+          <div className="mt-2 flex items-center gap-2">
+            <ValueChip problem={problem} />
+            {problem.itemLastClock && (
+              <span className="text-[10.5px] text-ink-muted">
+                {t(
+                  "problems.detailPanel.valueAsOf",
+                  formatAge(Number(problem.itemLastClock), undefined, locale),
+                )}
+              </span>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="border-b border-line-soft p-3.5">
