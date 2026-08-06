@@ -28,3 +28,4 @@ coverage.json
 .playwright-mcp/
 playwright-report/
 test-results/
+.superpowers/
