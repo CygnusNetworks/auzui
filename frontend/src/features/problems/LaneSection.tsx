@@ -1,4 +1,5 @@
 import { type ReactNode } from "react";
+import { Link } from "@tanstack/react-router";
 import { severityLabel, type Severity } from "../../lib/severity";
 import { severityBorderLeftClass, severityDotClass } from "../../components/SeverityBadge";
 import { Sparkline } from "../../components/Sparkline";
@@ -133,6 +134,59 @@ function SelectSpur({ width, children }: { width: number; children: ReactNode })
       style={{ width: `${width}px`, ["--select-spur-width" as string]: `${width}px` }}
     >
       {children}
+    </span>
+  );
+}
+
+/**
+ * Host name cell shared by ProblemRow and ProblemCard: single line, ellipsis
+ * on overflow (never wraps, so it can't blow out the fixed-width row column),
+ * plus a small deep-dive link to the host detail page. The link only shows
+ * when a hostId is known — bare hostName-only problems get plain text.
+ * `stopPropagation` on click/keydown keeps the link from also triggering the
+ * row's/card's own select/open handler.
+ */
+export function HostCell({
+  hostName,
+  hostId,
+  className = "",
+}: {
+  hostName?: string;
+  hostId?: string;
+  className?: string;
+}) {
+  const t = useT();
+  return (
+    <span className={`flex min-w-0 items-center gap-1 ${className}`}>
+      <span className="min-w-0 truncate">{hostName ?? "—"}</span>
+      {hostId && hostName && (
+        <Link
+          to="/hosts/$hostId"
+          params={{ hostId }}
+          title={t("problems.lane.openHost", hostName)}
+          aria-label={t("problems.lane.openHost", hostName)}
+          onClick={(e) => e.stopPropagation()}
+          onKeyDown={(e) => e.stopPropagation()}
+          className="inline-flex shrink-0 items-center rounded bg-surface-3 p-0.5 text-ink-2 hover:bg-accent-soft hover:text-accent"
+        >
+          <svg
+            viewBox="0 0 12 12"
+            width="10"
+            height="10"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={1.4}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+            focusable="false"
+          >
+            <path d="M4.5 1.5H10.5V7.5" />
+            <path d="M10.5 1.5 5 7" />
+            <path d="M9 6.5V10.5H1.5V3H5.5" />
+          </svg>
+        </Link>
+      )}
     </span>
   );
 }
@@ -312,8 +366,8 @@ function ProblemRow({
         <span className={`pr-2.5 font-mono text-[11.5px] text-ink-muted ${dimClass}`}>
           −{formatAge(problem.clock, undefined, locale)}
         </span>
-        <span className={`pr-2.5 font-mono text-[11.5px] ${dimClass}`}>
-          <b>{problem.hostName ?? "—"}</b>
+        <span className={`pr-2.5 font-mono text-[11.5px] font-bold ${dimClass}`}>
+          <HostCell hostName={problem.hostName} hostId={problem.hostId} />
         </span>
         <span className={`flex items-center gap-1.5 pr-2.5 ${dimClass}`}>
           <span className="truncate">{problem.name}</span>
@@ -393,7 +447,7 @@ function ProblemCard({
               />
             </SelectSpur>
           )}
-          <span className="truncate font-bold">{problem.hostName ?? "—"}</span>
+          <HostCell hostName={problem.hostName} hostId={problem.hostId} className="font-bold" />
         </span>
         <span className="whitespace-nowrap text-[10.5px] text-ink-muted">
           −{formatAge(problem.clock, undefined, locale)}

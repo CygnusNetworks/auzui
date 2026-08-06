@@ -6,6 +6,29 @@ import type { EnrichedProblem } from "../../../lib/problems";
 import { I18nProvider } from "../../../lib/i18n";
 
 /**
+ * LaneSection's host cell links to the host deep-dive via TanStack Router's
+ * <Link>, which throws without a surrounding RouterProvider. These tests
+ * don't exercise routing, so a lightweight <a> stand-in is enough.
+ */
+vi.mock("@tanstack/react-router", () => ({
+  Link: ({
+    to,
+    params,
+    children,
+    ...rest
+  }: {
+    to: string;
+    params?: Record<string, string>;
+    children?: ReactElement | string;
+    [key: string]: unknown;
+  }) => (
+    <a href={Object.entries(params ?? {}).reduce((p, [k, v]) => p.replace(`$${k}`, v), to)} {...rest}>
+      {children}
+    </a>
+  ),
+}));
+
+/**
  * LaneSection uses useT()/useLocale(), which require an I18nProvider
  * ancestor. Pin the locale to "de" explicitly — these assertions check the
  * German strings, and the provider's auto-detection would otherwise depend

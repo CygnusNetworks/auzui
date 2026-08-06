@@ -163,6 +163,7 @@ export const en = {
       ackChip: "✓ ack",
       suppressedChip: "⏸ suppressed",
       suppressedUntilChip: (time: string) => `⏸ until ${time}`,
+      openHost: (host: string) => `Open host details for ${host}`,
     },
     page: {
       title: "Problems",
