@@ -27,7 +27,12 @@ export interface ItemClassification {
   viz: ItemViz;
 }
 
-/** Max charts shown per section before collapsing the rest behind "N weitere anzeigen". */
+/**
+ * Cap on instances per LLD instance-family chart (ranked by lastvalue; the
+ * rest is noted as "(+N weitere)" in the title) — an internal limit of
+ * buildInstanceFamilyCharts, NOT a UI collapse threshold anymore (the Host
+ * Deep-Dive shows all of a section's charts unconditionally).
+ */
 export const MAX_CHARTS_PER_SECTION = 8;
 
 /** Key-Pattern-Fallback aus PLAN.md D.1 — Reihenfolge ist die Prüfreihenfolge. */
@@ -764,10 +769,9 @@ export function orderSections(sectionNames: string[]): string[] {
  * Container-Items werden in eine eigene, standardmäßig eingeklappte
  * "container"-Sektion ausgelagert. Sektionen folgen der festen Ordnung
  * cpu/memory/network/storage zuerst, dann alphabetisch (orderSections); Charts
- * je Sektion sind sortiert (Interfaces zuerst, bei vielen davon nach Traffic),
- * max MAX_CHARTS_PER_SECTION sichtbar (Rest bleibt in `charts`, die UI
- * blendet ab dem Limit ein "N weitere anzeigen" ein statt hier schon zu
- * kappen — reine Funktion, keine UI-Zustände).
+ * je Sektion sind sortiert (Interfaces zuerst, bei vielen davon nach
+ * Traffic). Die UI zeigt alle Charts einer Sektion — reine Funktion, keine
+ * UI-Zustände.
  */
 export function buildDashboard(
   _host: Pick<ZabbixHost, "parentTemplates">,

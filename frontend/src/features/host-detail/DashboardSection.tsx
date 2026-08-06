@@ -2,18 +2,28 @@ import { useCallback, useState } from "react";
 import type { TimeRange } from "@auzui/timeseries";
 import type { ZabbixItem } from "@auzui/zabbix-client";
 import type { DashboardChart, DashboardSection as DashboardSectionData } from "../../lib/auto-dashboard";
-import { MAX_CHARTS_PER_SECTION } from "../../lib/auto-dashboard";
 import { isNumericItem } from "../../lib/latest-items";
 import { formatUnitValue } from "../../lib/format-units";
 import { ChartCard } from "./ChartCard";
+import { LazyMount } from "./LazyMount";
 import { useLocale, useT } from "../../lib/i18n";
 
+/** First N charts of a section mount immediately (no viewport gate) so the above-the-fold view doesn't flicker in. */
+const EAGER_CHART_COUNT = 4;
+
 /**
- * One einklappbare Sektion des Auto-Dashboards. Charts jenseits von
- * MAX_CHARTS_PER_SECTION bleiben hinter "N weitere anzeigen" versteckt.
+ * One einklappbare Sektion des Auto-Dashboards. Alle Charts der Sektion
+ * werden gemountet und initial angezeigt — es gibt keine "Mehr anzeigen"-
+ * Beschränkung mehr, wer filtern will, benutzt die Filter-Eingabe der Page.
+ *
  * Ist die Sektion zu, wird die Chart-Grid gar nicht erst gerendert — die
  * darunterliegenden useTimeseries-Hooks in ChartCard existieren dann nicht,
  * es laufen also keine Queries für eingeklappte Sektionen.
+ *
+ * Jede Karte steckt zusätzlich in `LazyMount`: statt aller Charts auf einmal
+ * mounted nur, was in (oder nahe) den Viewport scrollt — siehe LazyMount.tsx
+ * für die Messwerte, die das nötig gemacht haben (199 gleichzeitige Queries
+ * auf einem LLD-lastigen Host haben den Browser und das Backend überlastet).
  *
  * Charts ohne Datenpunkte im gewählten Zeitraum melden sich per
  * onEmptyChange; die Karte bleibt dabei gemountet und wird nur per CSS
@@ -21,8 +31,13 @@ import { useLocale, useT } from "../../lib/i18n";
  * Karte, sobald doch Daten eintreffen (Live-Tick, Influx-Recovery,
  * Range-Wechsel), sich wieder als nicht-leer melden und sichtbar werden; das
  * frühere Unmount-der-leeren-Karte hat sie für immer versteckt. Sind ALLE
- * gemounteten Charts leer, kollabiert die ganze Sektion zu einem schmalen
- * Hinweis-Balken mit Toggle statt der vollen Box.
+ * Charts der Sektion gemountet UND gemeldet (leer oder konstant sind auch
+ * "gemeldet"), UND ausnahmslos alle davon leer, kollabiert die ganze Sektion
+ * zu einem schmalen Hinweis-Balken mit Toggle statt der vollen Box. Solange
+ * noch nicht gemountete (und damit stumme, da unsichtbar für LazyMount)
+ * Karten existieren, bleibt die Sektion offen — sonst würde eine Sektion,
+ * deren erste paar Karten zufällig leer sind, fälschlich kollabieren, bevor
+ * die restlichen Karten überhaupt eine Chance hatten sich zu melden.
  */
 export function DashboardSection({
   section,
@@ -34,8 +49,7 @@ export function DashboardSection({
   onBrush: (fromSec: number, toSec: number) => void;
 }) {
   const t = useT();
-  const [open, setOpen] = useState(!section.defaultCollapsed);
-  const [showAll, setShowAll] = useState(false);
+  const [open, setOpen] = useState(true);
   const [showEmpty, setShowEmpty] = useState(false);
   const [emptyIds, setEmptyIds] = useState<Set<string>>(() => new Set());
   const [constantIds, setConstantIds] = useState<Set<string>>(() => new Set());
@@ -60,18 +74,21 @@ export function DashboardSection({
     });
   }, []);
 
-  // Mounted set is position-based (never depends on emptiness) so a chart
-  // flipping empty/non-empty does not change WHICH cards are mounted — the
-  // empties just get CSS-hidden in place. Overflow charts past
-  // MAX_CHARTS_PER_SECTION stay unmounted (no queries) until "show more".
-  const mountedCharts = showAll ? section.charts : section.charts.slice(0, MAX_CHARTS_PER_SECTION);
-  const hiddenOverflowCount = section.charts.length - mountedCharts.length;
+  // All charts of the section are mounted (eventually) — no overflow cutoff
+  // anymore, LazyMount just defers *when* each one mounts.
+  const mountedCharts = section.charts;
 
   const emptyCount = mountedCharts.reduce((n, c) => n + (emptyIds.has(c.id) ? 1 : 0), 0);
-  // Only collapse the whole section when every mounted chart is empty AND
-  // nothing is hidden behind "show more" (otherwise there may be data past the
-  // overflow cutoff we haven't queried yet).
-  const allEmpty = mountedCharts.length > 0 && hiddenOverflowCount === 0 && emptyCount === mountedCharts.length;
+  // A chart has "reported" once ChartCard mounted and its query settled,
+  // marking it either empty or constant (chart ids only ever end up in one
+  // of the two sets, so a plain size sum is a safe count of distinct
+  // reporters). LazyMount keeps not-yet-visible charts unmounted, so they
+  // never report — collapsing the section before every chart has reported
+  // would silently hide charts nobody has looked at yet. Only once every
+  // chart has reported, and every one of them turned out empty, does the
+  // section collapse.
+  const allReported = emptyIds.size + constantIds.size === section.charts.length && section.charts.length > 0;
+  const allEmpty = allReported && emptyCount === mountedCharts.length;
   const sectionCollapsed = allEmpty && !showEmpty;
 
   if (sectionCollapsed) {
@@ -110,7 +127,7 @@ export function DashboardSection({
         <div className="p-3.5">
           <FactsBar charts={mountedCharts.filter((c) => constantIds.has(c.id))} />
           <div className="grid grid-cols-2 gap-3 max-[1100px]:grid-cols-1">
-            {mountedCharts.map((chart) => {
+            {mountedCharts.map((chart, index) => {
               // Kept mounted so it keeps its query alive and can re-report
               // non-empty / non-constant; `hidden` (display:none) just drops it
               // from the grid. Constant charts are always hidden here — they
@@ -119,26 +136,19 @@ export function DashboardSection({
               const hide = (emptyIds.has(chart.id) && !showEmpty) || constantIds.has(chart.id);
               return (
                 <div key={chart.id} className={hide ? "hidden" : undefined}>
-                  <ChartCard
-                    chart={chart}
-                    range={range}
-                    onBrush={onBrush}
-                    onEmptyChange={handleEmptyChange}
-                    onConstantChange={handleConstantChange}
-                  />
+                  <LazyMount eager={index < EAGER_CHART_COUNT}>
+                    <ChartCard
+                      chart={chart}
+                      range={range}
+                      onBrush={onBrush}
+                      onEmptyChange={handleEmptyChange}
+                      onConstantChange={handleConstantChange}
+                    />
+                  </LazyMount>
                 </div>
               );
             })}
           </div>
-          {hiddenOverflowCount > 0 && (
-            <button
-              type="button"
-              onClick={() => setShowAll(true)}
-              className="mt-3 rounded-md border border-line bg-surface-2 px-2.5 py-1 text-xs text-ink-2"
-            >
-              {t("hostDetail.dashboard.showMore", hiddenOverflowCount)}
-            </button>
-          )}
           {emptyCount > 0 && (
             <div className="mt-2.5 flex items-center gap-2 font-mono text-[10.5px] text-ink-muted">
               <span>{t("hostDetail.dashboard.hiddenNoData", emptyCount)}</span>

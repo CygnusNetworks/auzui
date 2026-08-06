@@ -83,7 +83,24 @@ export interface ZabbixItem {
   tags?: ZabbixItemTag[];
   status?: "0" | "1";
   state?: "0" | "1";
+  /** 0 normal, 1 discovery rule, 2 item prototype (n/a on item.get), 4 discovered (created by LLD). */
+  flags?: "0" | "1" | "2" | "4";
+  /**
+   * Only present with `selectItemDiscovery` — set for LLD-discovered items
+   * (flags "4"). `key_` here is the *item prototype's* key with its LLD
+   * macros (`{#SNMPINDEX}` etc.) unresolved, so it's directly comparable to
+   * `itemprototype.get({templateids}).key_`.
+   */
+  itemDiscovery?: { parent_itemid: ZabbixId; key_: string };
   hosts?: Pick<ZabbixHost, "hostid" | "host" | "name">[];
+}
+
+/** An item prototype as returned by `itemprototype.get`. With `templateids`, `hostid` is the templateid. */
+export interface ZabbixItemPrototype {
+  itemid: ZabbixId;
+  hostid: ZabbixId;
+  key_: string;
+  name?: string;
 }
 
 export type ZabbixSeverity = "0" | "1" | "2" | "3" | "4" | "5";

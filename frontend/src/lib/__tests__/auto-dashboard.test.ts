@@ -439,7 +439,7 @@ describe("buildDashboard", () => {
     expect(dashboard.sections[0]!.charts.map((c) => c.title)).toEqual(["A Item", "B Item"]);
   });
 
-  it("exposes MAX_CHARTS_PER_SECTION as 8 for the UI's collapse threshold", () => {
+  it("exposes MAX_CHARTS_PER_SECTION as 8 for the instance-family cap", () => {
     expect(MAX_CHARTS_PER_SECTION).toBe(8);
   });
 

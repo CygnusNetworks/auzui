@@ -9,6 +9,7 @@ import type {
   ZabbixHttpTest,
   ZabbixId,
   ZabbixItem,
+  ZabbixItemPrototype,
   ZabbixMaintenance,
   ZabbixMap,
   ZabbixProblem,
@@ -89,14 +90,26 @@ export class ZabbixApi {
       hostids?: ZabbixId[];
       itemids?: ZabbixId[];
       groupids?: ZabbixId[];
+      templateids?: ZabbixId[];
       webitems?: boolean;
       selectTags?: "extend";
       selectHosts?: "extend" | string[];
+      selectItemDiscovery?: "extend" | string[];
       tags?: { tag: string; value?: string; operator?: number }[];
       monitored?: boolean;
     } = {},
   ): Promise<ZabbixItem[]> {
     return this.client.call("item.get", params);
+  }
+
+  itemprototypeGet(
+    params: GetParamsBase & {
+      hostids?: ZabbixId[];
+      templateids?: ZabbixId[];
+      discoveryids?: ZabbixId[];
+    } = {},
+  ): Promise<ZabbixItemPrototype[]> {
+    return this.client.call("itemprototype.get", params);
   }
 
   problemGet(
