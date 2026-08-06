@@ -1,13 +1,15 @@
 import { describe, expect, it } from "vitest";
 import type { ZabbixProblem, ZabbixTrigger } from "@auzui/zabbix-client";
-import type { ProblemFilter } from "../problems";
+import type { EnrichedProblem, ProblemFilter } from "../problems";
 import {
   countBySeverity,
   filterProblems,
   formatAge,
   groupIntoLanes,
+  hasNumericValue,
   joinProblemsWithTriggers,
   parseThreshold,
+  valueBreachState,
   visibilityBreakdown,
 } from "../problems";
 import { ALL_SEVERITIES } from "../severity";
@@ -33,6 +35,22 @@ function trigger(overrides: Partial<ZabbixTrigger> = {}): ZabbixTrigger {
     priority: "4",
     hosts: [{ hostid: "10", host: "host-a" }],
     items: [{ itemid: "500", key_: "item.key", name: "Item", value_type: "3" }],
+    ...overrides,
+  };
+}
+
+function enriched(overrides: Partial<EnrichedProblem> = {}): EnrichedProblem {
+  return {
+    eventid: "1",
+    objectid: "100",
+    name: "Something is wrong",
+    severity: 4,
+    clock: 1000,
+    acknowledged: false,
+    tags: [],
+    itemValueType: "0",
+    itemLastValue: "63.4",
+    triggerExpression: "avg(/host/synoSystem.temperature,#4)>60",
     ...overrides,
   };
 }
@@ -325,5 +343,45 @@ describe("parseThreshold", () => {
 
   it("returns undefined for undefined input", () => {
     expect(parseThreshold(undefined)).toBeUndefined();
+  });
+});
+
+describe("hasNumericValue", () => {
+  it("is true for a numeric item with a parseable lastvalue", () => {
+    expect(hasNumericValue(enriched())).toBe(true);
+  });
+
+  it("is false when the item type isn't numeric (text/log)", () => {
+    expect(hasNumericValue(enriched({ itemValueType: undefined }))).toBe(false);
+  });
+
+  it("is false when lastvalue is missing or not a finite number", () => {
+    expect(hasNumericValue(enriched({ itemLastValue: undefined }))).toBe(false);
+    expect(hasNumericValue(enriched({ itemLastValue: "connect timed out" }))).toBe(false);
+  });
+});
+
+describe("valueBreachState", () => {
+  it("is 'breach' when the current value satisfies the comparison", () => {
+    expect(valueBreachState(enriched({ itemLastValue: "63.4" }))).toBe("breach");
+  });
+
+  it("is 'ok' when the current value no longer satisfies the comparison", () => {
+    expect(valueBreachState(enriched({ itemLastValue: "57.1" }))).toBe("ok");
+  });
+
+  it("is 'unknown' when the expression isn't a simple comparison", () => {
+    expect(
+      valueBreachState(
+        enriched({
+          triggerExpression:
+            "min(/host/vm.memory.util,5m)>90 and last(/host/vm.memory.size[available])<1G",
+        }),
+      ),
+    ).toBe("unknown");
+  });
+
+  it("is 'unknown' when there is no numeric value", () => {
+    expect(valueBreachState(enriched({ itemLastValue: undefined }))).toBe("unknown");
   });
 });

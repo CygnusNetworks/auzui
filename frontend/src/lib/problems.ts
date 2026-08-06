@@ -134,6 +134,39 @@ export function parseThreshold(
   return { op, value: Number(right) };
 }
 
+/** True when a problem carries a numeric, parseable current item value. */
+export function hasNumericValue(problem: EnrichedProblem): boolean {
+  if (problem.itemValueType !== "0" && problem.itemValueType !== "3") return false;
+  if (problem.itemLastValue === undefined) return false;
+  return Number.isFinite(Number(problem.itemLastValue));
+}
+
+export type ValueBreachState = "breach" | "ok" | "unknown";
+
+/**
+ * Compares a problem's current item value against the threshold parsed from
+ * its trigger expression. "unknown" covers everything parseThreshold can't
+ * resolve (compound expressions) and everything hasNumericValue rejects
+ * (text/log items, missing/non-numeric lastvalue) — never a guess.
+ */
+export function valueBreachState(problem: EnrichedProblem): ValueBreachState {
+  if (!hasNumericValue(problem)) return "unknown";
+  const threshold = parseThreshold(problem.triggerExpression);
+  if (!threshold) return "unknown";
+
+  const value = Number(problem.itemLastValue);
+  switch (threshold.op) {
+    case ">":
+      return value > threshold.value ? "breach" : "ok";
+    case ">=":
+      return value >= threshold.value ? "breach" : "ok";
+    case "<":
+      return value < threshold.value ? "breach" : "ok";
+    case "<=":
+      return value <= threshold.value ? "breach" : "ok";
+  }
+}
+
 export interface ProblemFilter {
   /** Empty/undefined = no severity filter (show all). */
   severities?: Set<Severity> | Severity[];
