@@ -137,7 +137,7 @@ export function parseThreshold(
 /** True when a problem carries a numeric, parseable current item value. */
 export function hasNumericValue(problem: EnrichedProblem): boolean {
   if (problem.itemValueType !== "0" && problem.itemValueType !== "3") return false;
-  if (problem.itemLastValue === undefined) return false;
+  if (problem.itemLastValue === undefined || problem.itemLastValue.trim() === "") return false;
   return Number.isFinite(Number(problem.itemLastValue));
 }
 

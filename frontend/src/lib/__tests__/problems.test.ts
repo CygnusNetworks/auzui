@@ -359,6 +359,11 @@ describe("hasNumericValue", () => {
     expect(hasNumericValue(enriched({ itemLastValue: undefined }))).toBe(false);
     expect(hasNumericValue(enriched({ itemLastValue: "connect timed out" }))).toBe(false);
   });
+
+  it("is false when lastvalue is empty or whitespace-only (unpollled item)", () => {
+    expect(hasNumericValue(enriched({ itemLastValue: "" }))).toBe(false);
+    expect(hasNumericValue(enriched({ itemLastValue: "   " }))).toBe(false);
+  });
 });
 
 describe("valueBreachState", () => {
@@ -383,5 +388,9 @@ describe("valueBreachState", () => {
 
   it("is 'unknown' when there is no numeric value", () => {
     expect(valueBreachState(enriched({ itemLastValue: undefined }))).toBe("unknown");
+  });
+
+  it("is 'unknown' when lastvalue is empty or whitespace-only (unpolled item)", () => {
+    expect(valueBreachState(enriched({ itemLastValue: "" }))).toBe("unknown");
   });
 });
