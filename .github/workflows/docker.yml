@@ -1,12 +1,11 @@
 name: Docker
 
-# Day-to-day (push to main): native linux/amd64 only — fast, no QEMU.
-# Release tags (v*): multi-arch linux/amd64 + linux/arm64.
-# Manual dispatch can force multi-arch via the multiarch input.
+# Runs only on release tags (v*): multi-arch linux/amd64 + linux/arm64.
+# Manual dispatch can force multi-arch via the multiarch input (otherwise
+# native linux/amd64 only — fast, no QEMU).
 
 on:
   push:
-    branches: [main]
     tags: ["v*"]
   workflow_dispatch:
     inputs:
