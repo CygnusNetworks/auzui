@@ -350,6 +350,7 @@ export const en = {
     },
     resourceLane: {
       counts: (n: number) => (n === 1 ? "1 entry" : `${n} entries`),
+      unused: "unused",
       empty: {
         images: "No images on this host.",
         volumes: "No volumes on this host.",

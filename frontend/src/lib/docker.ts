@@ -149,6 +149,8 @@ export interface DockerResourceDisplay {
   sub: string;
   /** Right-hand column: size for images, driver for volumes/networks. */
   right: string;
+  /** Containers referencing this row; empty means unused. */
+  usedBy: string[];
 }
 
 function str(value: unknown): string {
@@ -173,6 +175,7 @@ function networkSubnets(row: DockerResourceRow): string[] {
 }
 
 export function describeResourceRow(type: DockerResourceType, row: DockerResourceRow): DockerResourceDisplay {
+  const usedBy = Array.isArray(row.usedBy) ? row.usedBy.filter((n): n is string => typeof n === "string") : [];
   if (type === "images") {
     const id = shortDockerId(str(row.Id));
     const tags = (Array.isArray(row.RepoTags) ? row.RepoTags : []).filter(
@@ -187,6 +190,7 @@ export function describeResourceRow(type: DockerResourceType, row: DockerResourc
       // matter more than the id, so they win the line when there are any.
       sub: tags.length > 1 ? tags.slice(1).join(", ") : tags.length > 0 ? id : "",
       right: typeof row.Size === "number" ? formatBytes(row.Size) : "",
+      usedBy,
     };
   }
   if (type === "volumes") {
@@ -195,13 +199,17 @@ export function describeResourceRow(type: DockerResourceType, row: DockerResourc
       name: str(row.Name),
       sub: str(row.Mountpoint),
       right: str(row.Driver),
+      usedBy,
     };
   }
   return {
     key: str(row.Id) || str(row.Name),
     name: str(row.Name),
+    // `host` and `none` are built-in networks with no IPAM config at all, so
+    // this is legitimately empty for them rather than a missing field.
     sub: networkSubnets(row).join(", "),
     right: str(row.Driver),
+    usedBy,
   };
 }
 

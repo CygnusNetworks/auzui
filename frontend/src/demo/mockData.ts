@@ -1180,25 +1180,44 @@ export interface DemoDockerImageRow {
   RepoDigests: string[];
   Size: number;
   Created: string;
+  used_by: string[];
 }
 
 export const demoDockerImages: DemoDockerImageRow[] = (() => {
-  const seen = new Set<string>();
-  const rows: DemoDockerImageRow[] = [];
+  const byKey = new Map<string, DemoDockerImageRow>();
   for (const c of demoDockerContainers) {
     const key = `${c.host_id}:${c.image}:${c.tag}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
+    const existing = byKey.get(key);
+    if (existing) {
+      // Several containers can share one image — that is exactly what the
+      // used_by column shows, so they accumulate instead of being skipped.
+      existing.used_by.push(c.name);
+      continue;
+    }
     const entry = demoDockerUpdates.get(c.id);
-    rows.push({
+    byKey.set(key, {
       host_id: c.host_id,
       Id: c.image_id,
       RepoTags: [`${c.image}:${c.tag}`],
       RepoDigests: entry?.local_digest ? [`${c.image}@${entry.local_digest}`] : [],
       Size: 40_000_000 + (hexId(key).charCodeAt(0) % 200) * 1_000_000,
       Created: new Date(c.created * 1000).toISOString(),
+      used_by: [c.name],
     });
   }
+  const rows = [...byKey.values()];
+  rows.forEach((row) => row.used_by.sort());
+  // One dangling leftover per demo host would be noise; a single one on prod-a
+  // is enough to show what an unused, untagged image looks like.
+  rows.push({
+    host_id: "prod-a",
+    Id: fakeDigest("img:dangling:prod-a"),
+    RepoTags: [],
+    RepoDigests: [],
+    Size: 212_000_000,
+    Created: new Date(Date.parse("2026-05-02T09:14:00Z")).toISOString(),
+    used_by: [],
+  });
   return rows;
 })();
 
@@ -1207,13 +1226,29 @@ export interface DemoDockerVolumeRow {
   Name: string;
   Driver: string;
   Mountpoint: string;
+  /** Containers using this volume — the gateway derives it from each host's
+   * container Mounts; the demo states it directly. [] renders as "unused". */
+  used_by: string[];
+}
+
+function volumeRow(host_id: string, name: string, used_by: string[]): DemoDockerVolumeRow {
+  return {
+    host_id,
+    Name: name,
+    Driver: "local",
+    Mountpoint: `/var/lib/docker/volumes/${name}/_data`,
+    used_by,
+  };
 }
 
 export const demoDockerVolumes: DemoDockerVolumeRow[] = [
-  { host_id: "prod-a", Name: "prod-a_pgdata", Driver: "local", Mountpoint: "/var/lib/docker/volumes/prod-a_pgdata/_data" },
-  { host_id: "prod-a", Name: "webshop_nginx-cache", Driver: "local", Mountpoint: "/var/lib/docker/volumes/webshop_nginx-cache/_data" },
-  { host_id: "prod-b", Name: "prod-b_grafana-data", Driver: "local", Mountpoint: "/var/lib/docker/volumes/prod-b_grafana-data/_data" },
-  { host_id: "edge", Name: "shop_db-data", Driver: "local", Mountpoint: "/var/lib/docker/volumes/shop_db-data/_data" },
+  volumeRow("prod-a", "prod-a_pgdata", ["postgres-main"]),
+  volumeRow("prod-a", "webshop_nginx-cache", ["web-nginx"]),
+  // Left behind by a container that is long gone — the case the "unused" tag
+  // exists for, and the reason this view is worth having at all.
+  volumeRow("prod-a", "webshop_old-uploads", []),
+  volumeRow("prod-b", "prod-b_grafana-data", ["grafana"]),
+  volumeRow("edge", "shop_db-data", ["shop-db"]),
 ];
 
 export interface DemoDockerNetworkRow {
@@ -1223,19 +1258,70 @@ export interface DemoDockerNetworkRow {
   Driver: string;
   Scope: string;
   /** Same nesting docker-py's Network.attrs uses — the networks lane reads
-   * the subnet out of here (lib/docker.ts describeResourceRow). */
+   * the subnet out of here (lib/docker.ts describeResourceRow). The built-in
+   * `host` and `none` networks genuinely have an empty Config. */
   IPAM: { Driver: string; Config: { Subnet: string; Gateway: string }[] };
+  used_by: string[];
 }
 
-function demoIpam(subnet: string, gateway: string): DemoDockerNetworkRow["IPAM"] {
-  return { Driver: "default", Config: [{ Subnet: subnet, Gateway: gateway }] };
+function networkRow(
+  host_id: string,
+  name: string,
+  driver: string,
+  subnet: string,
+  used_by: string[],
+): DemoDockerNetworkRow {
+  const octet = subnet.split(".")[1] ?? "17";
+  return {
+    host_id,
+    Id: fakeDigest(`net:${host_id}:${name}`).slice(7, 19),
+    Name: name,
+    Driver: driver,
+    Scope: "local",
+    IPAM: {
+      Driver: "default",
+      Config: subnet ? [{ Subnet: subnet, Gateway: `172.${octet}.0.1` }] : [],
+    },
+    used_by,
+  };
+}
+
+/**
+ * Every Docker host ships three built-in networks — `bridge`, `host` and
+ * `none` — on top of whatever compose creates. They are listed here because
+ * the real view shows them too, and because `host`/`none` are the rows that
+ * exercise the no-subnet path.
+ */
+function builtinNetworks(host_id: string, bridgeUsers: string[]): DemoDockerNetworkRow[] {
+  return [
+    networkRow(host_id, "bridge", "bridge", "172.17.0.0/16", bridgeUsers),
+    networkRow(host_id, "host", "host", "", []),
+    networkRow(host_id, "none", "null", "", []),
+  ];
 }
 
 export const demoDockerNetworks: DemoDockerNetworkRow[] = [
-  { host_id: "prod-a", Id: fakeDigest("net:prod-a:bridge").slice(7, 19), Name: "bridge", Driver: "bridge", Scope: "local", IPAM: demoIpam("172.17.0.0/16", "172.17.0.1") },
-  { host_id: "prod-a", Id: fakeDigest("net:prod-a:webshop").slice(7, 19), Name: "webshop_default", Driver: "bridge", Scope: "local", IPAM: demoIpam("172.18.0.0/16", "172.18.0.1") },
-  { host_id: "prod-b", Id: fakeDigest("net:prod-b:bridge").slice(7, 19), Name: "bridge", Driver: "bridge", Scope: "local", IPAM: demoIpam("172.17.0.0/16", "172.17.0.1") },
-  { host_id: "edge", Id: fakeDigest("net:edge:shop").slice(7, 19), Name: "shop_default", Driver: "bridge", Scope: "local", IPAM: demoIpam("172.19.0.0/16", "172.19.0.1") },
+  ...builtinNetworks("prod-a", ["old-cache"]),
+  networkRow("prod-a", "webshop_default", "bridge", "172.18.0.0/16", [
+    "batch-worker",
+    "postgres-main",
+    "web-app",
+    "web-nginx",
+    "web-redis",
+  ]),
+  ...builtinNetworks("prod-b", []),
+  networkRow("prod-b", "monitoring_default", "bridge", "172.20.0.0/16", [
+    "grafana",
+    "prometheus",
+    "traefik",
+  ]),
+  ...builtinNetworks("edge", []),
+  networkRow("edge", "shop_default", "bridge", "172.19.0.0/16", [
+    "shop-api",
+    "shop-cache",
+    "shop-db",
+    "shop-worker",
+  ]),
 ];
 
 // -- host summaries (GET /api/docker/hosts) ---------------------------------

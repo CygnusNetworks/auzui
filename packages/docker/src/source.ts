@@ -139,6 +139,11 @@ export interface DockerSearchParams {
  * does not otherwise remap their keys (CONTRACT 2.2 search()). */
 export interface DockerResourceRow {
   hostId: string;
+  /** Names of the containers referencing this image/volume/network on that
+   * host; empty means nothing uses it (a prune candidate). Derived by the
+   * gateway from the host's container list, so it is [] rather than unknown
+   * when that listing failed. */
+  usedBy: string[];
   [key: string]: unknown;
 }
 

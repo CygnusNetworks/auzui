@@ -119,7 +119,7 @@ so existing tests importing it from there keep working.
 | `GET` | `/api/docker/containers/{host_id}/{cid}/stats` | One-shot normalized resource stats |
 | `POST` | `/api/docker/stats` | Bulk stats for `{targets: {host_id: [container_id, ...]}}`, used by the list view |
 | `GET` | `/api/docker/containers/{host_id}/{cid}/logs` | `since`/`until`/`tail` + cursor, for both a historical range and a live poll |
-| `GET` | `/api/docker/search` | Free-text search across containers/images/volumes/networks |
+| `GET` | `/api/docker/search` | Containers/images/volumes/networks, optionally filtered by `q`; image/volume/network rows carry a `used_by` list of the containers referencing them (`[]` = unused) |
 | `GET` | `/api/docker/updates` | Registry digest comparison per container |
 | `GET` | `/api/docker/permissions` | `{ can_act: bool }` for the caller — see the auth caveat below |
 | `POST` | `/api/docker/containers/{host_id}/{cid}/action` | `start`/`stop`/`restart`/`pull_recreate` — write, admin-gated |

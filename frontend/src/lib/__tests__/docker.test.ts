@@ -268,6 +268,7 @@ describe("describeResourceRow", () => {
   it("names a tagged image by its first tag and shows its short id underneath", () => {
     const row = {
       hostId: "prod-a",
+      usedBy: ["web-nginx"],
       Id: "sha256:aabbccddeeff00112233",
       RepoTags: ["nginx:1.27"],
       Size: 187 * 1024 * 1024,
@@ -277,12 +278,14 @@ describe("describeResourceRow", () => {
       name: "nginx:1.27",
       sub: "aabbccddeeff",
       right: "187.0 MiB",
+      usedBy: ["web-nginx"],
     });
   });
 
   it("lists an image's remaining tags instead of its id when it has several", () => {
     const row = {
       hostId: "prod-a",
+      usedBy: [],
       Id: "sha256:aabbccddeeff00112233",
       RepoTags: ["nginx:1.27", "nginx:latest"],
       Size: 1024,
@@ -293,6 +296,7 @@ describe("describeResourceRow", () => {
   it("falls back to the short id for a dangling image, dropping the <none> pseudo-tag", () => {
     const row = {
       hostId: "prod-a",
+      usedBy: [],
       Id: "sha256:aabbccddeeff00112233",
       RepoTags: ["<none>:<none>"],
       Size: 0,
@@ -305,6 +309,7 @@ describe("describeResourceRow", () => {
   it("describes a volume by name, mountpoint and driver", () => {
     const row = {
       hostId: "prod-a",
+      usedBy: ["postgres-main"],
       Name: "pgdata",
       Driver: "local",
       Mountpoint: "/var/lib/docker/volumes/pgdata/_data",
@@ -314,12 +319,14 @@ describe("describeResourceRow", () => {
       name: "pgdata",
       sub: "/var/lib/docker/volumes/pgdata/_data",
       right: "local",
+      usedBy: ["postgres-main"],
     });
   });
 
   it("describes a network by name, IPAM subnets and driver", () => {
     const row = {
       hostId: "prod-a",
+      usedBy: ["web-nginx", "web-app"],
       Id: "netid",
       Name: "bridge",
       Driver: "bridge",
@@ -330,20 +337,29 @@ describe("describeResourceRow", () => {
       name: "bridge",
       sub: "172.17.0.0/16",
       right: "bridge",
+      usedBy: ["web-nginx", "web-app"],
     });
   });
 
   it("survives a network without IPAM config rather than throwing", () => {
-    const row = { hostId: "prod-a", Id: "netid", Name: "host", Driver: "host" };
+    // `host` and `none` are exactly this shape on every real Docker host.
+    const row = { hostId: "prod-a", usedBy: [], Id: "netid", Name: "host", Driver: "host" };
     expect(describeResourceRow("networks", row).sub).toBe("");
+  });
+
+  it("treats a row without usedBy as unused rather than crashing on it", () => {
+    // The field is always sent by the current gateway, but a row that predates
+    // it (or a failed usage lookup) must still render.
+    const row = { hostId: "prod-a" } as unknown as Parameters<typeof describeResourceRow>[1];
+    expect(describeResourceRow("volumes", row).usedBy).toEqual([]);
   });
 });
 
 describe("describeResourceRows", () => {
   it("sorts by display name, since the gateway's per-host fan-out order is arbitrary", () => {
     const rows = [
-      { hostId: "prod-a", Name: "web", Driver: "local", Mountpoint: "/m/web" },
-      { hostId: "prod-a", Name: "api", Driver: "local", Mountpoint: "/m/api" },
+      { hostId: "prod-a", usedBy: [], Name: "web", Driver: "local", Mountpoint: "/m/web" },
+      { hostId: "prod-a", usedBy: [], Name: "api", Driver: "local", Mountpoint: "/m/api" },
     ];
     expect(describeResourceRows("volumes", rows).map((r) => r.name)).toEqual(["api", "web"]);
   });

@@ -330,7 +330,9 @@ def create_docker_router(
         containers_result = await docker_service.containers(hosts, True)
         containers = containers_result["containers"]
         host_ids = sorted({c["host_id"] for c in containers}) or hosts
-        images_result = await docker_service.search("", ["images"], host_ids)
+        # with_usage=False: this path wants the raw image rows, and the extra
+        # container listing behind `used_by` would duplicate the one above.
+        images_result = await docker_service.search("", ["images"], host_ids, with_usage=False)
         images_by_host: dict[str, list[dict]] = {}
         for row in images_result["results"].get("images", []):
             images_by_host.setdefault(row["host_id"], []).append(row)

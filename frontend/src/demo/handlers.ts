@@ -544,7 +544,12 @@ async function handleDockerRoute(request: Request, url: URL): Promise<Response |
       );
     }
     if (wantedTypes.includes("images")) {
-      results.images = demoDockerImages.filter((i) => wantedHosts.includes(i.host_id) && i.RepoTags.some(matches));
+      // `!q ||` rather than relying on matches(): a dangling image has no tags
+      // at all, and [].some() would drop it even from an unfiltered listing —
+      // the gateway's _searchable_text returns "" and keeps it.
+      results.images = demoDockerImages.filter(
+        (i) => wantedHosts.includes(i.host_id) && (!q || i.RepoTags.some(matches)),
+      );
     }
     if (wantedTypes.includes("volumes")) {
       results.volumes = demoDockerVolumes.filter((v) => wantedHosts.includes(v.host_id) && matches(v.Name));

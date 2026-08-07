@@ -41,6 +41,9 @@ DOCKER_HOSTS = json.dumps(
 
 
 def _container_row(cid: str, name: str, *, image="nginx", tag="1.25", image_id="sha256:abc"):
+    """A /containers/json (list-shape) row — see list_containers() on why the
+    inspect shape would be wrong here. `Mounts`/`NetworkSettings` are part of
+    that shape and are what search() derives its `used_by` annotation from."""
     return {
         "Id": cid,
         "Names": [f"/{name}"],
@@ -51,6 +54,13 @@ def _container_row(cid: str, name: str, *, image="nginx", tag="1.25", image_id="
         "Created": 1700000000,
         "Ports": [{"PrivatePort": 80, "PublicPort": 8080, "Type": "tcp", "IP": "0.0.0.0"}],
         "Labels": {},
+        "Mounts": [
+            {"Type": "volume", "Name": "pgdata", "Destination": "/var/lib/postgresql/data"},
+            # A bind mount has no Name and no `docker volume ls` row — it must
+            # not turn into a phantom volume entry.
+            {"Type": "bind", "Source": "/etc/localtime", "Destination": "/etc/localtime"},
+        ],
+        "NetworkSettings": {"Networks": {"bridge": {"IPAddress": "172.17.0.2"}}},
     }
 
 
@@ -96,6 +106,8 @@ class FakeDockerHostClient:
 
     containers_by_host: dict[str, list[dict]] = {}
     images_by_host: dict[str, list[dict]] = {}
+    volumes_by_host: dict[str, list[dict]] = {}
+    networks_by_host: dict[str, list[dict]] = {}
     stats_by_host: dict[str, dict[str, dict]] = {}
     logs_by_host: dict[str, dict[str, list[tuple[int, str, str]]]] = {}
     fail_hosts: set[str] = set()
@@ -168,11 +180,11 @@ class FakeDockerHostClient:
 
     def list_volumes(self) -> list[dict]:
         self._maybe_fail()
-        return []
+        return FakeDockerHostClient.volumes_by_host.get(self.host.id, [])
 
     def list_networks(self) -> list[dict]:
         self._maybe_fail()
-        return []
+        return FakeDockerHostClient.networks_by_host.get(self.host.id, [])
 
     def container_action(self, cid: str, action: str) -> None:
         self._maybe_fail()
@@ -205,13 +217,29 @@ def _reset_fake_state():
         EDGE: [EDGE_CONTAINER],
     }
     FakeDockerHostClient.images_by_host = {
+        # sha256:abc is DB1_CONTAINER's ImageID (in use); sha256:dangling is
+        # not referenced by any container on this host, so search() must report
+        # it with an empty used_by.
         DB_1: [
             {
                 "Id": "sha256:abc",
                 "RepoDigests": ["nginx@sha256:" + "1" * 64],
                 "RepoTags": ["nginx:1.25"],
-            }
+            },
+            {"Id": "sha256:dangling", "RepoDigests": [], "RepoTags": []},
         ],
+        PROD_A: [],
+        BROKEN: [],
+        EDGE: [],
+    }
+    FakeDockerHostClient.volumes_by_host = {
+        DB_1: [{"Name": "pgdata", "Driver": "local"}, {"Name": "orphan", "Driver": "local"}],
+        PROD_A: [],
+        BROKEN: [],
+        EDGE: [],
+    }
+    FakeDockerHostClient.networks_by_host = {
+        DB_1: [{"Id": "n1", "Name": "bridge", "Driver": "bridge"}, {"Id": "n2", "Name": "none", "Driver": "null"}],
         PROD_A: [],
         BROKEN: [],
         EDGE: [],
@@ -361,6 +389,63 @@ async def test_search_finds_container_by_name_substring(docker_client):
     body = res.json()
     names = [c["name"] for c in body["results"]["containers"]]
     assert names == ["web1"]
+
+
+@respx.mock
+async def test_search_annotates_images_with_the_containers_using_them(docker_client):
+    mock_zabbix_session_ok()
+    res = await docker_client.get(
+        "/api/docker/search", params={"types": ["images"], "hosts": [DB_1]}, headers=AUTH
+    )
+    assert res.status_code == 200
+    used_by = {i["Id"]: i["used_by"] for i in res.json()["results"]["images"]}
+    assert used_by == {"sha256:abc": ["web1"], "sha256:dangling": []}
+
+
+@respx.mock
+async def test_search_annotates_volumes_and_ignores_bind_mounts(docker_client):
+    mock_zabbix_session_ok()
+    res = await docker_client.get(
+        "/api/docker/search", params={"types": ["volumes"], "hosts": [DB_1]}, headers=AUTH
+    )
+    assert res.status_code == 200
+    rows = res.json()["results"]["volumes"]
+    assert {v["Name"]: v["used_by"] for v in rows} == {"pgdata": ["web1"], "orphan": []}
+
+
+@respx.mock
+async def test_search_annotates_networks_including_the_unused_builtins(docker_client):
+    mock_zabbix_session_ok()
+    res = await docker_client.get(
+        "/api/docker/search", params={"types": ["networks"], "hosts": [DB_1]}, headers=AUTH
+    )
+    assert res.status_code == 200
+    rows = res.json()["results"]["networks"]
+    # Docker's built-in `none` network exists on every host and is normally
+    # attached to nothing — it must list as unused, not be dropped.
+    assert {n["Name"]: n["used_by"] for n in rows} == {"bridge": ["web1"], "none": []}
+
+
+@respx.mock
+async def test_search_still_returns_rows_when_the_usage_lookup_fails(docker_client, monkeypatch):
+    """A failing container listing costs the annotation, not the payload."""
+    mock_zabbix_session_ok()
+
+    def boom(self, all: bool = True):  # noqa: A002
+        raise RuntimeError("container listing unavailable")
+
+    monkeypatch.setattr(FakeDockerHostClient, "list_containers", boom)
+    res = await docker_client.get(
+        "/api/docker/search", params={"types": ["volumes"], "hosts": [DB_1]}, headers=AUTH
+    )
+    assert res.status_code == 200
+    body = res.json()
+    assert {v["Name"]: v["used_by"] for v in body["results"]["volumes"]} == {
+        "pgdata": [],
+        "orphan": [],
+    }
+    # The volume listing itself succeeded, so this is not a partial result.
+    assert body["errors"] == []
 
 
 @respx.mock

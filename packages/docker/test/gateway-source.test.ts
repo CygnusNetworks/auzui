@@ -238,7 +238,7 @@ describe("GatewayDockerSource", () => {
       return jsonResponse({
         results: {
           containers: [],
-          images: [{ host_id: "prod-a", RepoTags: ["nginx:1.27"] }],
+          images: [{ host_id: "prod-a", used_by: ["web-nginx"], RepoTags: ["nginx:1.27"] }],
           volumes: [],
           networks: [],
         },
@@ -248,7 +248,22 @@ describe("GatewayDockerSource", () => {
 
     const src = new GatewayDockerSource({ getToken: () => "tok", fetchFn });
     const result = await src.search({ q: "nginx", types: ["containers", "images"], hostIds: ["prod-a"] });
-    expect(result.results.images).toEqual([{ hostId: "prod-a", RepoTags: ["nginx:1.27"] }]);
+    expect(result.results.images).toEqual([
+      { hostId: "prod-a", usedBy: ["web-nginx"], RepoTags: ["nginx:1.27"] },
+    ]);
+  });
+
+  it("search defaults a row without used_by to an empty usedBy", async () => {
+    const fetchFn = vi.fn(async () =>
+      jsonResponse({
+        results: { containers: [], images: [], volumes: [{ host_id: "prod-a", Name: "pgdata" }], networks: [] },
+        errors: [],
+      }),
+    ) as unknown as typeof fetch;
+
+    const src = new GatewayDockerSource({ getToken: () => "tok", fetchFn });
+    const result = await src.search({ q: "", types: ["volumes"] });
+    expect(result.results.volumes).toEqual([{ hostId: "prod-a", usedBy: [], Name: "pgdata" }]);
   });
 
   it("maps updates snake_case -> camelCase, nested by host and container", async () => {

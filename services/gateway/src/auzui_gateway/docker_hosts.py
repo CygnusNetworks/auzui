@@ -654,6 +654,45 @@ def _searchable_text(kind: str, row: dict) -> str:
     return ""
 
 
+# The resource kinds search() annotates with the containers using them. Docker
+# has no "list images/volumes/networks with their users" call -- `docker system
+# df -v` is the closest and is both expensive and shaped differently -- so the
+# link is derived from the container list, which carries all three references.
+_USAGE_KINDS = ("images", "volumes", "networks")
+
+
+def _usage_by_kind(containers: list[dict]) -> dict[str, dict[str, list[str]]]:
+    """One host's container list -> {kind: {resource key: [container name]}}.
+
+    Reads the /containers/json (list) shape, which carries `ImageID`, `Mounts`
+    and `NetworkSettings.Networks` -- see list_containers() on why that shape
+    and not the inspect one.
+    """
+    usage: dict[str, dict[str, list[str]]] = {kind: {} for kind in _USAGE_KINDS}
+    for raw in containers:
+        names = [n.lstrip("/") for n in (raw.get("Names") or [])]
+        name = names[0] if names else str(raw.get("Id", ""))[:12]
+        # Matched on the image ID, not the tag the container reports: the same
+        # image can be known under several tags, and a container started before
+        # a re-tag still reports the old one.
+        image_id = str(raw.get("ImageID") or "")
+        if image_id:
+            usage["images"].setdefault(image_id, []).append(name)
+        for mount in raw.get("Mounts") or []:
+            # Bind mounts carry no Name and have no row in `docker volume ls`,
+            # so only named volumes can be linked back to a listed volume.
+            if mount.get("Type") == "volume" and mount.get("Name"):
+                usage["volumes"].setdefault(str(mount["Name"]), []).append(name)
+        for network in (raw.get("NetworkSettings") or {}).get("Networks") or {}:
+            usage["networks"].setdefault(str(network), []).append(name)
+    return usage
+
+
+def _usage_key(kind: str, row: dict) -> str:
+    """The value a resource row is looked up by in _usage_by_kind()'s maps."""
+    return str(row.get("Id", "")) if kind == "images" else str(row.get("Name", ""))
+
+
 class DockerService:
     """Fans requests out across configured Docker hosts, running blocking
     docker-py calls in threads under per-host + global semaphores,
@@ -875,7 +914,21 @@ class DockerService:
 
     # -- search -----------------------------------------------------------
 
-    async def search(self, q: str, types: list[str], host_ids: list[str] | None) -> dict:
+    async def search(
+        self,
+        q: str,
+        types: list[str],
+        host_ids: list[str] | None,
+        with_usage: bool = True,
+    ) -> dict:
+        """Rows of each requested kind across the selected hosts.
+
+        Image/volume/network rows carry a `used_by` list naming the containers
+        that reference them ([] = unused, i.e. a prune candidate). That costs
+        one container listing per host, so callers that only need the raw rows
+        (the update checker, which lists containers itself anyway) pass
+        `with_usage=False`.
+        """
         hosts = self._select(host_ids)
         wanted = types or ["containers", "images", "volumes", "networks"]
         method_for = {
@@ -885,15 +938,37 @@ class DockerService:
             "networks": "list_networks",
         }
         combos = [(hid, kind) for hid in hosts for kind in wanted if kind in method_for]
+        usage_hosts = (
+            list(hosts) if with_usage and any(k in _USAGE_KINDS for k in wanted) else []
+        )
 
         async def fetch(host_id: str, kind: str) -> list[dict]:
             if kind == "containers":
                 return await self._call(host_id, method_for[kind], all=True)
             return await self._call(host_id, method_for[kind])
 
-        outcomes = await asyncio.gather(
-            *(fetch(hid, kind) for hid, kind in combos), return_exceptions=True
+        # Nested gathers so the usage listings run alongside the resource
+        # listings rather than adding a second round trip after them.
+        outcomes, usage_outcomes = await asyncio.gather(
+            asyncio.gather(*(fetch(hid, kind) for hid, kind in combos), return_exceptions=True),
+            asyncio.gather(
+                *(self._call(hid, "list_containers", all=True) for hid in usage_hosts),
+                return_exceptions=True,
+            ),
         )
+
+        usage: dict[str, dict[str, dict[str, list[str]]]] = {}
+        for host_id, outcome in zip(usage_hosts, usage_outcomes, strict=True):
+            if isinstance(outcome, BaseException):
+                # Usage is an annotation, not the payload: a host whose
+                # container list fails still returns its images/volumes/
+                # networks, just without "used by" information. It is not
+                # appended to `errors` -- the rows themselves are fine, and the
+                # resource listing for the same host reports the failure if it
+                # is genuinely unreachable.
+                logger.warning("usage lookup on docker host %s failed: %r", host_id, outcome)
+                continue
+            usage[host_id] = _usage_by_kind(outcome)
 
         needle = q.lower().strip()
         results: dict[str, list[dict]] = {kind: [] for kind in wanted}
@@ -910,8 +985,16 @@ class DockerService:
             ][:SEARCH_CAP]
             if kind == "containers":
                 results[kind].extend(_normalize_container(host_id, row) for row in matched)
-            else:
-                results[kind].extend({**row, "host_id": host_id} for row in matched)
+                continue
+            by_key = usage.get(host_id, {}).get(kind, {})
+            results[kind].extend(
+                {
+                    **row,
+                    "host_id": host_id,
+                    "used_by": sorted(set(by_key.get(_usage_key(kind, row), []))),
+                }
+                for row in matched
+            )
         return {"results": results, "errors": errors}
 
     # -- actions --------------------------------------------------------

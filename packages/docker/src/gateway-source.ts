@@ -119,6 +119,7 @@ interface GatewayLogsResult {
 
 interface GatewayResourceRow {
   host_id: string;
+  used_by?: string[];
   [key: string]: unknown;
 }
 
@@ -220,8 +221,8 @@ function toStatsMap(raw: Record<string, Record<string, GatewayStats>>): DockerSt
 }
 
 function toResourceRow(r: GatewayResourceRow): DockerResourceRow {
-  const { host_id, ...rest } = r;
-  return { hostId: host_id, ...rest };
+  const { host_id, used_by, ...rest } = r;
+  return { hostId: host_id, usedBy: used_by ?? [], ...rest };
 }
 
 function toUpdateInfo(u: GatewayUpdateInfo): DockerUpdateInfo {

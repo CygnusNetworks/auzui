@@ -667,9 +667,44 @@ function ContainerRow({
 }
 
 /** Images/volumes/networks have no per-row actions and no CPU/mem, so the
- * grid is the container one minus those columns: glyph, name block, and the
- * type's one headline number (size for images, driver otherwise). */
-const RESOURCE_ROW_GRID_COLS = "16px minmax(210px,1fr) 90px";
+ * grid is the container one minus those columns: glyph, name block, who uses
+ * it, and the type's one headline number (size for images, driver otherwise). */
+const RESOURCE_ROW_GRID_COLS = "16px minmax(180px,1fr) minmax(150px,0.9fr) 90px";
+
+/** How many container names a row lists before collapsing the rest into a
+ * "+N" — enough to recognise a stack, short enough not to wrap the row. */
+const USED_BY_VISIBLE = 3;
+
+/**
+ * Who references this image/volume/network. Empty is the interesting case:
+ * it marks the row as prunable, so it gets a visible tag rather than a blank
+ * cell that reads as "unknown".
+ */
+function UsedBy({ names }: { names: string[] }) {
+  const t = useT();
+  if (names.length === 0) {
+    return (
+      <span className="justify-self-start rounded-full border border-line px-1.5 font-mono text-[9.5px] leading-[15px] text-ink-muted">
+        {t("docker.resourceLane.unused")}
+      </span>
+    );
+  }
+  const shown = names.slice(0, USED_BY_VISIBLE);
+  const rest = names.length - shown.length;
+  return (
+    <span className="flex min-w-0 flex-wrap items-center gap-1" title={names.join(", ")}>
+      {shown.map((name) => (
+        <span
+          key={name}
+          className="max-w-[140px] truncate rounded border border-line bg-surface-2 px-1.5 font-mono text-[10px] leading-[16px] text-ink-2"
+        >
+          {name}
+        </span>
+      ))}
+      {rest > 0 && <span className="font-mono text-[10px] text-ink-muted">+{rest}</span>}
+    </span>
+  );
+}
 
 /** Glyph in the resource row's leading column — the lane is homogeneous, so
  * this is an affordance for "which view am I in", not a per-row status. */
@@ -710,6 +745,7 @@ function ResourceLane({
                   <span className="mt-0.5 block truncate font-mono text-[10.5px] text-ink-muted">{item.sub}</span>
                 )}
               </span>
+              <UsedBy names={item.usedBy} />
               <span className="text-right font-mono text-[11px] tabular-nums text-ink-2">{item.right || "—"}</span>
             </div>
           </div>
