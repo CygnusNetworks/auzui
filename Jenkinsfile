@@ -42,6 +42,11 @@ pipeline {
                         AUZUI_VERSION: describe,
                         AUZUI_GIT_SHA: sha,
                         AUZUI_BUILD_TIME: buildTime,
+                        // Jenkins-only: sidesteps the QEMU/gcc SIGSEGV when
+                        // compiling python-gssapi for arm64, see Dockerfile.
+                        // GitHub Actions never sets this build-arg, so its
+                        // build is unaffected.
+                        GSSAPI_ARM64_WHEEL_URL: 'https://pypi.cygnusnet.de/packages/gssapi-1.11.1-cp311-abi3-linux_aarch64.whl',
                     ])
                 }
             }

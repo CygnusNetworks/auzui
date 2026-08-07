@@ -32,6 +32,7 @@ RUN pnpm --filter auzui-frontend build
 # ---------- Python deps ----------
 # uv workspace: root pyproject.toml (package = false) + services/gateway member.
 FROM python:${PYTHON_VERSION}-slim AS python-deps
+ARG TARGETARCH
 WORKDIR /app
 ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \
@@ -47,7 +48,27 @@ COPY pyproject.toml uv.lock ./
 COPY services/gateway/pyproject.toml services/gateway/README.md services/gateway/
 COPY services/gateway/src services/gateway/src
 
-RUN uv sync --package auzui-gateway --no-dev --frozen --extra kerberos --extra docker --extra yaml
+# Internal-only escape hatch: python-gssapi has no upstream Linux wheel and
+# compiles its C extension from source. Under QEMU-emulated arm64 (our
+# internal Jenkins build, see Jenkinsfile) this reproducibly crashes gcc's
+# cc1 with SIGSEGV after ~35min. GSSAPI_ARM64_WHEEL_URL, when set, points at
+# a wheel built natively on real arm64 hardware and hosted on our internal
+# pypi.cygnusnet.de, sidestepping the compile entirely. Left empty (the
+# default, and what GitHub Actions always uses), this is a no-op and `uv
+# sync` behaves exactly as before.
+ARG GSSAPI_ARM64_WHEEL_URL=""
+RUN if [ -n "$GSSAPI_ARM64_WHEEL_URL" ] && [ "$TARGETARCH" = "arm64" ]; then \
+        locked_version=$(grep -A1 '^name = "gssapi"' uv.lock | grep '^version' | sed -E 's/version = "(.*)"/\1/'); \
+        wheel_version=$(echo "$GSSAPI_ARM64_WHEEL_URL" | sed -E 's#.*/gssapi-([0-9.]+)-.*#\1#'); \
+        if [ "$locked_version" != "$wheel_version" ]; then \
+            echo "ERROR: GSSAPI_ARM64_WHEEL_URL points at gssapi $wheel_version but uv.lock pins $locked_version -- rebuild the wheel on access1.cygnusnet.de (see Jenkinsfile) and update GSSAPI_ARM64_WHEEL_URL there" >&2; \
+            exit 1; \
+        fi; \
+        uv sync --package auzui-gateway --no-dev --frozen --extra kerberos --extra docker --extra yaml --no-install-package gssapi \
+        && uv pip install "$GSSAPI_ARM64_WHEEL_URL"; \
+    else \
+        uv sync --package auzui-gateway --no-dev --frozen --extra kerberos --extra docker --extra yaml; \
+    fi
 
 # ---------- Runtime ----------
 FROM python:${PYTHON_VERSION}-slim AS runtime
