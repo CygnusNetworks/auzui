@@ -307,7 +307,13 @@ export const en = {
     loading: "Loading…",
     notConfigured: "Docker is not configured.",
     empty: "No containers found.",
-    searchPlaceholder: "Filter container, image, or stack…",
+    noHosts: "No Docker hosts selected.",
+    searchPlaceholder: {
+      containers: "Filter container, image, or stack…",
+      images: "Filter images…",
+      volumes: "Filter volumes…",
+      networks: "Filter networks…",
+    },
     groupByHost: "by host",
     groupByStack: "by stack",
     updateBadge: "Update available",
@@ -341,6 +347,14 @@ export const en = {
       engine: (version: string) => `Engine ${version}`,
       unreachable: "Host unreachable",
       ungrouped: "ungrouped",
+    },
+    resourceLane: {
+      counts: (n: number) => (n === 1 ? "1 entry" : `${n} entries`),
+      empty: {
+        images: "No images on this host.",
+        volumes: "No volumes on this host.",
+        networks: "No networks on this host.",
+      },
     },
     actions: {
       start: "Start",

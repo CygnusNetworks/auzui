@@ -5,11 +5,15 @@ import {
   UNGROUPED_STACK,
   containerBadgeTone,
   containerStateWeight,
+  describeResourceRow,
+  describeResourceRows,
+  formatBytes,
   formatImageTag,
   formatPort,
   formatPorts,
   groupContainersByStack,
   mergeLogLines,
+  shortDockerId,
   sortContainersByState,
 } from "../docker";
 
@@ -233,5 +237,114 @@ describe("mergeLogLines", () => {
     // The oldest line (ts=0) was trimmed; the newest is present.
     expect(merged[0]).toEqual(line(1, "msg-1"));
     expect(merged.at(-1)).toEqual(line(DOCKER_LOG_BUFFER_CAP, "new"));
+  });
+});
+
+describe("formatBytes", () => {
+  it("renders whole bytes without decimals and larger units with one", () => {
+    expect(formatBytes(512)).toBe("512 B");
+    expect(formatBytes(1536)).toBe("1.5 KiB");
+    expect(formatBytes(1024 ** 3)).toBe("1.0 GiB");
+  });
+
+  it("clamps non-positive and non-finite sizes to 0 B", () => {
+    expect(formatBytes(0)).toBe("0 B");
+    expect(formatBytes(-1)).toBe("0 B");
+    expect(formatBytes(Number.NaN)).toBe("0 B");
+  });
+});
+
+describe("shortDockerId", () => {
+  it("strips the sha256: prefix and keeps 12 hex chars", () => {
+    expect(shortDockerId("sha256:abcdef0123456789aaaa")).toBe("abcdef012345");
+  });
+
+  it("leaves a short or unprefixed id alone", () => {
+    expect(shortDockerId("abc")).toBe("abc");
+  });
+});
+
+describe("describeResourceRow", () => {
+  it("names a tagged image by its first tag and shows its short id underneath", () => {
+    const row = {
+      hostId: "prod-a",
+      Id: "sha256:aabbccddeeff00112233",
+      RepoTags: ["nginx:1.27"],
+      Size: 187 * 1024 * 1024,
+    };
+    expect(describeResourceRow("images", row)).toEqual({
+      key: "sha256:aabbccddeeff00112233",
+      name: "nginx:1.27",
+      sub: "aabbccddeeff",
+      right: "187.0 MiB",
+    });
+  });
+
+  it("lists an image's remaining tags instead of its id when it has several", () => {
+    const row = {
+      hostId: "prod-a",
+      Id: "sha256:aabbccddeeff00112233",
+      RepoTags: ["nginx:1.27", "nginx:latest"],
+      Size: 1024,
+    };
+    expect(describeResourceRow("images", row).sub).toBe("nginx:latest");
+  });
+
+  it("falls back to the short id for a dangling image, dropping the <none> pseudo-tag", () => {
+    const row = {
+      hostId: "prod-a",
+      Id: "sha256:aabbccddeeff00112233",
+      RepoTags: ["<none>:<none>"],
+      Size: 0,
+    };
+    const display = describeResourceRow("images", row);
+    expect(display.name).toBe("aabbccddeeff");
+    expect(display.sub).toBe("");
+  });
+
+  it("describes a volume by name, mountpoint and driver", () => {
+    const row = {
+      hostId: "prod-a",
+      Name: "pgdata",
+      Driver: "local",
+      Mountpoint: "/var/lib/docker/volumes/pgdata/_data",
+    };
+    expect(describeResourceRow("volumes", row)).toEqual({
+      key: "pgdata",
+      name: "pgdata",
+      sub: "/var/lib/docker/volumes/pgdata/_data",
+      right: "local",
+    });
+  });
+
+  it("describes a network by name, IPAM subnets and driver", () => {
+    const row = {
+      hostId: "prod-a",
+      Id: "netid",
+      Name: "bridge",
+      Driver: "bridge",
+      IPAM: { Driver: "default", Config: [{ Subnet: "172.17.0.0/16", Gateway: "172.17.0.1" }] },
+    };
+    expect(describeResourceRow("networks", row)).toEqual({
+      key: "netid",
+      name: "bridge",
+      sub: "172.17.0.0/16",
+      right: "bridge",
+    });
+  });
+
+  it("survives a network without IPAM config rather than throwing", () => {
+    const row = { hostId: "prod-a", Id: "netid", Name: "host", Driver: "host" };
+    expect(describeResourceRow("networks", row).sub).toBe("");
+  });
+});
+
+describe("describeResourceRows", () => {
+  it("sorts by display name, since the gateway's per-host fan-out order is arbitrary", () => {
+    const rows = [
+      { hostId: "prod-a", Name: "web", Driver: "local", Mountpoint: "/m/web" },
+      { hostId: "prod-a", Name: "api", Driver: "local", Mountpoint: "/m/api" },
+    ];
+    expect(describeResourceRows("volumes", rows).map((r) => r.name)).toEqual(["api", "web"]);
   });
 });

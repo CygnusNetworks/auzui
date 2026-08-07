@@ -1,15 +1,26 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { useNavigate, useSearch } from "@tanstack/react-router";
-import type { DockerContainer, DockerSearchType, DockerUpdateInfo, DockerUpdatesMap } from "@auzui/docker";
+import type {
+  DockerContainer,
+  DockerHostSummary,
+  DockerResourceRow,
+  DockerSearchType,
+  DockerUpdateInfo,
+  DockerUpdatesMap,
+} from "@auzui/docker";
 import {
   containerBadgeTone,
+  describeResourceRows,
+  formatBytes,
   formatPorts,
   groupContainersByStack,
   sortContainersByState,
   UNGROUPED_STACK,
+  type DockerResourceType,
 } from "../../lib/docker";
 import { useDockerEnabled, useDockerHosts, useDockerPermissions, useDockerSource } from "../../lib/use-docker";
 import { useT } from "../../lib/i18n";
+import { Spinner } from "../../components/Spinner";
 import { ActionButtons } from "./ActionButtons";
 import { ContainerDetailPanel, DOT_TONE_CLASS } from "./ContainerDetailPanel";
 import { StackPanel } from "./StackPanel";
@@ -155,12 +166,24 @@ function DockerBrowser() {
   const bulkStatsQuery = useDockerBulkStats(source, bulkStatsTargets);
   const statsMap = bulkStatsQuery.data?.stats ?? {};
 
+  // undefined in the container view; the active image/volume/network type
+  // otherwise. Drives which lane the list below renders.
+  const resourceType: DockerResourceType | undefined =
+    searchType === "containers" ? undefined : searchType;
+
   const crossTypeSearch = useDockerSearch(
     source,
     query,
-    searchType === "containers" ? [] : [searchType as DockerSearchType],
+    resourceType ? [resourceType as DockerSearchType] : [],
     hostIds,
   );
+  const resourceRows = resourceType ? (crossTypeSearch.data?.results[resourceType] ?? []) : [];
+
+  // Loading state and fan-out errors both come from whichever query feeds the
+  // active view — showing the container query's while browsing images would
+  // report the wrong thing.
+  const laneLoading = resourceType ? crossTypeSearch.isLoading : containersQuery.isLoading;
+  const laneErrors = resourceType ? (crossTypeSearch.data?.errors ?? []) : containerErrors;
 
   const selectedContainer = useMemo(() => {
     if (selection?.kind !== "container") return undefined;
@@ -188,9 +211,9 @@ function DockerBrowser() {
 
   const visibleHosts = hostIds.length > 0 ? hosts.filter((h) => hostIds.includes(h.id)) : hosts;
 
-  /** Fan-out error for one host, if the last container query failed for it — feeds its header dot. */
+  /** Fan-out error for one host in the active view — feeds its header dot. */
   function errorFor(hostId: string): string | undefined {
-    return containerErrors.find((e) => e.hostId === hostId)?.message;
+    return laneErrors.find((e) => e.hostId === hostId)?.message;
   }
   /**
    * Why actions are blocked on this host, or undefined when they aren't.
@@ -209,7 +232,13 @@ function DockerBrowser() {
         <span className="text-[13px] text-ink-2">{t("docker.subtitle")}</span>
       </div>
 
-      <div className="grid grid-cols-[1fr_350px] items-start gap-3.5 max-[1100px]:grid-cols-1">
+      {/* Only containers have a detail panel; without it the resource lanes
+          take the full width instead of sitting next to an inert card. */}
+      <div
+        className={`grid items-start gap-3.5 max-[1100px]:grid-cols-1 ${
+          resourceType ? "grid-cols-1" : "grid-cols-[1fr_350px]"
+        }`}
+      >
         {/* Toolbar card, then one card per host: the page background between
             the cards is what separates the servers from one another. */}
         <div className="flex min-w-0 flex-col gap-2.5">
@@ -234,53 +263,64 @@ function DockerBrowser() {
                 type="text"
                 value={query}
                 onChange={(e) => patchSearch({ q: e.target.value || undefined })}
-                placeholder={t("docker.searchPlaceholder")}
+                placeholder={t(`docker.searchPlaceholder.${searchType}`)}
                 className="min-w-[200px] flex-1 rounded-md border border-line bg-surface-2 px-2.5 py-1.5 text-[12.5px] text-ink max-[700px]:w-full"
               />
-              <div className="flex overflow-hidden rounded-md border border-line">
-                <button
-                  type="button"
-                  onClick={() => patchSearch({ group: undefined })}
-                  aria-pressed={group === "host"}
-                  className={`px-2.5 py-1 font-mono text-[10.5px] ${
-                    group === "host" ? "bg-accent-soft text-accent" : "text-ink-muted hover:bg-surface-2"
-                  }`}
-                >
-                  {t("docker.groupByHost")}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => patchSearch({ group: "stack" })}
-                  aria-pressed={group === "stack"}
-                  className={`px-2.5 py-1 font-mono text-[10.5px] ${
-                    group === "stack" ? "bg-accent-soft text-accent" : "text-ink-muted hover:bg-surface-2"
-                  }`}
-                >
-                  {t("docker.groupByStack")}
-                </button>
-              </div>
+              {/* Stack grouping is a compose-project property, which only
+                  containers have — the toggle would be inert on the others. */}
+              {!resourceType && (
+                <div className="flex overflow-hidden rounded-md border border-line">
+                  <button
+                    type="button"
+                    onClick={() => patchSearch({ group: undefined })}
+                    aria-pressed={group === "host"}
+                    className={`px-2.5 py-1 font-mono text-[10.5px] ${
+                      group === "host" ? "bg-accent-soft text-accent" : "text-ink-muted hover:bg-surface-2"
+                    }`}
+                  >
+                    {t("docker.groupByHost")}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => patchSearch({ group: "stack" })}
+                    aria-pressed={group === "stack"}
+                    className={`px-2.5 py-1 font-mono text-[10.5px] ${
+                      group === "stack" ? "bg-accent-soft text-accent" : "text-ink-muted hover:bg-surface-2"
+                    }`}
+                  >
+                    {t("docker.groupByStack")}
+                  </button>
+                </div>
+              )}
             </div>
 
-            {searchType === "containers" && (
+            {/* State chips are container-only, but the host filter applies to
+                every view — so the row itself stays as long as either half
+                has something to show. */}
+            {(!resourceType || hosts.length > 1) && (
               <div className="flex flex-wrap items-center gap-1.5 border-b border-line-soft px-3.5 py-2">
-                {STATE_CHIPS.map((chip) => {
-                  const on = stateChips.has(chip);
-                  return (
-                    <button
-                      key={chip}
-                      type="button"
-                      onClick={() => toggleChip(chip)}
-                      aria-pressed={on}
-                      className={`rounded-full border px-2.5 py-1 font-mono text-[10.5px] ${
-                        on ? "border-accent/50 bg-accent-soft font-semibold text-accent" : "border-line text-ink-2"
-                      }`}
-                    >
-                      {t(`docker.stateChip.${chip}`)}
-                    </button>
-                  );
-                })}
+                {!resourceType &&
+                  STATE_CHIPS.map((chip) => {
+                    const on = stateChips.has(chip);
+                    return (
+                      <button
+                        key={chip}
+                        type="button"
+                        onClick={() => toggleChip(chip)}
+                        aria-pressed={on}
+                        className={`rounded-full border px-2.5 py-1 font-mono text-[10.5px] ${
+                          on ? "border-accent/50 bg-accent-soft font-semibold text-accent" : "border-line text-ink-2"
+                        }`}
+                      >
+                        {t(`docker.stateChip.${chip}`)}
+                      </button>
+                    );
+                  })}
                 {hosts.length > 1 && (
-                  <span className="ml-auto flex flex-wrap items-center gap-1">
+                  // Pushed right only when state chips share the row; on their
+                  // own the host chips start at the left edge like every other
+                  // filter row on the page.
+                  <span className={`flex flex-wrap items-center gap-1 ${resourceType ? "" : "ml-auto"}`}>
                     {hosts.map((h) => {
                       const on = hostIds.length === 0 || hostIds.includes(h.id);
                       return (
@@ -302,29 +342,31 @@ function DockerBrowser() {
               </div>
             )}
 
-            {containerErrors.length > 0 && (
+            {laneErrors.length > 0 && (
               <div className="bg-sev-warn/10 px-3.5 py-1.5 font-mono text-[10.5px] text-sev-warn">
-                {t("docker.partialErrors", containerErrors.length)}
+                {t("docker.partialErrors", laneErrors.length)}
               </div>
             )}
           </div>
 
-          {searchType !== "containers" ? (
-            <div className="rounded-lg border border-line bg-surface">
-              <CrossTypeResults
-                type={searchType}
-                isLoading={crossTypeSearch.isLoading}
-                results={crossTypeSearch.data}
-              />
-            </div>
-          ) : containersQuery.isLoading ? (
-            <div className="rounded-lg border border-line bg-surface p-6 text-sm text-ink-2">
-              {t("docker.loading")}
+          {laneLoading ? (
+            <div className="flex items-center justify-center rounded-lg border border-line bg-surface p-10">
+              <Spinner />
             </div>
           ) : visibleHosts.length === 0 ? (
             <div className="flex flex-col items-center gap-1.5 rounded-lg border border-line bg-surface px-6 py-16 text-center">
-              <div className="text-sm font-semibold">{t("docker.empty")}</div>
+              <div className="text-sm font-semibold">{t("docker.noHosts")}</div>
             </div>
+          ) : resourceType ? (
+            visibleHosts.map((host) => (
+              <ResourceLane
+                key={host.id}
+                host={host}
+                type={resourceType}
+                rows={resourceRows.filter((row) => row.hostId === host.id)}
+                error={errorFor(host.id)}
+              />
+            ))
           ) : (
             visibleHosts.map((host) => (
               <HostLane
@@ -346,7 +388,7 @@ function DockerBrowser() {
           )}
         </div>
 
-        <aside className="rounded-lg border border-line bg-surface">
+        <aside className={`rounded-lg border border-line bg-surface ${resourceType ? "hidden" : ""}`}>
           {selection?.kind === "stack" ? (
             <StackPanel
               source={source}
@@ -380,44 +422,28 @@ function DockerBrowser() {
 
 /**
  * One Docker host as its own card: a `surface-2` header bar (reachability dot,
- * label, flags, engine version, counts) above that host's containers. Each
- * host being a separate card — instead of all hosts sharing one — is what
- * separates the servers visually; the hairline rule this replaces did that
- * job badly once a host had more than a handful of containers.
+ * label, flags, engine version, a lane-specific summary) above a collapsible
+ * body. Each host being a separate card — instead of all hosts sharing one —
+ * is what separates the servers visually; the hairline rule this replaces did
+ * that job badly once a host had more than a handful of rows. Shared by the
+ * container lane and the image/volume/network lanes so every Docker view
+ * reads the same.
  */
-function HostLane({
+function HostCard({
   host,
-  containers,
-  group,
-  updates,
-  stats,
-  canAct,
   error,
-  source,
-  selectedId,
-  selectedProject,
-  onSelectContainer,
-  onSelectStack,
+  summary,
+  children,
 }: {
-  host: { id: string; label: string; readonly: boolean; compose: boolean; engineVersion: string; containersRunning: number; containersStopped: number };
-  containers: DockerContainer[];
-  group: "host" | "stack";
-  updates: DockerUpdatesMap;
-  stats: Record<string, { cpuPct: number; memUsed: number; memLimit: number }>;
-  canAct: boolean;
+  host: DockerHostSummary;
   /** Fan-out error for this host, if any — turns the header dot amber. */
   error: string | undefined;
-  source: ReturnType<typeof useDockerSource>;
-  selectedId: string | undefined;
-  selectedProject: string | undefined;
-  onSelectContainer: (c: DockerContainer) => void;
-  onSelectStack: (project: string) => void;
+  /** Right-aligned header text; each lane counts something different. */
+  summary: string;
+  children: ReactNode;
 }) {
   const t = useT();
   const [open, setOpen] = useState(true);
-  const sorted = sortContainersByState(containers);
-  // Readonly is a per-host fact, so it is resolved once here rather than per row.
-  const readonlyReason = host.readonly ? t("docker.actions.readonlyHost") : undefined;
 
   return (
     <div className="rounded-lg border border-line bg-surface">
@@ -457,16 +483,87 @@ function HostLane({
             {t("docker.hostLane.engine", host.engineVersion)}
           </span>
         )}
-        <span className="ml-auto font-mono text-[10.5px] text-ink-2">
-          {t("docker.hostLane.counts", host.containersRunning, host.containersStopped)}
-        </span>
+        <span className="ml-auto font-mono text-[10.5px] text-ink-2">{summary}</span>
       </div>
 
-      {open && (
-        <div className="px-3 pb-1.5 pt-0.5">
-          {group === "host" ? (
+      {open && <div className="px-3 pb-1.5 pt-0.5">{children}</div>}
+    </div>
+  );
+}
+
+/** The container lane: one host's containers, flat or grouped by compose stack. */
+function HostLane({
+  host,
+  containers,
+  group,
+  updates,
+  stats,
+  canAct,
+  error,
+  source,
+  selectedId,
+  selectedProject,
+  onSelectContainer,
+  onSelectStack,
+}: {
+  host: DockerHostSummary;
+  containers: DockerContainer[];
+  group: "host" | "stack";
+  updates: DockerUpdatesMap;
+  stats: Record<string, { cpuPct: number; memUsed: number; memLimit: number }>;
+  canAct: boolean;
+  error: string | undefined;
+  source: ReturnType<typeof useDockerSource>;
+  selectedId: string | undefined;
+  selectedProject: string | undefined;
+  onSelectContainer: (c: DockerContainer) => void;
+  onSelectStack: (project: string) => void;
+}) {
+  const t = useT();
+  const sorted = sortContainersByState(containers);
+  // Readonly is a per-host fact, so it is resolved once here rather than per row.
+  const readonlyReason = host.readonly ? t("docker.actions.readonlyHost") : undefined;
+
+  return (
+    <HostCard
+      host={host}
+      error={error}
+      summary={t("docker.hostLane.counts", host.containersRunning, host.containersStopped)}
+    >
+      {group === "host" ? (
+        <div className="overflow-x-auto">
+          {sorted.map((c) => (
+            <ContainerRow
+              key={c.id}
+              container={c}
+              updateInfo={updateFor(updates, c.hostId, c.id)}
+              stats={stats[c.id]}
+              selected={selectedId === c.id}
+              canAct={canAct}
+              readonlyReason={readonlyReason}
+              source={source}
+              onSelect={() => onSelectContainer(c)}
+            />
+          ))}
+          {sorted.length === 0 && (
+            <div className="py-4 text-center text-[12px] text-ink-muted">{t("docker.hostLane.empty")}</div>
+          )}
+        </div>
+      ) : (
+        groupContainersByStack(sorted).map((stackGroup) => (
+          <div key={stackGroup.project} className="mb-2">
+            <button
+              type="button"
+              onClick={() => stackGroup.project !== UNGROUPED_STACK && onSelectStack(stackGroup.project)}
+              disabled={stackGroup.project === UNGROUPED_STACK}
+              className={`mb-0.5 mt-1.5 flex items-center gap-1.5 font-mono text-[10.5px] uppercase tracking-wider ${
+                selectedProject === stackGroup.project ? "text-accent" : "text-ink-muted"
+              } ${stackGroup.project === UNGROUPED_STACK ? "" : "hover:text-ink"}`}
+            >
+              {stackGroup.project === UNGROUPED_STACK ? t("docker.hostLane.ungrouped") : `📦 ${stackGroup.project}`}
+            </button>
             <div className="overflow-x-auto">
-              {sorted.map((c) => (
+              {stackGroup.containers.map((c) => (
                 <ContainerRow
                   key={c.id}
                   container={c}
@@ -479,46 +576,11 @@ function HostLane({
                   onSelect={() => onSelectContainer(c)}
                 />
               ))}
-              {sorted.length === 0 && (
-                <div className="py-4 text-center text-[12px] text-ink-muted">{t("docker.hostLane.empty")}</div>
-              )}
             </div>
-          ) : (
-            groupContainersByStack(sorted).map((stackGroup) => (
-              <div key={stackGroup.project} className="mb-2">
-                <button
-                  type="button"
-                  onClick={() => stackGroup.project !== UNGROUPED_STACK && onSelectStack(stackGroup.project)}
-                  disabled={stackGroup.project === UNGROUPED_STACK}
-                  className={`mb-0.5 mt-1.5 flex items-center gap-1.5 font-mono text-[10.5px] uppercase tracking-wider ${
-                    selectedProject === stackGroup.project ? "text-accent" : "text-ink-muted"
-                  } ${stackGroup.project === UNGROUPED_STACK ? "" : "hover:text-ink"}`}
-                >
-                  {stackGroup.project === UNGROUPED_STACK
-                    ? t("docker.hostLane.ungrouped")
-                    : `📦 ${stackGroup.project}`}
-                </button>
-                <div className="overflow-x-auto">
-                  {stackGroup.containers.map((c) => (
-                    <ContainerRow
-                      key={c.id}
-                      container={c}
-                      updateInfo={updateFor(updates, c.hostId, c.id)}
-                      stats={stats[c.id]}
-                      selected={selectedId === c.id}
-                      canAct={canAct}
-                      readonlyReason={readonlyReason}
-                      source={source}
-                      onSelect={() => onSelectContainer(c)}
-                    />
-                  ))}
-                </div>
-              </div>
-            ))
-          )}
-        </div>
+          </div>
+        ))
       )}
-    </div>
+    </HostCard>
   );
 }
 
@@ -589,7 +651,7 @@ function ContainerRow({
           {stats ? `${stats.cpuPct.toFixed(1)}%` : "—"}
         </span>
         <span className="text-right font-mono text-[11px] tabular-nums text-ink-2">
-          {stats ? formatMem(stats.memUsed) : "—"}
+          {stats ? formatBytes(stats.memUsed) : "—"}
         </span>
       </div>
       <ActionButtons
@@ -604,46 +666,60 @@ function ContainerRow({
   );
 }
 
-function formatMem(bytes: number): string {
-  if (bytes <= 0) return "0 B";
-  const units = ["B", "KiB", "MiB", "GiB", "TiB"];
-  let value = bytes;
-  let i = 0;
-  while (value >= 1024 && i < units.length - 1) {
-    value /= 1024;
-    i++;
-  }
-  return `${value.toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
-}
+/** Images/volumes/networks have no per-row actions and no CPU/mem, so the
+ * grid is the container one minus those columns: glyph, name block, and the
+ * type's one headline number (size for images, driver otherwise). */
+const RESOURCE_ROW_GRID_COLS = "16px minmax(210px,1fr) 90px";
 
-function CrossTypeResults({
+/** Glyph in the resource row's leading column — the lane is homogeneous, so
+ * this is an affordance for "which view am I in", not a per-row status. */
+const RESOURCE_GLYPH: Record<DockerResourceType, string> = {
+  images: "▣",
+  volumes: "▤",
+  networks: "◇",
+};
+
+/** One host's images/volumes/networks, in the same card as its containers. */
+function ResourceLane({
+  host,
   type,
-  isLoading,
-  results,
+  rows,
+  error,
 }: {
-  type: Exclude<DockerSearchTypeParam, "containers">;
-  isLoading: boolean;
-  results: ReturnType<typeof useDockerSearch>["data"];
+  host: DockerHostSummary;
+  type: DockerResourceType;
+  rows: DockerResourceRow[];
+  error: string | undefined;
 }) {
   const t = useT();
-  if (isLoading) return <div className="p-6 text-sm text-ink-2">{t("docker.loading")}</div>;
-  const rows = results?.results[type] ?? [];
-  if (rows.length === 0) return <div className="p-6 text-sm text-ink-2">{t("docker.empty")}</div>;
+  const items = useMemo(() => describeResourceRows(type, rows), [type, rows]);
+
   return (
-    <div className="flex flex-col">
-      {rows.map((row, i) => {
-        const label =
-          (row as { RepoTags?: string[] }).RepoTags?.[0] ??
-          (row as { Name?: string }).Name ??
-          (row as { Id?: string }).Id ??
-          `#${i}`;
-        return (
-          <div key={`${row.hostId}-${i}`} className="border-b border-line-soft px-3.5 py-2 text-[12px] last:border-b-0">
-            <div className="truncate font-semibold text-ink">{String(label)}</div>
-            <div className="font-mono text-[10.5px] text-ink-muted">{row.hostId}</div>
+    <HostCard host={host} error={error} summary={t("docker.resourceLane.counts", items.length)}>
+      <div className="overflow-x-auto">
+        {items.map((item, i) => (
+          <div
+            key={`${item.key}-${i}`}
+            className="flex items-center gap-2.5 border-b border-line-soft py-1.5 pl-1 text-xs last:border-b-0"
+          >
+            <div className="grid flex-1 items-center gap-2.5" style={{ gridTemplateColumns: RESOURCE_ROW_GRID_COLS }}>
+              <i className="font-mono text-[10.5px] not-italic text-ink-muted">{RESOURCE_GLYPH[type]}</i>
+              <span className="min-w-0">
+                <span className="block truncate font-semibold text-ink">{item.name}</span>
+                {item.sub && (
+                  <span className="mt-0.5 block truncate font-mono text-[10.5px] text-ink-muted">{item.sub}</span>
+                )}
+              </span>
+              <span className="text-right font-mono text-[11px] tabular-nums text-ink-2">{item.right || "—"}</span>
+            </div>
           </div>
-        );
-      })}
-    </div>
+        ))}
+        {items.length === 0 && (
+          <div className="py-4 text-center text-[12px] text-ink-muted">
+            {t(`docker.resourceLane.empty.${type}`)}
+          </div>
+        )}
+      </div>
+    </HostCard>
   );
 }

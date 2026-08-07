@@ -1222,13 +1222,20 @@ export interface DemoDockerNetworkRow {
   Name: string;
   Driver: string;
   Scope: string;
+  /** Same nesting docker-py's Network.attrs uses — the networks lane reads
+   * the subnet out of here (lib/docker.ts describeResourceRow). */
+  IPAM: { Driver: string; Config: { Subnet: string; Gateway: string }[] };
+}
+
+function demoIpam(subnet: string, gateway: string): DemoDockerNetworkRow["IPAM"] {
+  return { Driver: "default", Config: [{ Subnet: subnet, Gateway: gateway }] };
 }
 
 export const demoDockerNetworks: DemoDockerNetworkRow[] = [
-  { host_id: "prod-a", Id: fakeDigest("net:prod-a:bridge").slice(7, 19), Name: "bridge", Driver: "bridge", Scope: "local" },
-  { host_id: "prod-a", Id: fakeDigest("net:prod-a:webshop").slice(7, 19), Name: "webshop_default", Driver: "bridge", Scope: "local" },
-  { host_id: "prod-b", Id: fakeDigest("net:prod-b:bridge").slice(7, 19), Name: "bridge", Driver: "bridge", Scope: "local" },
-  { host_id: "edge", Id: fakeDigest("net:edge:shop").slice(7, 19), Name: "shop_default", Driver: "bridge", Scope: "local" },
+  { host_id: "prod-a", Id: fakeDigest("net:prod-a:bridge").slice(7, 19), Name: "bridge", Driver: "bridge", Scope: "local", IPAM: demoIpam("172.17.0.0/16", "172.17.0.1") },
+  { host_id: "prod-a", Id: fakeDigest("net:prod-a:webshop").slice(7, 19), Name: "webshop_default", Driver: "bridge", Scope: "local", IPAM: demoIpam("172.18.0.0/16", "172.18.0.1") },
+  { host_id: "prod-b", Id: fakeDigest("net:prod-b:bridge").slice(7, 19), Name: "bridge", Driver: "bridge", Scope: "local", IPAM: demoIpam("172.17.0.0/16", "172.17.0.1") },
+  { host_id: "edge", Id: fakeDigest("net:edge:shop").slice(7, 19), Name: "shop_default", Driver: "bridge", Scope: "local", IPAM: demoIpam("172.19.0.0/16", "172.19.0.1") },
 ];
 
 // -- host summaries (GET /api/docker/hosts) ---------------------------------

@@ -42,8 +42,10 @@ GLOBAL_CONCURRENCY = 16
 
 # Cap applied per (host, resource type) in search() so a wildcard query
 # against a host with thousands of containers/images can't blow up the
-# response.
-SEARCH_CAP = 50
+# response. Sized so that a real host's full inventory fits: the UI's
+# image/volume/network views list everything by default (an empty q is a
+# browse, not a search), and a cap they hit would silently hide rows.
+SEARCH_CAP = 500
 
 # Guards the brief window in which _build_ssh_docker_client monkeypatches
 # docker.api.client.SSHHTTPAdapter; see that method for why the patch (not

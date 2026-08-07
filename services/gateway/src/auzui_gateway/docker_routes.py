@@ -323,8 +323,8 @@ def create_docker_router(
     # RepoDigest and hands (image_ref, local_digest) pairs to UpdateChecker.
     # DockerService itself has no public "list images with digests" call, so
     # this reuses its already-public search() (types=["images"]) rather than
-    # reaching into its internals — the SEARCH_CAP (50/host) it applies is an
-    # accepted limitation for very large image inventories.
+    # reaching into its internals — the SEARCH_CAP it applies is an accepted
+    # limitation for very large image inventories.
 
     async def _updates_for(hosts: list[str] | None) -> dict[str, object]:
         containers_result = await docker_service.containers(hosts, True)
