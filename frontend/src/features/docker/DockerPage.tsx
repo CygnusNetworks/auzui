@@ -10,12 +10,16 @@ import type {
 } from "@auzui/docker";
 import {
   containerBadgeTone,
+  describeResourceRow,
   describeResourceRows,
   formatBytes,
   formatPorts,
   groupContainersByStack,
+  resourceAge,
+  resourceLaneSummary,
   sortContainersByState,
   UNGROUPED_STACK,
+  type DockerResourceDisplay,
   type DockerResourceType,
 } from "../../lib/docker";
 import { useDockerEnabled, useDockerHosts, useDockerPermissions, useDockerSource } from "../../lib/use-docker";
@@ -23,7 +27,9 @@ import { useT } from "../../lib/i18n";
 import { Spinner } from "../../components/Spinner";
 import { ActionButtons } from "./ActionButtons";
 import { ContainerDetailPanel, DOT_TONE_CLASS } from "./ContainerDetailPanel";
+import { ResourceDetailPanel } from "./ResourceDetailPanel";
 import { StackPanel } from "./StackPanel";
+import { UnusedBadge } from "./UnusedBadge";
 import {
   useDockerBulkStats,
   useDockerContainers,
@@ -34,6 +40,7 @@ import {
   decodeSelection,
   DOCKER_SEARCH_TYPES,
   encodeContainerSelection,
+  encodeResourceSelection,
   encodeStackSelection,
   hostsToSearchValue,
   parseHostsParam,
@@ -190,6 +197,17 @@ function DockerBrowser() {
     return allContainers.find((c) => c.hostId === selection.hostId && c.id === selection.cid);
   }, [allContainers, selection]);
 
+  // Resolved against the rows currently in hand, so a `sel` pointing at a row
+  // that was pruned (or belongs to another type) simply shows the empty panel
+  // rather than stale data.
+  const selectedResource = useMemo(() => {
+    if (!resourceType || selection?.kind !== "resource" || selection.type !== resourceType) return undefined;
+    const row = resourceRows.find(
+      (r) => r.hostId === selection.hostId && describeResourceRow(resourceType, r).key === selection.key,
+    );
+    return row ? describeResourceRow(resourceType, row) : undefined;
+  }, [resourceType, resourceRows, selection]);
+
   function selectContainer(c: DockerContainer) {
     patchSearch({ sel: encodeContainerSelection(c.hostId, c.id), dtab: "info" });
   }
@@ -232,13 +250,7 @@ function DockerBrowser() {
         <span className="text-[13px] text-ink-2">{t("docker.subtitle")}</span>
       </div>
 
-      {/* Only containers have a detail panel; without it the resource lanes
-          take the full width instead of sitting next to an inert card. */}
-      <div
-        className={`grid items-start gap-3.5 max-[1100px]:grid-cols-1 ${
-          resourceType ? "grid-cols-1" : "grid-cols-[1fr_350px]"
-        }`}
-      >
+      <div className="grid grid-cols-[1fr_350px] items-start gap-3.5 max-[1100px]:grid-cols-1">
         {/* Toolbar card, then one card per host: the page background between
             the cards is what separates the servers from one another. */}
         <div className="flex min-w-0 flex-col gap-2.5">
@@ -365,6 +377,12 @@ function DockerBrowser() {
                 type={resourceType}
                 rows={resourceRows.filter((row) => row.hostId === host.id)}
                 error={errorFor(host.id)}
+                selectedKey={
+                  selection?.kind === "resource" && selection.hostId === host.id ? selection.key : undefined
+                }
+                onSelect={(item) =>
+                  patchSearch({ sel: encodeResourceSelection(host.id, resourceType, item.key) })
+                }
               />
             ))
           ) : (
@@ -388,8 +406,14 @@ function DockerBrowser() {
           )}
         </div>
 
-        <aside className={`rounded-lg border border-line bg-surface ${resourceType ? "hidden" : ""}`}>
-          {selection?.kind === "stack" ? (
+        <aside className="rounded-lg border border-line bg-surface">
+          {resourceType ? (
+            <ResourceDetailPanel
+              type={resourceType}
+              display={selectedResource}
+              hostLabel={hosts.find((h) => h.id === selection?.hostId)?.label ?? ""}
+            />
+          ) : selection?.kind === "stack" ? (
             <StackPanel
               source={source}
               hostId={selection.hostId}
@@ -438,8 +462,8 @@ function HostCard({
   host: DockerHostSummary;
   /** Fan-out error for this host, if any — turns the header dot amber. */
   error: string | undefined;
-  /** Right-aligned header text; each lane counts something different. */
-  summary: string;
+  /** Right-aligned header content; each lane counts something different. */
+  summary: ReactNode;
   children: ReactNode;
 }) {
   const t = useT();
@@ -666,29 +690,19 @@ function ContainerRow({
   );
 }
 
-/** Images/volumes/networks have no per-row actions and no CPU/mem, so the
- * grid is the container one minus those columns: glyph, name block, who uses
- * it, and the type's one headline number (size for images, driver otherwise). */
-const RESOURCE_ROW_GRID_COLS = "16px minmax(180px,1fr) minmax(150px,0.9fr) 90px";
+/** Slimmer than the container row on purpose: the detail panel carries the
+ * long tail, so the lane only needs identity, age, who uses it, and the
+ * type's one headline number (size for images, driver otherwise). */
+const RESOURCE_ROW_GRID_COLS = "16px minmax(170px,1fr) minmax(130px,0.8fr) 82px";
 
 /** How many container names a row lists before collapsing the rest into a
  * "+N" — enough to recognise a stack, short enough not to wrap the row. */
-const USED_BY_VISIBLE = 3;
+const USED_BY_VISIBLE = 2;
 
-/**
- * Who references this image/volume/network. Empty is the interesting case:
- * it marks the row as prunable, so it gets a visible tag rather than a blank
- * cell that reads as "unknown".
- */
+/** Who references this image/volume/network; the empty case is the one worth
+ * spotting, so it gets a badge rather than a blank cell. */
 function UsedBy({ names }: { names: string[] }) {
-  const t = useT();
-  if (names.length === 0) {
-    return (
-      <span className="justify-self-start rounded-full border border-line px-1.5 font-mono text-[9.5px] leading-[15px] text-ink-muted">
-        {t("docker.resourceLane.unused")}
-      </span>
-    );
-  }
+  if (names.length === 0) return <UnusedBadge className="justify-self-start" />;
   const shown = names.slice(0, USED_BY_VISIBLE);
   const rest = names.length - shown.length;
   return (
@@ -696,7 +710,7 @@ function UsedBy({ names }: { names: string[] }) {
       {shown.map((name) => (
         <span
           key={name}
-          className="max-w-[140px] truncate rounded border border-line bg-surface-2 px-1.5 font-mono text-[10px] leading-[16px] text-ink-2"
+          className="max-w-[120px] truncate rounded border border-line bg-surface-2 px-1.5 font-mono text-[10px] leading-[16px] text-ink-2"
         >
           {name}
         </span>
@@ -714,36 +728,76 @@ const RESOURCE_GLYPH: Record<DockerResourceType, string> = {
   networks: "◇",
 };
 
+/** "vor 8 Monaten" under a resource's name — how long it has been lying
+ * around is what turns "unbenutzt" into a decision. */
+function ResourceAgeLabel({ createdAt }: { createdAt: number | undefined }) {
+  const t = useT();
+  if (createdAt === undefined) return <>—</>;
+  const age = resourceAge(createdAt);
+  return <>{t(`docker.age.${age.unit}`, age.value)}</>;
+}
+
+/** "7 Einträge · 1 unbenutzt · 202 MiB freigebbar" — the reclaimable figure
+ * only for images, the one type whose size Docker reports without a
+ * /system/df sweep. */
+function ResourceLaneSummary({ type, rows }: { type: DockerResourceType; rows: DockerResourceRow[] }) {
+  const t = useT();
+  const summary = useMemo(() => resourceLaneSummary(type, rows), [type, rows]);
+  return (
+    <>
+      {t("docker.resourceLane.counts", summary.total)}
+      {summary.unused > 0 && (
+        <span className="text-sev-avg">
+          {" · "}
+          {t("docker.resourceLane.unusedCount", summary.unused)}
+          {type === "images" && summary.reclaimable > 0 && (
+            <> · {t("docker.resourceLane.reclaimable", formatBytes(summary.reclaimable))}</>
+          )}
+        </span>
+      )}
+    </>
+  );
+}
+
 /** One host's images/volumes/networks, in the same card as its containers. */
 function ResourceLane({
   host,
   type,
   rows,
   error,
+  selectedKey,
+  onSelect,
 }: {
   host: DockerHostSummary;
   type: DockerResourceType;
   rows: DockerResourceRow[];
   error: string | undefined;
+  selectedKey: string | undefined;
+  onSelect: (item: DockerResourceDisplay) => void;
 }) {
   const t = useT();
   const items = useMemo(() => describeResourceRows(type, rows), [type, rows]);
 
   return (
-    <HostCard host={host} error={error} summary={t("docker.resourceLane.counts", items.length)}>
+    <HostCard host={host} error={error} summary={<ResourceLaneSummary type={type} rows={rows} />}>
       <div className="overflow-x-auto">
         {items.map((item, i) => (
           <div
             key={`${item.key}-${i}`}
-            className="flex items-center gap-2.5 border-b border-line-soft py-1.5 pl-1 text-xs last:border-b-0"
+            role="row"
+            onClick={() => onSelect(item)}
+            aria-selected={selectedKey === item.key}
+            className={`flex cursor-pointer items-center gap-2.5 border-b border-line-soft py-1.5 pl-1 text-xs last:border-b-0 hover:bg-surface-2 ${
+              selectedKey === item.key ? "bg-accent-soft" : ""
+            }`}
           >
             <div className="grid flex-1 items-center gap-2.5" style={{ gridTemplateColumns: RESOURCE_ROW_GRID_COLS }}>
               <i className="font-mono text-[10.5px] not-italic text-ink-muted">{RESOURCE_GLYPH[type]}</i>
               <span className="min-w-0">
                 <span className="block truncate font-semibold text-ink">{item.name}</span>
-                {item.sub && (
-                  <span className="mt-0.5 block truncate font-mono text-[10.5px] text-ink-muted">{item.sub}</span>
-                )}
+                <span className="mt-0.5 block truncate font-mono text-[10.5px] text-ink-muted">
+                  <ResourceAgeLabel createdAt={item.createdAt} />
+                </span>
               </span>
               <UsedBy names={item.usedBy} />
               <span className="text-right font-mono text-[11px] tabular-nums text-ink-2">{item.right || "—"}</span>

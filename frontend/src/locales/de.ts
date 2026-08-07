@@ -325,6 +325,20 @@ export const de = {
       volumes: "Volumes",
       networks: "Netzwerke",
     },
+    searchTypeSingular: {
+      images: "Image",
+      volumes: "Volume",
+      networks: "Netzwerk",
+    },
+    age: {
+      // Nimmt das (ungenutzte) Alter entgegen, damit alle vier Varianten
+      // dieselbe Signatur haben — t(`docker.age.${unit}`, n) verschneidet
+      // sonst die Parametertypen zu `never`.
+      today: (_n: number) => "heute",
+      days: (n: number) => (n === 1 ? "vor 1 Tag" : `vor ${n} Tagen`),
+      months: (n: number) => (n === 1 ? "vor 1 Monat" : `vor ${n} Monaten`),
+      years: (n: number) => (n === 1 ? "vor 1 Jahr" : `vor ${n} Jahren`),
+    },
     stateChip: {
       running: "running",
       restarting: "restarting",
@@ -351,10 +365,38 @@ export const de = {
     resourceLane: {
       counts: (n: number) => (n === 1 ? "1 Eintrag" : `${n} Einträge`),
       unused: "unbenutzt",
+      unusedCount: (n: number) => `${n} unbenutzt`,
+      reclaimable: (size: string) => `${size} freigebbar`,
       empty: {
         images: "Keine Images auf diesem Host.",
         volumes: "Keine Volumes auf diesem Host.",
         networks: "Keine Netzwerke auf diesem Host.",
+      },
+    },
+    resourceDetail: {
+      noneSelected: "Keine Ressource ausgewählt.",
+      properties: "Eigenschaften",
+      usedBy: "Benutzt von",
+      labels: "Labels",
+      created: "Erstellt",
+      size: "Größe",
+      shared: "davon geteilt",
+      tags: "Tags",
+      untagged: "ohne Tag",
+      id: "ID",
+      digest: "Digest",
+      driver: "Treiber",
+      scope: "Bereich",
+      mountpoint: "Mountpoint",
+      subnet: "Subnetz",
+      noSubnet: "keines",
+      gateway: "Gateway",
+      flags: "Flags",
+      noFlags: "keine",
+      unusedImageHint: (size: string) => `Kein Container benutzt dieses Image. Löschen gibt ${size} frei.`,
+      unusedHint: {
+        volumes: "Kein Container bindet dieses Volume ein. Die Daten darin bleiben, bis es gelöscht wird.",
+        networks: "Kein Container hängt an diesem Netzwerk.",
       },
     },
     actions: {

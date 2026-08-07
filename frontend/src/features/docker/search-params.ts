@@ -111,7 +111,16 @@ export interface DockerStackSelection {
   project: string;
 }
 
-export type DockerSelection = DockerContainerSelection | DockerStackSelection;
+/** An image/volume/network selected for the detail panel. */
+export interface DockerResourceSelection {
+  kind: "resource";
+  hostId: string;
+  type: Exclude<DockerSearchTypeParam, "containers">;
+  /** The row's identity: image `Id`, volume/network `Name`. */
+  key: string;
+}
+
+export type DockerSelection = DockerContainerSelection | DockerStackSelection | DockerResourceSelection;
 
 /** Encodes a container selection into the `sel` URL param value. */
 export function encodeContainerSelection(hostId: string, cid: string): string {
@@ -123,11 +132,22 @@ export function encodeStackSelection(hostId: string, project: string): string {
   return `s:${hostId}:${project}`;
 }
 
+/** Encodes an image/volume/network selection into the `sel` URL param value. */
+export function encodeResourceSelection(
+  hostId: string,
+  type: Exclude<DockerSearchTypeParam, "containers">,
+  key: string,
+): string {
+  return `r:${hostId}:${type}:${key}`;
+}
+
 /**
  * Decodes the `sel` URL param. `hostId`/`cid`/`project` may themselves
  * contain ":" (Docker ids don't, but compose project names theoretically
  * could), so only the first two separators are significant — everything
- * after the second colon is the id/project.
+ * after the second colon is the id/project. The `r:` form takes one more
+ * separator for the resource type, after which the remainder is the key —
+ * which for an image is a colon-bearing `sha256:…` id.
  */
 export function decodeSelection(sel: string | undefined): DockerSelection | undefined {
   if (!sel) return undefined;
@@ -142,5 +162,13 @@ export function decodeSelection(sel: string | undefined): DockerSelection | unde
   if (!hostId || !tail) return undefined;
   if (kind === "c") return { kind: "container", hostId, cid: tail };
   if (kind === "s") return { kind: "stack", hostId, project: tail };
+  if (kind === "r") {
+    const third = tail.indexOf(":");
+    if (third < 0) return undefined;
+    const type = tail.slice(0, third);
+    const key = tail.slice(third + 1);
+    if (!key || !["images", "volumes", "networks"].includes(type)) return undefined;
+    return { kind: "resource", hostId, type: type as Exclude<DockerSearchTypeParam, "containers">, key };
+  }
   return undefined;
 }

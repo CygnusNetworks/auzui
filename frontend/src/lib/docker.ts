@@ -151,6 +151,12 @@ export interface DockerResourceDisplay {
   right: string;
   /** Containers referencing this row; empty means unused. */
   usedBy: string[];
+  /** Creation time in unix seconds; undefined when the row carries none. */
+  createdAt: number | undefined;
+  /** The row this was built from — the detail panel reads the long tail
+   * (labels, options, digests) straight off it rather than duplicating every
+   * field into this shape. */
+  row: DockerResourceRow;
 }
 
 function str(value: unknown): string {
@@ -166,7 +172,7 @@ export function shortDockerId(id: string): string {
 const UNTAGGED_IMAGE = "<none>:<none>";
 
 /** CIDRs from a network's `IPAM.Config` ([{Subnet, Gateway}, …]). */
-function networkSubnets(row: DockerResourceRow): string[] {
+export function networkSubnets(row: DockerResourceRow): string[] {
   const config = (row.IPAM as { Config?: unknown } | undefined)?.Config;
   if (!Array.isArray(config)) return [];
   return config
@@ -176,6 +182,7 @@ function networkSubnets(row: DockerResourceRow): string[] {
 
 export function describeResourceRow(type: DockerResourceType, row: DockerResourceRow): DockerResourceDisplay {
   const usedBy = Array.isArray(row.usedBy) ? row.usedBy.filter((n): n is string => typeof n === "string") : [];
+  const common = { usedBy, createdAt: resourceCreatedAt(row), row };
   if (type === "images") {
     const id = shortDockerId(str(row.Id));
     const tags = (Array.isArray(row.RepoTags) ? row.RepoTags : []).filter(
@@ -190,7 +197,7 @@ export function describeResourceRow(type: DockerResourceType, row: DockerResourc
       // matter more than the id, so they win the line when there are any.
       sub: tags.length > 1 ? tags.slice(1).join(", ") : tags.length > 0 ? id : "",
       right: typeof row.Size === "number" ? formatBytes(row.Size) : "",
-      usedBy,
+      ...common,
     };
   }
   if (type === "volumes") {
@@ -199,7 +206,7 @@ export function describeResourceRow(type: DockerResourceType, row: DockerResourc
       name: str(row.Name),
       sub: str(row.Mountpoint),
       right: str(row.Driver),
-      usedBy,
+      ...common,
     };
   }
   return {
@@ -209,7 +216,7 @@ export function describeResourceRow(type: DockerResourceType, row: DockerResourc
     // this is legitimately empty for them rather than a missing field.
     sub: networkSubnets(row).join(", "),
     right: str(row.Driver),
-    usedBy,
+    ...common,
   };
 }
 
@@ -220,6 +227,119 @@ export function describeResourceRows(
   rows: DockerResourceRow[],
 ): DockerResourceDisplay[] {
   return rows.map((row) => describeResourceRow(type, row)).sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/**
+ * Creation time in unix seconds, whichever shape the row uses: images report
+ * `Created` as a unix int, volumes `CreatedAt` and networks `Created` as
+ * RFC3339 strings. undefined when the field is absent or unparseable.
+ */
+export function resourceCreatedAt(row: DockerResourceRow): number | undefined {
+  const raw = row.Created ?? row.CreatedAt;
+  if (typeof raw === "number") return Number.isFinite(raw) && raw > 0 ? raw : undefined;
+  if (typeof raw !== "string" || raw === "") return undefined;
+  const ms = Date.parse(raw);
+  return Number.isNaN(ms) ? undefined : Math.floor(ms / 1000);
+}
+
+export type ResourceAgeUnit = "today" | "days" | "months" | "years";
+export interface ResourceAge {
+  unit: ResourceAgeUnit;
+  value: number;
+}
+
+/**
+ * Coarse age bucket for a resource. Deliberately coarser than problems'
+ * formatAge: an image's useful age is months, and "425 d" answers the
+ * question worse than "vor 14 Monaten" does. Months/years are approximated
+ * from days — exact calendar arithmetic buys nothing at this resolution.
+ */
+export function resourceAge(createdSeconds: number, nowSeconds: number = Date.now() / 1000): ResourceAge {
+  const days = Math.max(0, Math.floor((nowSeconds - createdSeconds) / 86_400));
+  if (days < 1) return { unit: "today", value: 0 };
+  if (days < 60) return { unit: "days", value: days };
+  const months = Math.floor(days / 30);
+  if (months < 24) return { unit: "months", value: months };
+  return { unit: "years", value: Math.floor(days / 365) };
+}
+
+/** A row's Docker labels as sorted key/value pairs; [] when it has none. */
+export function resourceLabels(row: DockerResourceRow): { key: string; value: string }[] {
+  const labels = row.Labels;
+  if (!labels || typeof labels !== "object") return [];
+  return Object.entries(labels as Record<string, unknown>)
+    .filter(([, value]) => typeof value === "string")
+    .map(([key, value]) => ({ key, value: value as string }))
+    .sort((a, b) => a.key.localeCompare(b.key));
+}
+
+/** The compose project a resource belongs to, "" when it is not compose-managed. */
+export function resourceComposeProject(row: DockerResourceRow): string {
+  const labels = row.Labels;
+  if (!labels || typeof labels !== "object") return "";
+  return str((labels as Record<string, unknown>)["com.docker.compose.project"]);
+}
+
+/** Behaviour flags worth surfacing on a network, in a stable order. */
+export function networkFlags(row: DockerResourceRow): string[] {
+  const flags: string[] = [];
+  if (row.Internal === true) flags.push("internal");
+  if (row.EnableIPv6 === true) flags.push("ipv6");
+  if (row.Attachable === true) flags.push("attachable");
+  if (row.Ingress === true) flags.push("ingress");
+  return flags;
+}
+
+/** IPAM gateway addresses, alongside networkSubnets(). */
+export function networkGateways(row: DockerResourceRow): string[] {
+  const config = (row.IPAM as { Config?: unknown } | undefined)?.Config;
+  if (!Array.isArray(config)) return [];
+  return config
+    .map((entry) => (entry && typeof entry === "object" ? str((entry as Record<string, unknown>).Gateway) : ""))
+    .filter((gateway) => gateway !== "");
+}
+
+/** `sha256:…` digest of an image, derived from its first RepoDigest ("repo@sha256:…"). */
+export function imageDigest(row: DockerResourceRow): string {
+  const digests = Array.isArray(row.RepoDigests) ? row.RepoDigests : [];
+  const first = digests.find((d): d is string => typeof d === "string" && d.includes("@"));
+  return first ? first.slice(first.indexOf("@") + 1) : "";
+}
+
+/**
+ * Bytes actually freed by removing this image. `SharedSize` is only computed
+ * when the caller asks for it (`/images/json?shared-size=1`), which docker-py's
+ * images.list() does not — so it arrives as -1 far more often than not, and
+ * the honest answer then is the full size rather than a wrong difference.
+ */
+export function imageReclaimable(row: DockerResourceRow): number | undefined {
+  if (typeof row.Size !== "number") return undefined;
+  const shared = typeof row.SharedSize === "number" && row.SharedSize >= 0 ? row.SharedSize : 0;
+  return Math.max(0, row.Size - shared);
+}
+
+export interface DockerResourceLaneSummary {
+  total: number;
+  unused: number;
+  /** Bytes freed by pruning the unused rows; 0 for volumes/networks, which
+   * carry no size in Docker's list endpoints. */
+  reclaimable: number;
+}
+
+/** Per-host lane header numbers: how much is there, how much is dead weight. */
+export function resourceLaneSummary(
+  type: DockerResourceType,
+  rows: DockerResourceRow[],
+): DockerResourceLaneSummary {
+  let unused = 0;
+  let reclaimable = 0;
+  for (const row of rows) {
+    const usedBy = Array.isArray(row.usedBy) ? row.usedBy : [];
+    if (usedBy.length > 0) continue;
+    unused += 1;
+    if (type === "images") reclaimable += imageReclaimable(row) ?? 0;
+  }
+  return { total: rows.length, unused, reclaimable };
 }
 
 /** Cap on the live-log buffer (auzui-docker-plan.md D6: "Buffer-Cap ~2000 Zeilen"). */

@@ -9,6 +9,15 @@ import {
   describeResourceRows,
   formatBytes,
   formatImageTag,
+  imageDigest,
+  imageReclaimable,
+  networkFlags,
+  networkGateways,
+  resourceAge,
+  resourceComposeProject,
+  resourceCreatedAt,
+  resourceLabels,
+  resourceLaneSummary,
   formatPort,
   formatPorts,
   groupContainersByStack,
@@ -273,7 +282,9 @@ describe("describeResourceRow", () => {
       RepoTags: ["nginx:1.27"],
       Size: 187 * 1024 * 1024,
     };
-    expect(describeResourceRow("images", row)).toEqual({
+    // toMatchObject, not toEqual: the display also carries createdAt and the
+    // source row, which the panel reads and these cases do not describe.
+    expect(describeResourceRow("images", row)).toMatchObject({
       key: "sha256:aabbccddeeff00112233",
       name: "nginx:1.27",
       sub: "aabbccddeeff",
@@ -314,7 +325,7 @@ describe("describeResourceRow", () => {
       Driver: "local",
       Mountpoint: "/var/lib/docker/volumes/pgdata/_data",
     };
-    expect(describeResourceRow("volumes", row)).toEqual({
+    expect(describeResourceRow("volumes", row)).toMatchObject({
       key: "pgdata",
       name: "pgdata",
       sub: "/var/lib/docker/volumes/pgdata/_data",
@@ -332,7 +343,7 @@ describe("describeResourceRow", () => {
       Driver: "bridge",
       IPAM: { Driver: "default", Config: [{ Subnet: "172.17.0.0/16", Gateway: "172.17.0.1" }] },
     };
-    expect(describeResourceRow("networks", row)).toEqual({
+    expect(describeResourceRow("networks", row)).toMatchObject({
       key: "netid",
       name: "bridge",
       sub: "172.17.0.0/16",
@@ -362,5 +373,131 @@ describe("describeResourceRows", () => {
       { hostId: "prod-a", usedBy: [], Name: "api", Driver: "local", Mountpoint: "/m/api" },
     ];
     expect(describeResourceRows("volumes", rows).map((r) => r.name)).toEqual(["api", "web"]);
+  });
+});
+
+describe("resourceCreatedAt", () => {
+  it("reads an image's unix-int Created", () => {
+    expect(resourceCreatedAt({ hostId: "h", usedBy: [], Created: 1_700_000_000 })).toBe(1_700_000_000);
+  });
+
+  it("reads a volume's RFC3339 CreatedAt", () => {
+    const at = resourceCreatedAt({ hostId: "h", usedBy: [], CreatedAt: "2026-05-02T09:14:00Z" });
+    expect(at).toBe(Math.floor(Date.parse("2026-05-02T09:14:00Z") / 1000));
+  });
+
+  it("reads a network's RFC3339 Created — the same key as images, other type", () => {
+    const at = resourceCreatedAt({ hostId: "h", usedBy: [], Created: "2026-05-02T09:14:00Z" });
+    expect(at).toBe(Math.floor(Date.parse("2026-05-02T09:14:00Z") / 1000));
+  });
+
+  it("returns undefined for a missing or unparseable value", () => {
+    expect(resourceCreatedAt({ hostId: "h", usedBy: [] })).toBeUndefined();
+    expect(resourceCreatedAt({ hostId: "h", usedBy: [], Created: "not a date" })).toBeUndefined();
+    expect(resourceCreatedAt({ hostId: "h", usedBy: [], Created: 0 })).toBeUndefined();
+  });
+});
+
+describe("resourceAge", () => {
+  const now = 1_800_000_000;
+  const days = (n: number) => now - n * 86_400;
+
+  it("buckets under a day as today", () => {
+    expect(resourceAge(days(0), now)).toEqual({ unit: "today", value: 0 });
+  });
+
+  it("counts days up to two months", () => {
+    expect(resourceAge(days(45), now)).toEqual({ unit: "days", value: 45 });
+  });
+
+  it("switches to months at 60 days and to years at 24 months", () => {
+    expect(resourceAge(days(60), now)).toEqual({ unit: "months", value: 2 });
+    expect(resourceAge(days(400), now)).toEqual({ unit: "months", value: 13 });
+    expect(resourceAge(days(1000), now)).toEqual({ unit: "years", value: 2 });
+  });
+
+  it("clamps a future timestamp to today rather than reporting a negative age", () => {
+    expect(resourceAge(now + 86_400, now)).toEqual({ unit: "today", value: 0 });
+  });
+});
+
+describe("imageReclaimable", () => {
+  it("subtracts the shared layers when Docker actually computed them", () => {
+    expect(imageReclaimable({ hostId: "h", usedBy: [], Size: 1000, SharedSize: 400 })).toBe(600);
+  });
+
+  it("treats the -1 placeholder as 'not computed' and reports the full size", () => {
+    // docker-py's images.list() never passes shared-size=1, so -1 is the norm.
+    expect(imageReclaimable({ hostId: "h", usedBy: [], Size: 1000, SharedSize: -1 })).toBe(1000);
+  });
+
+  it("returns undefined without a size", () => {
+    expect(imageReclaimable({ hostId: "h", usedBy: [] })).toBeUndefined();
+  });
+});
+
+describe("imageDigest", () => {
+  it("takes the digest half of the first RepoDigest", () => {
+    const row = { hostId: "h", usedBy: [], RepoDigests: ["nginx@sha256:abc123"] };
+    expect(imageDigest(row)).toBe("sha256:abc123");
+  });
+
+  it("is empty when the image has no digest — a locally built image has none", () => {
+    expect(imageDigest({ hostId: "h", usedBy: [], RepoDigests: [] })).toBe("");
+  });
+});
+
+describe("networkFlags / networkGateways", () => {
+  it("lists only the flags that are actually set, in a stable order", () => {
+    const row = { hostId: "h", usedBy: [], Internal: true, EnableIPv6: true, Attachable: false };
+    expect(networkFlags(row)).toEqual(["internal", "ipv6"]);
+  });
+
+  it("reports no flags for a plain bridge network", () => {
+    expect(networkFlags({ hostId: "h", usedBy: [], Internal: false })).toEqual([]);
+  });
+
+  it("pulls gateways out of IPAM.Config", () => {
+    const row = {
+      hostId: "h",
+      usedBy: [],
+      IPAM: { Config: [{ Subnet: "172.18.0.0/16", Gateway: "172.18.0.1" }] },
+    };
+    expect(networkGateways(row)).toEqual(["172.18.0.1"]);
+  });
+});
+
+describe("resourceLabels / resourceComposeProject", () => {
+  it("sorts labels by key and drops non-string values", () => {
+    const row = { hostId: "h", usedBy: [], Labels: { zeta: "1", alpha: "2", broken: 3 } };
+    expect(resourceLabels(row)).toEqual([
+      { key: "alpha", value: "2" },
+      { key: "zeta", value: "1" },
+    ]);
+  });
+
+  it("finds the compose project, and is empty for an unmanaged resource", () => {
+    const managed = { hostId: "h", usedBy: [], Labels: { "com.docker.compose.project": "webshop" } };
+    expect(resourceComposeProject(managed)).toBe("webshop");
+    expect(resourceComposeProject({ hostId: "h", usedBy: [] })).toBe("");
+  });
+});
+
+describe("resourceLaneSummary", () => {
+  it("counts the unused rows and the bytes their removal would free", () => {
+    const rows = [
+      { hostId: "h", usedBy: ["web"], Size: 500, SharedSize: -1 },
+      { hostId: "h", usedBy: [], Size: 300, SharedSize: -1 },
+      { hostId: "h", usedBy: [], Size: 200, SharedSize: 50 },
+    ];
+    expect(resourceLaneSummary("images", rows)).toEqual({ total: 3, unused: 2, reclaimable: 450 });
+  });
+
+  it("reports no reclaimable bytes for volumes — Docker does not size them here", () => {
+    const rows = [
+      { hostId: "h", usedBy: [], Name: "orphan" },
+      { hostId: "h", usedBy: ["db"], Name: "pgdata" },
+    ];
+    expect(resourceLaneSummary("volumes", rows)).toEqual({ total: 2, unused: 1, reclaimable: 0 });
   });
 });

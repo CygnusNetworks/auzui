@@ -325,6 +325,19 @@ export const en = {
       volumes: "Volumes",
       networks: "Networks",
     },
+    searchTypeSingular: {
+      images: "Image",
+      volumes: "Volume",
+      networks: "Network",
+    },
+    age: {
+      // Takes the (unused) age so all four share one signature — otherwise
+      // t(`docker.age.${unit}`, n) intersects the parameter types to `never`.
+      today: (_n: number) => "today",
+      days: (n: number) => (n === 1 ? "1 day ago" : `${n} days ago`),
+      months: (n: number) => (n === 1 ? "1 month ago" : `${n} months ago`),
+      years: (n: number) => (n === 1 ? "1 year ago" : `${n} years ago`),
+    },
     stateChip: {
       running: "running",
       restarting: "restarting",
@@ -351,10 +364,38 @@ export const en = {
     resourceLane: {
       counts: (n: number) => (n === 1 ? "1 entry" : `${n} entries`),
       unused: "unused",
+      unusedCount: (n: number) => `${n} unused`,
+      reclaimable: (size: string) => `${size} reclaimable`,
       empty: {
         images: "No images on this host.",
         volumes: "No volumes on this host.",
         networks: "No networks on this host.",
+      },
+    },
+    resourceDetail: {
+      noneSelected: "No resource selected.",
+      properties: "Properties",
+      usedBy: "Used by",
+      labels: "Labels",
+      created: "Created",
+      size: "Size",
+      shared: "shared with others",
+      tags: "Tags",
+      untagged: "untagged",
+      id: "ID",
+      digest: "Digest",
+      driver: "Driver",
+      scope: "Scope",
+      mountpoint: "Mount point",
+      subnet: "Subnet",
+      noSubnet: "none",
+      gateway: "Gateway",
+      flags: "Flags",
+      noFlags: "none",
+      unusedImageHint: (size: string) => `No container uses this image. Removing it frees ${size}.`,
+      unusedHint: {
+        volumes: "No container mounts this volume. Its data stays until the volume is removed.",
+        networks: "No container is attached to this network.",
       },
     },
     actions: {

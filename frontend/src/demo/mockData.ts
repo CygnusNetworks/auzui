@@ -1179,7 +1179,13 @@ export interface DemoDockerImageRow {
   RepoTags: string[];
   RepoDigests: string[];
   Size: number;
-  Created: string;
+  /** Unix seconds — /images/json reports Created as an int, unlike /volumes
+   * and /networks which use RFC3339 strings. */
+  Created: number;
+  /** -1 is what Docker returns unless the caller asks for shared sizes, which
+   * docker-py's images.list() does not. */
+  SharedSize: number;
+  Labels: Record<string, string>;
   used_by: string[];
 }
 
@@ -1201,7 +1207,9 @@ export const demoDockerImages: DemoDockerImageRow[] = (() => {
       RepoTags: [`${c.image}:${c.tag}`],
       RepoDigests: entry?.local_digest ? [`${c.image}@${entry.local_digest}`] : [],
       Size: 40_000_000 + (hexId(key).charCodeAt(0) % 200) * 1_000_000,
-      Created: new Date(c.created * 1000).toISOString(),
+      Created: c.created,
+      SharedSize: -1,
+      Labels: c.project ? { "com.docker.compose.project": c.project } : {},
       used_by: [c.name],
     });
   }
@@ -1215,7 +1223,9 @@ export const demoDockerImages: DemoDockerImageRow[] = (() => {
     RepoTags: [],
     RepoDigests: [],
     Size: 212_000_000,
-    Created: new Date(Date.parse("2026-05-02T09:14:00Z")).toISOString(),
+    Created: DEMO_NOW - 400 * 86_400,
+    SharedSize: -1,
+    Labels: {},
     used_by: [],
   });
   return rows;
@@ -1226,29 +1236,47 @@ export interface DemoDockerVolumeRow {
   Name: string;
   Driver: string;
   Mountpoint: string;
+  Scope: string;
+  /** RFC3339, like the real /volumes endpoint — the lane shows the age. */
+  CreatedAt: string;
+  Labels: Record<string, string>;
   /** Containers using this volume — the gateway derives it from each host's
    * container Mounts; the demo states it directly. [] renders as "unused". */
   used_by: string[];
 }
 
-function volumeRow(host_id: string, name: string, used_by: string[]): DemoDockerVolumeRow {
+/** RFC3339 timestamp `days` before the demo's fixed "now". */
+function demoCreatedAt(days: number): string {
+  return new Date((DEMO_NOW - days * 86_400) * 1000).toISOString();
+}
+
+function volumeRow(
+  host_id: string,
+  name: string,
+  project: string,
+  ageDays: number,
+  used_by: string[],
+): DemoDockerVolumeRow {
   return {
     host_id,
     Name: name,
     Driver: "local",
     Mountpoint: `/var/lib/docker/volumes/${name}/_data`,
+    Scope: "local",
+    CreatedAt: demoCreatedAt(ageDays),
+    Labels: project ? { "com.docker.compose.project": project, "com.docker.compose.volume": name } : {},
     used_by,
   };
 }
 
 export const demoDockerVolumes: DemoDockerVolumeRow[] = [
-  volumeRow("prod-a", "prod-a_pgdata", ["postgres-main"]),
-  volumeRow("prod-a", "webshop_nginx-cache", ["web-nginx"]),
+  volumeRow("prod-a", "prod-a_pgdata", "webshop", 280, ["postgres-main"]),
+  volumeRow("prod-a", "webshop_nginx-cache", "webshop", 96, ["web-nginx"]),
   // Left behind by a container that is long gone — the case the "unused" tag
   // exists for, and the reason this view is worth having at all.
-  volumeRow("prod-a", "webshop_old-uploads", []),
-  volumeRow("prod-b", "prod-b_grafana-data", ["grafana"]),
-  volumeRow("edge", "shop_db-data", ["shop-db"]),
+  volumeRow("prod-a", "webshop_old-uploads", "webshop", 430, []),
+  volumeRow("prod-b", "prod-b_grafana-data", "monitoring", 190, ["grafana"]),
+  volumeRow("edge", "shop_db-data", "shop", 210, ["shop-db"]),
 ];
 
 export interface DemoDockerNetworkRow {
@@ -1261,6 +1289,12 @@ export interface DemoDockerNetworkRow {
    * the subnet out of here (lib/docker.ts describeResourceRow). The built-in
    * `host` and `none` networks genuinely have an empty Config. */
   IPAM: { Driver: string; Config: { Subnet: string; Gateway: string }[] };
+  /** RFC3339, like the real /networks endpoint. */
+  Created: string;
+  Internal: boolean;
+  EnableIPv6: boolean;
+  Attachable: boolean;
+  Labels: Record<string, string>;
   used_by: string[];
 }
 
@@ -1269,9 +1303,12 @@ function networkRow(
   name: string,
   driver: string,
   subnet: string,
+  ageDays: number,
   used_by: string[],
+  extra: Partial<DemoDockerNetworkRow> = {},
 ): DemoDockerNetworkRow {
   const octet = subnet.split(".")[1] ?? "17";
+  const project = name.endsWith("_default") ? name.slice(0, -"_default".length) : "";
   return {
     host_id,
     Id: fakeDigest(`net:${host_id}:${name}`).slice(7, 19),
@@ -1282,7 +1319,13 @@ function networkRow(
       Driver: "default",
       Config: subnet ? [{ Subnet: subnet, Gateway: `172.${octet}.0.1` }] : [],
     },
+    Created: demoCreatedAt(ageDays),
+    Internal: false,
+    EnableIPv6: false,
+    Attachable: false,
+    Labels: project ? { "com.docker.compose.project": project, "com.docker.compose.network": "default" } : {},
     used_by,
+    ...extra,
   };
 }
 
@@ -1290,33 +1333,36 @@ function networkRow(
  * Every Docker host ships three built-in networks — `bridge`, `host` and
  * `none` — on top of whatever compose creates. They are listed here because
  * the real view shows them too, and because `host`/`none` are the rows that
- * exercise the no-subnet path.
+ * exercise the no-subnet path. They are created with the engine, hence the
+ * uniformly old age.
  */
 function builtinNetworks(host_id: string, bridgeUsers: string[]): DemoDockerNetworkRow[] {
   return [
-    networkRow(host_id, "bridge", "bridge", "172.17.0.0/16", bridgeUsers),
-    networkRow(host_id, "host", "host", "", []),
-    networkRow(host_id, "none", "null", "", []),
+    networkRow(host_id, "bridge", "bridge", "172.17.0.0/16", 520, bridgeUsers),
+    networkRow(host_id, "host", "host", "", 520, []),
+    networkRow(host_id, "none", "null", "", 520, [], { Internal: true }),
   ];
 }
 
 export const demoDockerNetworks: DemoDockerNetworkRow[] = [
   ...builtinNetworks("prod-a", ["old-cache"]),
-  networkRow("prod-a", "webshop_default", "bridge", "172.18.0.0/16", [
-    "batch-worker",
-    "postgres-main",
-    "web-app",
-    "web-nginx",
-    "web-redis",
-  ]),
+  networkRow(
+    "prod-a",
+    "webshop_default",
+    "bridge",
+    "172.18.0.0/16",
+    280,
+    ["batch-worker", "postgres-main", "web-app", "web-nginx", "web-redis"],
+    { EnableIPv6: true },
+  ),
   ...builtinNetworks("prod-b", []),
-  networkRow("prod-b", "monitoring_default", "bridge", "172.20.0.0/16", [
+  networkRow("prod-b", "monitoring_default", "bridge", "172.20.0.0/16", 190, [
     "grafana",
     "prometheus",
     "traefik",
   ]),
   ...builtinNetworks("edge", []),
-  networkRow("edge", "shop_default", "bridge", "172.19.0.0/16", [
+  networkRow("edge", "shop_default", "bridge", "172.19.0.0/16", 210, [
     "shop-api",
     "shop-cache",
     "shop-db",
