@@ -308,7 +308,6 @@ export const de = {
     notConfigured: "Docker ist nicht konfiguriert.",
     empty: "Keine Container gefunden.",
     searchPlaceholder: "Container, Image oder Stack filtern…",
-    searchTypeHint: "Suchbegriff eingeben, um Images/Volumes/Netzwerke zu durchsuchen.",
     groupByHost: "nach Host",
     groupByStack: "nach Stack",
     updateBadge: "Update verfügbar",

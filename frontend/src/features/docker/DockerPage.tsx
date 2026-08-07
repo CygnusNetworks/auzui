@@ -314,7 +314,6 @@ function DockerBrowser() {
               <CrossTypeResults
                 type={searchType}
                 isLoading={crossTypeSearch.isLoading}
-                hasQuery={query.trim().length > 0}
                 results={crossTypeSearch.data}
               />
             </div>
@@ -620,16 +619,13 @@ function formatMem(bytes: number): string {
 function CrossTypeResults({
   type,
   isLoading,
-  hasQuery,
   results,
 }: {
   type: Exclude<DockerSearchTypeParam, "containers">;
   isLoading: boolean;
-  hasQuery: boolean;
   results: ReturnType<typeof useDockerSearch>["data"];
 }) {
   const t = useT();
-  if (!hasQuery) return <div className="p-6 text-sm text-ink-2">{t("docker.searchTypeHint")}</div>;
   if (isLoading) return <div className="p-6 text-sm text-ink-2">{t("docker.loading")}</div>;
   const rows = results?.results[type] ?? [];
   if (rows.length === 0) return <div className="p-6 text-sm text-ink-2">{t("docker.empty")}</div>;
