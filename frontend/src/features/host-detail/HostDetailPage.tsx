@@ -162,13 +162,13 @@ export function HostDetailPage() {
         <span className="font-mono text-[10.5px] text-ink-muted">
           {t("hostDetail.generatedFrom", dashboard.generatedFromItemCount)}
         </span>
-        <div className="relative ml-auto min-w-[220px]">
+        <div className="relative ml-auto min-w-[240px] max-[700px]:w-full">
           <input
             type="text"
             value={filterText}
             onChange={(e) => setFilterText(e.target.value)}
             placeholder={t("hostDetail.filterPlaceholder")}
-            className="w-full rounded-md border border-line bg-surface-2 px-2.5 py-1 pr-6 font-mono text-[11px] text-ink"
+            className="w-full rounded-md border border-line bg-surface-2 px-2.5 py-1.5 pr-7 text-[12.5px] text-ink"
           />
           {filterText !== "" && (
             <button
@@ -176,7 +176,7 @@ export function HostDetailPage() {
               onClick={() => setFilterText("")}
               title={t("hostDetail.filterClear")}
               aria-label={t("hostDetail.filterClear")}
-              className="absolute inset-y-0 right-1.5 text-ink-muted hover:text-ink"
+              className="absolute inset-y-0 right-2 text-ink-muted hover:text-ink"
             >
               ×
             </button>
