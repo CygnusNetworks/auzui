@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import uPlot from "uplot";
 import "uplot/dist/uPlot.min.css";
-import { formatAxisTick } from "../../lib/format-units";
+import { formatAxisTick, formatUnitValue } from "../../lib/format-units";
 import { useLocale, type Locale } from "../../lib/i18n";
 
 function pad2(n: number): string {
@@ -185,6 +185,10 @@ export function TimeChart({ series, unit, height = 220, thresholds = [], onBrush
         // (influx_min_window_seconds), so this only bridges genuine
         // per-series gaps (e.g. mixed poll intervals in one chart).
         spanGaps: true,
+        // The legend prints the value under the cursor; without this it shows
+        // uPlot's raw number (e.g. "1258291200"). Route it through the same
+        // unit formatter the y-axis uses so it reads "1.2 GiB" / "12.3 Mbps".
+        value: (_u: uPlot, v: number | null) => (v == null ? "–" : formatUnitValue(v, unit, 1, locale)),
       })),
     ];
 
