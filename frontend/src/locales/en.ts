@@ -139,6 +139,7 @@ export const en = {
       suppressedUntilEntry: (time: string) => `⏸ suppressed until ${time}`,
       unsuppressedEntry: "▶ suppression removed",
       severityChangedEntry: (from: string, to: string) => `Severity ${from} → ${to}`,
+      commentEntry: "💬 comment",
       actions: "Actions",
       unack: "Un-Ack",
       acknowledge: "✓ Acknowledge",
