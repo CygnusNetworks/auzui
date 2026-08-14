@@ -659,6 +659,34 @@ function ifaceSeriesLabel(item: ZabbixItem): string {
   return directionLabel(base) ?? item.name;
 }
 
+/** Matches the ifAlias Zabbix puts in parentheses right before the metric part of an interface item name. */
+const IFACE_NAME_DESCRIPTION_RE = /\(([^()]+)\)\s*:/;
+
+/**
+ * The port description (ifAlias) of an interface group — on switches the only
+ * thing that tells "ethernet1/1/7" apart from its 47 siblings. Zabbix SNMP
+ * templates put it in a `description` item tag (often present but empty) and,
+ * redundantly, in the item name ("Interface ethernet1/1/7(dns-b-eth0-alt):
+ * Bits received"); the tag wins, the name is the fallback for templates that
+ * don't set it. Returns undefined when no item carries a non-empty one.
+ */
+function interfaceDescription(items: ZabbixItem[]): string | undefined {
+  for (const item of items) {
+    const tag = item.tags?.find((t) => t.tag === "description")?.value?.trim();
+    if (tag) return tag;
+  }
+  for (const item of items) {
+    const fromName = IFACE_NAME_DESCRIPTION_RE.exec(item.name ?? "")?.[1]?.trim();
+    if (fromName) return fromName;
+  }
+  return undefined;
+}
+
+/** "Interface ethernet1/1/7 · dns-b-eth0-alt", or just "Interface ethernet1/1/7" when the port has no description. */
+function describeInterface(iface: string, description: string | undefined): string {
+  return description && description !== iface ? `Interface ${iface} · ${description}` : `Interface ${iface}`;
+}
+
 /** Groups interface-tagged items by their interface name into one multi-series chart per port. */
 function groupInterfaceItems(items: ZabbixItem[]): DashboardChart[] {
   const byInterface = new Map<string, ZabbixItem[]>();
@@ -669,8 +697,10 @@ function groupInterfaceItems(items: ZabbixItem[]): DashboardChart[] {
     else byInterface.set(iface, [item]);
   }
   return [...byInterface.entries()].map(([iface, ifaceItems]) => ({
+    // The id stays keyed on the interface alone — the description is display
+    // text and must not change the chart identity (empty/mount state, sorting).
     id: `iface:${iface}`,
-    title: `Interface ${iface}`,
+    title: describeInterface(iface, interfaceDescription(ifaceItems)),
     viz: "area" as const,
     items: ifaceItems,
     seriesLabels: ifaceItems.map(ifaceSeriesLabel),
