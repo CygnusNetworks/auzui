@@ -140,6 +140,9 @@ export function DetailPanel({ problem }: { problem: EnrichedProblem | undefined 
               );
             }
             if (bits & 64) parts.push(t("problems.detailPanel.unsuppressedEntry"));
+            // A pure comment (action 4, no other bit) would otherwise render as
+            // a bare "— „…“" with nothing in front of it.
+            if (parts.length === 0 && bits & 4) parts.push(t("problems.detailPanel.commentEntry"));
             return (
               <div key={entry.acknowledgeid} className="flex items-baseline gap-2">
                 <span className="whitespace-nowrap font-mono text-[10.5px] text-ink-muted">

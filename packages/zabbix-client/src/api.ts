@@ -134,7 +134,8 @@ export class ZabbixApi {
       time_from?: number;
       time_till?: number;
       selectHosts?: "extend" | string[];
-      select_acknowledges?: "extend" | string[];
+      /** camelCase — the snake_case `select_acknowledges` spelling was dropped in Zabbix 6.0 and is rejected outright. */
+      selectAcknowledges?: "extend" | string[];
       value?: number[];
     } = {},
   ): Promise<ZabbixEvent[]> {

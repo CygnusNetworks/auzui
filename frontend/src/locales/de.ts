@@ -139,6 +139,7 @@ export const de = {
       suppressedUntilEntry: (time: string) => `⏸ unterdrückt bis ${time}`,
       unsuppressedEntry: "▶ Unterdrückung aufgehoben",
       severityChangedEntry: (from: string, to: string) => `Severity ${from} → ${to}`,
+      commentEntry: "💬 Kommentar",
       actions: "Aktionen",
       unack: "Un-Ack",
       acknowledge: "✓ Bestätigen",
