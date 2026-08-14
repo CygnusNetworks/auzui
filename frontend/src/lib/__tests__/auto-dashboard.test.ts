@@ -386,6 +386,61 @@ describe("buildDashboard", () => {
     expect(chart.seriesLabels).toEqual(["in", "out"]);
   });
 
+  it("appends the port description tag to the interface chart title", () => {
+    const items: ZabbixItem[] = [
+      mkItem({
+        itemid: "1",
+        name: "Interface ethernet1/1/7(dns-b-eth0-alt): Bits received",
+        key_: "net.if.in[ifHCInOctets.7]",
+        units: "bps",
+        tags: [
+          { tag: "component", value: "network" },
+          { tag: "interface", value: "ethernet1/1/7" },
+          { tag: "description", value: "dns-b-eth0-alt" },
+        ],
+      }),
+    ];
+    const chart = buildDashboard({}, items, []).sections[0]!.charts[0]!;
+    expect(chart.id).toBe("iface:ethernet1/1/7");
+    expect(chart.title).toBe("Interface ethernet1/1/7 · dns-b-eth0-alt");
+  });
+
+  it("falls back to the parenthesized description in the item name when the tag is empty", () => {
+    const items: ZabbixItem[] = [
+      mkItem({
+        itemid: "1",
+        name: "Interface ethernet1/1/8(dhcp-b-eth1): Bits received",
+        key_: "net.if.in[ifHCInOctets.8]",
+        units: "bps",
+        tags: [
+          { tag: "component", value: "network" },
+          { tag: "interface", value: "ethernet1/1/8" },
+          { tag: "description", value: "" },
+        ],
+      }),
+    ];
+    const chart = buildDashboard({}, items, []).sections[0]!.charts[0]!;
+    expect(chart.title).toBe("Interface ethernet1/1/8 · dhcp-b-eth1");
+  });
+
+  it("leaves the interface title bare when the port has no description at all", () => {
+    const items: ZabbixItem[] = [
+      mkItem({
+        itemid: "1",
+        name: "Interface ethernet1/1/2(): Bits received",
+        key_: "net.if.in[ifHCInOctets.2]",
+        units: "bps",
+        tags: [
+          { tag: "component", value: "network" },
+          { tag: "interface", value: "ethernet1/1/2" },
+          { tag: "description", value: "" },
+        ],
+      }),
+    ];
+    const chart = buildDashboard({}, items, []).sections[0]!.charts[0]!;
+    expect(chart.title).toBe("Interface ethernet1/1/2");
+  });
+
   it("puts text items in a separate bucket, not into any chart section", () => {
     const items: ZabbixItem[] = [
       mkItem({ itemid: "1", value_type: "0", key_: "system.cpu.util", name: "CPU" }),
