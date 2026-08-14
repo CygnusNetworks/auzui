@@ -938,9 +938,7 @@ class DockerService:
             "networks": "list_networks",
         }
         combos = [(hid, kind) for hid in hosts for kind in wanted if kind in method_for]
-        usage_hosts = (
-            list(hosts) if with_usage and any(k in _USAGE_KINDS for k in wanted) else []
-        )
+        usage_hosts = list(hosts) if with_usage and any(k in _USAGE_KINDS for k in wanted) else []
 
         async def fetch(host_id: str, kind: str) -> list[dict]:
             if kind == "containers":
