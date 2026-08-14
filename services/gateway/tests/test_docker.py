@@ -239,7 +239,10 @@ def _reset_fake_state():
         EDGE: [],
     }
     FakeDockerHostClient.networks_by_host = {
-        DB_1: [{"Id": "n1", "Name": "bridge", "Driver": "bridge"}, {"Id": "n2", "Name": "none", "Driver": "null"}],
+        DB_1: [
+            {"Id": "n1", "Name": "bridge", "Driver": "bridge"},
+            {"Id": "n2", "Name": "none", "Driver": "null"},
+        ],
         PROD_A: [],
         BROKEN: [],
         EDGE: [],
