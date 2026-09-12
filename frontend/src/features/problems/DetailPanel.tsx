@@ -117,7 +117,9 @@ export function DetailPanel({ problem }: { problem: EnrichedProblem | undefined 
             </span>
             <span>{t("problems.detailPanel.problemDetected")}</span>
           </div>
-          {(timeline.data?.[0]?.acknowledges ?? []).map((entry) => {
+          {[...(timeline.data?.[0]?.acknowledges ?? [])]
+            .sort((a, b) => Number(a.clock) - Number(b.clock))
+            .map((entry) => {
             const bits = Number(entry.action);
             const parts: string[] = [];
             if (bits & 1) parts.push(t("problems.detailPanel.closedEntry"));
