@@ -573,8 +573,7 @@ function filterOptions(options: Option[], query: string, selected: Option[]): Op
   const q = query.trim().toLowerCase();
   return options
     .filter((o) => !selectedIds.has(o.id))
-    .filter((o) => (q ? o.label.toLowerCase().includes(q) : true))
-    .slice(0, 8);
+    .filter((o) => (q ? o.label.toLowerCase().includes(q) : true));
 }
 
 function ComboboxField({
