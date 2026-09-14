@@ -115,6 +115,27 @@ describe("buildMaintenancePayload", () => {
     ]);
   });
 
+  it("uses an explicit activeTillSeconds as active_till for recurrences", () => {
+    const payload = buildMaintenancePayload({
+      ...base,
+      recurrence: "daily",
+      startTimeSeconds: 0,
+      activeTillSeconds: 50_000,
+    });
+    expect(payload.active_till).toBe(50_000);
+  });
+
+  it("throws when activeTillSeconds is not after the start", () => {
+    expect(() =>
+      buildMaintenancePayload({
+        ...base,
+        recurrence: "daily",
+        startTimeSeconds: 0,
+        activeTillSeconds: 1000,
+      }),
+    ).toThrow();
+  });
+
   it("throws for weekly recurrence without any weekday selected", () => {
     expect(() =>
       buildMaintenancePayload({ ...base, recurrence: "weekly", dayofweek: 0, startTimeSeconds: 0 }),
@@ -266,7 +287,7 @@ describe("formatFrame", () => {
   it("formats the outer frame with 2-digit years", () => {
     const since = Date.UTC(2026, 1, 2, 10, 0) / 1000;
     const till = Date.UTC(2027, 1, 2, 10, 0) / 1000;
-    expect(formatFrame(since, till)).toMatch(/^Rahmen: \d{2}\.\d{2}\.\d{2} – \d{2}\.\d{2}\.\d{2}$/);
+    expect(formatFrame(since, till)).toMatch(/^Aktiv: \d{2}\.\d{2}\.\d{2} – \d{2}\.\d{2}\.\d{2}$/);
   });
 });
 

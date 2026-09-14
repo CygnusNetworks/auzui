@@ -28,6 +28,10 @@ function nowLocalDateTime(): string {
   return d.toISOString().slice(0, 16);
 }
 
+function oneYearFromNowLocalDateTime(): string {
+  return toLocalDateTime(Math.floor(Date.now() / 1000) + 365 * 86400);
+}
+
 function toLocalDateTime(unixSeconds: number): string {
   const d = new Date(unixSeconds * 1000);
   d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
@@ -104,6 +108,11 @@ export function CreateMaintenanceForm({
   const [start, setStart] = useState(
     initial ? toLocalDateTime(initial.startSeconds) : nowLocalDateTime(),
   );
+  const [activeTill, setActiveTill] = useState(
+    initial && initial.recurrence !== "once"
+      ? toLocalDateTime(initial.activeTillSeconds)
+      : oneYearFromNowLocalDateTime(),
+  );
   const [durationMinutes, setDurationMinutes] = useState(initialDuration?.durationMinutes ?? 60);
   const [customDuration, setCustomDuration] = useState(initialDuration?.customDuration ?? "");
   const [customDurationUnit, setCustomDurationUnit] = useState<"minutes" | "hours">(
@@ -167,6 +176,7 @@ export function CreateMaintenanceForm({
     setName("");
     setDescription("");
     setStart(nowLocalDateTime());
+    setActiveTill(oneYearFromNowLocalDateTime());
     setDurationMinutes(60);
     setCustomDuration("");
     setCustomDurationUnit("hours");
@@ -210,6 +220,10 @@ export function CreateMaintenanceForm({
       durationSeconds,
       withDataCollection,
     };
+    const recurring = {
+      ...common,
+      activeTillSeconds: Math.floor(new Date(activeTill).getTime() / 1000),
+    };
 
     let payload;
     try {
@@ -217,7 +231,7 @@ export function CreateMaintenanceForm({
         case "daily":
           payload = buildMaintenancePayload(
             {
-              ...common,
+              ...recurring,
               recurrence: "daily",
               startTimeSeconds,
               everyDays: Number(everyDays) || 1,
@@ -229,7 +243,7 @@ export function CreateMaintenanceForm({
           const dayofweek = [...weekdays].reduce((mask, i) => mask | dayOfWeekBit(i), 0);
           payload = buildMaintenancePayload(
             {
-              ...common,
+              ...recurring,
               recurrence: "weekly",
               dayofweek,
               startTimeSeconds,
@@ -241,7 +255,7 @@ export function CreateMaintenanceForm({
         case "monthlyDay":
           payload = buildMaintenancePayload(
             {
-              ...common,
+              ...recurring,
               recurrence: "monthlyDay",
               monthDay: Number(monthDay),
               startTimeSeconds,
@@ -252,7 +266,7 @@ export function CreateMaintenanceForm({
         case "monthlyWeekday":
           payload = buildMaintenancePayload(
             {
-              ...common,
+              ...recurring,
               recurrence: "monthlyWeekday",
               dayofweek: dayOfWeekBit(weekdayIndex),
               weekdayOccurrence,
@@ -264,7 +278,7 @@ export function CreateMaintenanceForm({
         case "yearly":
           payload = buildMaintenancePayload(
             {
-              ...common,
+              ...recurring,
               recurrence: "yearly",
               month: yearlyMonth,
               monthDay: Number(monthDay),
@@ -363,7 +377,7 @@ export function CreateMaintenanceForm({
       />
 
       <label className="flex flex-col gap-1 text-xs text-ink-2">
-        {recurrence === "once" ? t("maintenance.form.start") : t("maintenance.form.frameFrom")}
+        {recurrence === "once" ? t("maintenance.form.start") : t("maintenance.form.activeSince")}
         <input
           type="datetime-local"
           value={start}
@@ -372,6 +386,20 @@ export function CreateMaintenanceForm({
           className="rounded-md border border-line bg-surface-2 px-2.5 py-1.5 text-[12.5px] text-ink"
         />
       </label>
+
+      {recurrence !== "once" && (
+        <label className="flex flex-col gap-1 text-xs text-ink-2">
+          {t("maintenance.form.activeTill")}
+          <input
+            type="datetime-local"
+            value={activeTill}
+            min={start}
+            onChange={(e) => setActiveTill(e.target.value)}
+            required
+            className="rounded-md border border-line bg-surface-2 px-2.5 py-1.5 text-[12.5px] text-ink"
+          />
+        </label>
+      )}
 
       {recurrence === "daily" && (
         <label className="flex flex-col gap-1 text-xs text-ink-2">

@@ -14,6 +14,7 @@ interface MaintenanceCatalog {
     weekdayOnlyMissing: string;
     occurrenceMissing: string;
     monthMissing: string;
+    activeTillBeforeStart: string;
   };
   weekdayShort: readonly string[];
   weekdayFull: readonly string[];
@@ -88,13 +89,16 @@ export interface MaintenancePayloadInput {
   withDataCollection: boolean;
   /**
    * Recurrence: "once" (default) builds a single active_since..active_till frame.
-   * All other variants repeat within a 1-year frame (see YEAR_SECONDS):
+   * All other variants repeat within startSeconds..activeTillSeconds
+   * (defaults to a 1-year frame, see YEAR_SECONDS):
    * "daily" (every N days), "weekly" (given weekdays), "monthlyDay" (fixed
    * day-of-month), "monthlyWeekday" (e.g. "2nd Tuesday"), "yearly" (single
    * month + day-of-month, modeled as a monthly Zabbix timeperiod with a
    * one-month bitmask).
    */
   recurrence?: MaintenanceRecurrence;
+  /** Unix seconds — end of the active frame (active_till). Recurrences only; defaults to start + 1 year. */
+  activeTillSeconds?: number;
   /** Seconds since midnight. Required for every recurrence except "once". */
   startTimeSeconds?: number;
   /** Daily only: repeat every N days. Defaults to 1. */
@@ -230,10 +234,13 @@ export function buildMaintenancePayload(
       }
     }
 
+    const activeTill = input.activeTillSeconds ?? input.startSeconds + YEAR_SECONDS;
+    if (activeTill <= input.startSeconds) throw new Error(msg.activeTillBeforeStart);
+
     payload = {
       name,
       active_since: input.startSeconds,
-      active_till: input.startSeconds + YEAR_SECONDS,
+      active_till: activeTill,
       timeperiods: [timeperiod],
       maintenance_type: input.withDataCollection ? 0 : 1,
     };
@@ -253,8 +260,10 @@ export interface MaintenanceFormState {
   recurrence: MaintenanceRecurrence;
   name: string;
   description: string;
-  /** Unix seconds — occurrence start for "once", frame start otherwise. */
+  /** Unix seconds — occurrence start for "once", frame start (active_since) otherwise. */
   startSeconds: number;
+  /** Unix seconds — frame end (active_till). Only meaningful for recurrences. */
+  activeTillSeconds: number;
   durationSeconds: number;
   withDataCollection: boolean;
   hosts: { id: string; label: string }[];
@@ -294,6 +303,7 @@ export function maintenanceToFormState(m: {
     name: m.name,
     description: m.description ?? "",
     durationSeconds: Number(tp.period),
+    activeTillSeconds: Number(m.active_till),
     withDataCollection: m.maintenance_type === "0",
     hosts: (m.hosts ?? []).map((h) => ({ id: h.hostid, label: h.name || h.host })),
     groups: (m.hostgroups ?? []).map((g) => ({ id: g.groupid, label: g.name })),
@@ -401,7 +411,7 @@ function dateWithYearFmt(locale: Locale): Intl.DateTimeFormat {
   });
 }
 
-/** "Rahmen: 02.02.26 – 02.02.27" — the outer active_since..active_till frame of a recurring maintenance. Default locale "de". */
+/** "Aktiv: 02.02.26 – 02.02.27" — the outer active_since..active_till frame of a recurring maintenance. Default locale "de". */
 export function formatFrame(sinceSeconds: number, tillSeconds: number, locale: Locale = "de"): string {
   const since = new Date(sinceSeconds * 1000);
   const till = new Date(tillSeconds * 1000);
