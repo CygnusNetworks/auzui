@@ -90,12 +90,15 @@ export function HostDetailPage() {
 
       <div className="mb-3 flex flex-wrap items-center gap-1.5">
         {groups.map((g) => (
-          <span
+          <Link
             key={g.groupid}
-            className="whitespace-nowrap rounded bg-surface-3 px-1.5 py-0.5 font-mono text-[10.5px] text-ink-2"
+            to="/hosts"
+            search={{ groupid: g.groupid }}
+            title={t("hosts.filterByGroupTitle")}
+            className="whitespace-nowrap rounded bg-surface-3 px-1.5 py-0.5 font-mono text-[10.5px] text-ink-2 hover:bg-accent-soft hover:text-accent"
           >
             {g.name}
-          </span>
+          </Link>
         ))}
         {templates.map((template) => {
           const selected = selectedTemplateId === template.templateid;

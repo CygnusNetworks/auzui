@@ -17,6 +17,7 @@ import { validateMetricsSearch } from "./features/metrics/search-params";
 import { validateLogsSearch } from "./features/logs/search-params";
 import { validateWebScenariosSearch } from "./features/web-scenarios/search-params";
 import { validateDockerSearch } from "./features/docker/search-params";
+import { validateHostsSearch } from "./features/hosts/search-params";
 import { useAuthStore } from "./lib/auth/store";
 
 /**
@@ -74,6 +75,7 @@ const hostsRoute = createRoute({
   getParentRoute: () => appLayoutRoute,
   path: "/hosts",
   component: lazyRouteComponent(() => import("./features/hosts/HostsPage"), "HostsPage"),
+  validateSearch: validateHostsSearch,
 });
 
 const latestDataRoute = createRoute({

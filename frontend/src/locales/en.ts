@@ -194,6 +194,8 @@ export const en = {
     subtitle: (n: number) => `${n} monitored hosts`,
     searchPlaceholder: "Search by name, host, IP…",
     allGroups: "All groups",
+    clearGroup: "Clear group filter",
+    filterByGroupTitle: "Show all hosts in this group",
     sortName: "Name",
     sortSeverity: "Severity",
     colHost: "Host",
