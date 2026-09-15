@@ -237,6 +237,81 @@ describe("buildInstanceFamilyCharts", () => {
     expect([...sda.seriesLabels].sort()).toEqual(["read", "write"]);
   });
 
+  it("disambiguates FS [/] when size, grow-rate and inode metrics all land on the same title", () => {
+    // Real Zabbix (Linux by Zabbix agent active) items for one mountpoint:
+    // vfs.fs.dependent.size/.rate/.inode all title as "FS [/]" from the
+    // mountpoint token alone, even though they're unrelated metrics.
+    const items = [
+      mkItem({
+        itemid: "1",
+        name: "FS [/]: Space: Used",
+        key_: "vfs.fs.dependent.size[/,used]",
+        units: "B",
+        lastvalue: "100",
+      }),
+      mkItem({
+        itemid: "2",
+        name: "FS [/]: Space: Total",
+        key_: "vfs.fs.dependent.size[/,total]",
+        units: "B",
+        lastvalue: "200",
+      }),
+      mkItem({
+        itemid: "3",
+        name: "FS [/]: Space: Used, in %",
+        key_: "vfs.fs.dependent.size[/,pused]",
+        units: "%",
+        lastvalue: "50",
+      }),
+      mkItem({
+        itemid: "4",
+        name: "FS [/]: Grow rate 12h",
+        key_: "vfs.fs.dependent.rate[/,used]",
+        units: "B",
+        lastvalue: "5",
+      }),
+      mkItem({
+        itemid: "5",
+        name: "FS [/]: Inodes: Free, in %",
+        key_: "vfs.fs.dependent.inode[/,pfree]",
+        units: "%",
+        lastvalue: "80",
+      }),
+    ];
+    const charts = buildInstanceFamilyCharts(items, []);
+    expect(charts).toHaveLength(4);
+    expect(charts.map((c) => c.title).sort()).toEqual([
+      "FS [/] · Grow rate 12h",
+      "FS [/] · Inodes",
+      "FS [/] · Space",
+      "FS [/] · Space",
+    ]);
+  });
+
+  it("disambiguates Disk sda when utilization/rate/await/queue metrics all land on the same title", () => {
+    const items = [
+      mkItem({ itemid: "1", name: "sda: Disk utilization", key_: "vfs.dev.util[sda]", units: "%" }),
+      mkItem({ itemid: "2", name: "sda: Disk read rate", key_: "vfs.dev.read.rate[sda]", units: "!r/s" }),
+      mkItem({ itemid: "3", name: "sda: Disk write rate", key_: "vfs.dev.write.rate[sda]", units: "!w/s" }),
+      mkItem({
+        itemid: "4",
+        name: "sda: Disk read request avg waiting time (r_await)",
+        key_: "vfs.dev.read.await[sda]",
+        units: "!ms",
+      }),
+      mkItem({ itemid: "5", name: "sda: Disk average queue size (avgqu-sz)", key_: "vfs.dev.queue_size[sda]", units: "" }),
+    ];
+    const charts = buildInstanceFamilyCharts(items, []);
+    expect(charts).toHaveLength(5);
+    expect(charts.map((c) => c.title).sort()).toEqual([
+      "Disk sda · average queue size",
+      "Disk sda · read rate",
+      "Disk sda · read request avg waiting time",
+      "Disk sda · utilization",
+      "Disk sda · write rate",
+    ]);
+  });
+
   it("splits docker container items into one chart per container, titled by item name", () => {
     const items = [
       mkItem({ itemid: "1", name: "Container /app1: CPU", key_: "docker.container_stats.cpu[/app1]", units: "%" }),

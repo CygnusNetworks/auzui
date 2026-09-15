@@ -509,6 +509,61 @@ function splitFamilyFor(pairBase: string): SplitFamily | undefined {
   return SPLIT_FAMILIES.find((f) => f.re.test(pairBase));
 }
 
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
+ * Zabbix template item names for LLD sub-metrics commonly follow
+ * "<Label> [<token>]: <Category>: <Detail>" (e.g. "FS [/]: Space: Used, in %")
+ * or "<token>: <Label> <Category>" (e.g. "sda: Disk read rate"). Different
+ * pairBases sharing one mountpoint/device (space vs. inode vs. grow-rate;
+ * utilization vs. read rate vs. await time, …) all get the same split-family
+ * title ("FS [/]"/"Disk sda") from the token alone, so genuinely different
+ * metrics collide under one title. This pulls the human-readable category out
+ * of the item's own name to disambiguate — never guessed for names that don't
+ * follow either pattern.
+ */
+function categoryFromItemName(name: string, token: string): string | undefined {
+  const escaped = escapeRegExp(token);
+  const rest =
+    name.match(new RegExp(`^.*?\\[${escaped}\\]:\\s*(.+)$`))?.[1] ??
+    name.match(new RegExp(`^${escaped}:\\s*(.+)$`))?.[1];
+  if (!rest) return undefined;
+  const category = rest
+    .split(":")[0]!
+    .replace(/^Disk\s+/i, "")
+    .replace(/\s*\([^)]*\)\s*$/, "")
+    .trim();
+  return category || undefined;
+}
+
+/**
+ * Split-family charts are titled by mountpoint/device token alone, so two
+ * different metric families for the same token (e.g. filesystem "Space" vs.
+ * "Grow rate" vs. "Inodes", or disk "utilization" vs. "read rate" vs. "await
+ * time") land on identically-titled charts. Only once that collision has
+ * actually happened do we append the item's own category (see
+ * categoryFromItemName) — untouched when a title is already unique, so
+ * existing single-metric charts keep their plain title.
+ */
+function disambiguateSplitFamilyTitles(charts: DashboardChart[]): void {
+  const titleCounts = new Map<string, number>();
+  for (const c of charts) {
+    if (!c.id.startsWith("split:")) continue;
+    titleCounts.set(c.title, (titleCounts.get(c.title) ?? 0) + 1);
+  }
+  for (const c of charts) {
+    if (!c.id.startsWith("split:") || (titleCounts.get(c.title) ?? 0) <= 1) continue;
+    const rep = c.items[0];
+    if (!rep) continue;
+    const { params } = parseItemKey(rep.key_);
+    const token = instanceToken(params);
+    const category = categoryFromItemName(rep.name, token);
+    if (category) c.title = `${c.title} · ${category}`;
+  }
+}
+
 /** The LLD instance token of a key's params — the first non-empty param (mountpoint/device/container). */
 function instanceToken(params: string[]): string {
   return params.find((p) => p.trim() !== "") ?? "";
@@ -647,6 +702,7 @@ export function buildInstanceFamilyCharts(items: ZabbixItem[], triggers: ZabbixT
       thresholds: chartItems.flatMap((it) => extractThresholds(triggers, it.itemid)),
     });
   }
+  disambiguateSplitFamilyTitles(charts);
   return charts;
 }
 
