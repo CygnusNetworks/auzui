@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import uPlot from "uplot";
 import "uplot/dist/uPlot.min.css";
-import { formatAxisTick, formatUnitValue } from "../../lib/format-units";
+import { decimalsForTicks, formatAxisTick, formatUnitValue } from "../../lib/format-units";
 import { useLocale, type Locale } from "../../lib/i18n";
 
 function pad2(n: number): string {
@@ -228,7 +228,10 @@ export function TimeChart({ series, unit, height = 220, thresholds = [], onBrush
           stroke: ink2,
           grid: { stroke: lineSoft },
           ticks: { stroke: lineSoft },
-          values: (_u, vals) => vals.map((v) => formatAxisTick(v, unit, locale)),
+          values: (_u, vals) => {
+            const digits = decimalsForTicks(vals);
+            return vals.map((v) => formatAxisTick(v, unit, locale, digits));
+          },
           size: dynamicAxisSize,
         },
       ],

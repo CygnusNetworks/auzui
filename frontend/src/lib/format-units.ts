@@ -19,7 +19,10 @@ function formatSi(value: number, suffix: string, digits = 1): string {
   let exp = Math.min(Math.floor(Math.log10(abs) / 3), SI_PREFIXES.length - 1);
   if (exp < 0) exp = 0;
   const scaled = value / 1000 ** exp;
-  return `${scaled.toFixed(exp === 0 ? 0 : digits)} ${SI_PREFIXES[exp]}${suffix}`;
+  // Unscaled (exp 0) values are usually whole counts ("500 bps") and print
+  // without decimals — but a genuinely fractional unscaled value (e.g. an
+  // axis tick at 0.3 bps) still needs `digits`, or it rounds away to "0".
+  return `${scaled.toFixed(exp === 0 && Number.isInteger(scaled) ? 0 : digits)} ${SI_PREFIXES[exp]}${suffix}`;
 }
 
 const IEC_PREFIXES = ["", "Ki", "Mi", "Gi", "Ti", "Pi"];
@@ -30,7 +33,7 @@ function formatIec(value: number, suffix: string, digits = 1): string {
   let exp = Math.min(Math.floor(Math.log(abs) / Math.log(1024)), IEC_PREFIXES.length - 1);
   if (exp < 0) exp = 0;
   const scaled = value / 1024 ** exp;
-  return `${scaled.toFixed(exp === 0 ? 0 : digits)} ${IEC_PREFIXES[exp]}${suffix}`;
+  return `${scaled.toFixed(exp === 0 && Number.isInteger(scaled) ? 0 : digits)} ${IEC_PREFIXES[exp]}${suffix}`;
 }
 
 function formatUnixDateTime(seconds: number, locale: Locale): string {
@@ -91,7 +94,38 @@ export function formatUnitValue(
   return `${value.toFixed(Number.isInteger(value) ? 0 : digits)} ${unit}`;
 }
 
-/** Short axis-tick variant (no rounding tweaks for tiny/large values beyond formatUnitValue). */
-export function formatAxisTick(value: number, units: string | undefined, locale: Locale = "de"): string {
-  return formatUnitValue(value, units, 0, locale);
+/** Short axis-tick variant; `digits` should come from {@link decimalsForTicks} on the tick's sibling values. */
+export function formatAxisTick(value: number, units: string | undefined, locale: Locale = "de", digits = 0): string {
+  return formatUnitValue(value, units, digits, locale);
+}
+
+/**
+ * How many decimal places an axis needs to label a set of ticks without two
+ * distinct ticks colliding on the same rounded label, and without a nonzero
+ * tick reading as "0" — the bug behind e.g. four ticks between 0 and 1 all
+ * showing "0" when `formatAxisTick` used a hardcoded 0 digits. Tries 0..3 and
+ * picks the smallest that avoids both problems; a genuine repeated 0 (the
+ * value, not a rounding artifact) is fine at any precision.
+ */
+export function decimalsForTicks(vals: readonly (number | null | undefined)[]): number {
+  const finite = vals.filter((v): v is number => typeof v === "number" && Number.isFinite(v));
+  for (let d = 0; d <= 3; d++) {
+    const seen = new Map<string, number>();
+    let ok = true;
+    for (const v of finite) {
+      const label = v.toFixed(d);
+      if (v !== 0 && Number(label) === 0) {
+        ok = false;
+        break;
+      }
+      const prior = seen.get(label);
+      if (prior !== undefined && prior !== v) {
+        ok = false;
+        break;
+      }
+      seen.set(label, v);
+    }
+    if (ok) return d;
+  }
+  return 3;
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatUnitValue } from "../format-units";
+import { decimalsForTicks, formatAxisTick, formatUnitValue } from "../format-units";
 
 describe("formatUnitValue", () => {
   it("formats % with one decimal", () => {
@@ -72,5 +72,39 @@ describe("formatUnitValue", () => {
   it("returns a placeholder for non-finite values", () => {
     expect(formatUnitValue(NaN, "%")).toBe("–");
     expect(formatUnitValue(Infinity, "B")).toBe("–");
+  });
+
+  it("keeps sub-1 unscaled SI/IEC values from rounding away to 0", () => {
+    // exp clamps to 0 (below the first k/Ki prefix) — the fractional value
+    // must still surface via `digits`, not silently become "0 bps"/"0 B".
+    expect(formatUnitValue(0.3, "bps", 1)).toBe("0.3 bps");
+    expect(formatUnitValue(0.6, "B", 1)).toBe("0.6 B");
+    // A genuine whole-number unscaled count stays undecorated.
+    expect(formatUnitValue(500, "bps", 1)).toBe("500 bps");
+  });
+});
+
+describe("decimalsForTicks", () => {
+  it("stays at 0 decimals for an all-integer tick set", () => {
+    expect(decimalsForTicks([0, 1, 2, 3])).toBe(0);
+  });
+
+  it("picks up enough decimals so a sub-1 tick range doesn't collapse to repeated 0s", () => {
+    // Reported bug: a y-axis spanning 0..1 (e.g. 0.2/0.4/0.6/0.8) rendered
+    // every tick as "0" because the axis hardcoded 0 decimal places.
+    const vals = [0, 0.2, 0.4, 0.6, 0.8];
+    const digits = decimalsForTicks(vals);
+    expect(digits).toBeGreaterThan(0);
+    const labels = vals.map((v) => formatAxisTick(v, "%", "de", digits));
+    expect(new Set(labels).size).toBe(labels.length);
+    expect(labels).not.toContain("0 %");
+  });
+
+  it("does not add decimals a real (non-artifact) repeated 0 doesn't need", () => {
+    expect(decimalsForTicks([0, 0, 5, 10])).toBe(0);
+  });
+
+  it("stops increasing once ticks are already distinguishable, capped at 3", () => {
+    expect(decimalsForTicks([0.0001, 0.0002])).toBe(3);
   });
 });
