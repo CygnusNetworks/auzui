@@ -10,7 +10,7 @@ dependencies = [
     "fastapi>=0.115",
     "httpx>=0.28",
     "pydantic-settings>=2.7",
-    "uvicorn[standard]>=0.34",
+    "uvicorn[standard]>=0.52.0",
 ]
 
 [project.optional-dependencies]

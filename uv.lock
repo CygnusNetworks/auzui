@@ -83,7 +83,7 @@ requires-dist = [
     { name = "pyyaml", marker = "extra == 'yaml'", specifier = ">=6" },
     { name = "respx", marker = "extra == 'dev'", specifier = ">=0.22" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.9" },
-    { name = "uvicorn", extras = ["standard"], specifier = ">=0.34" },
+    { name = "uvicorn", extras = ["standard"], specifier = ">=0.52.0" },
 ]
 provides-extras = ["kerberos", "docker", "yaml", "dev"]
 
