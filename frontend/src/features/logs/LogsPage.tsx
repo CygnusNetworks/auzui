@@ -247,8 +247,7 @@ function LogsBrowser() {
         .filter((h) => {
           const q = hostQuery.trim().toLowerCase();
           return q ? h.host.toLowerCase().includes(q) || h.name.toLowerCase().includes(q) : true;
-        })
-        .slice(0, 8),
+        }),
     [allHostsQuery.data, hostQuery, selectedHosts],
   );
 

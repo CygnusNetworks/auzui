@@ -886,10 +886,8 @@ function HostPicker({
 
   const matches = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return hosts.slice(0, 8);
-    return hosts
-      .filter((h) => h.name.toLowerCase().includes(q) || h.host.toLowerCase().includes(q))
-      .slice(0, 8);
+    if (!q) return hosts;
+    return hosts.filter((h) => h.name.toLowerCase().includes(q) || h.host.toLowerCase().includes(q));
   }, [hosts, query]);
 
   if (selectedHost && !focused) {
