@@ -1,23 +1,55 @@
+import { useSyncExternalStore } from "react";
+
 export const THEME_STORAGE_KEY = "auzui-theme";
 
-export type Theme = "dark" | "light";
+export type ThemeMode = "light" | "dark" | "system";
 
-export function getStoredTheme(): Theme | null {
+// Dark first: "system" only resolves to light when the OS explicitly asks for it.
+const LIGHT_QUERY = "(prefers-color-scheme: light)";
+
+let mode: ThemeMode = "system";
+let systemQuery: MediaQueryList | null = null;
+const listeners = new Set<() => void>();
+
+function readStoredMode(): ThemeMode {
   const stored = localStorage.getItem(THEME_STORAGE_KEY);
-  return stored === "dark" || stored === "light" ? stored : null;
+  return stored === "dark" || stored === "light" ? stored : "system";
 }
 
-export function currentTheme(): Theme {
-  return document.documentElement.classList.contains("dark") ? "dark" : "light";
+function applyResolvedTheme(): void {
+  const dark = mode === "system" ? !window.matchMedia(LIGHT_QUERY).matches : mode === "dark";
+  document.documentElement.classList.toggle("dark", dark);
 }
 
-export function applyTheme(theme: Theme): void {
-  document.documentElement.classList.toggle("dark", theme === "dark");
-  localStorage.setItem(THEME_STORAGE_KEY, theme);
+function onSystemChange(): void {
+  if (mode === "system") applyResolvedTheme();
 }
 
-export function toggleTheme(): Theme {
-  const next: Theme = currentTheme() === "dark" ? "light" : "dark";
-  applyTheme(next);
-  return next;
+export function initTheme(): void {
+  mode = readStoredMode();
+  applyResolvedTheme();
+  systemQuery?.removeEventListener("change", onSystemChange);
+  systemQuery = window.matchMedia(LIGHT_QUERY);
+  systemQuery.addEventListener("change", onSystemChange);
+}
+
+export function getThemeMode(): ThemeMode {
+  return mode;
+}
+
+export function setThemeMode(next: ThemeMode): void {
+  mode = next;
+  if (next === "system") localStorage.removeItem(THEME_STORAGE_KEY);
+  else localStorage.setItem(THEME_STORAGE_KEY, next);
+  applyResolvedTheme();
+  listeners.forEach((l) => l());
+}
+
+export function subscribeThemeMode(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+}
+
+export function useThemeMode(): ThemeMode {
+  return useSyncExternalStore(subscribeThemeMode, getThemeMode);
 }

@@ -4,7 +4,7 @@ import { useT } from "../../lib/i18n";
 import { useHostSuggestions } from "./use-metrics";
 import type { MatrixRow, MetricMatrix as MetricMatrixData } from "./matrix";
 
-/** Re-render on the ThemeToggle's `.dark` class flip so resolved series colors follow the theme. */
+/** Re-render on the `.dark` class flip on <html> so resolved series colors follow the theme. */
 function useThemeVersion(): number {
   const [version, setVersion] = useState(0);
   useEffect(() => {
