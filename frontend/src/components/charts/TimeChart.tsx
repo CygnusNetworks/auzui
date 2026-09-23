@@ -139,7 +139,7 @@ export function TimeChart({ series, unit, height = 220, thresholds = [], onBrush
   onBrushRef.current = onBrush;
   const [, forceRerender] = useState(0);
 
-  // Re-render on .dark class toggles (ThemeToggle flips this on <html>) so the effect below re-reads CSS vars.
+  // Re-render on .dark class toggles (lib/theme flips this on <html>) so the effect below re-reads CSS vars.
   useEffect(() => {
     const observer = new MutationObserver(() => forceRerender((n) => n + 1));
     observer.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });

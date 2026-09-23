@@ -1,14 +1,20 @@
 import { useEffect, useRef, useState } from "react";
 import { useAuthStore } from "../lib/auth/store";
 import { markSsoSuppressed } from "../lib/auth/sso";
-import { applyTheme, currentTheme, type Theme } from "../lib/theme";
+import { setThemeMode, useThemeMode, type ThemeMode } from "../lib/theme";
 import { useLocale, useT, type Locale } from "../lib/i18n";
+
+const THEME_OPTIONS = [
+  { mode: "system", icon: "◐", label: "userMenu.themeSystem" },
+  { mode: "light", icon: "☀", label: "userMenu.themeLight" },
+  { mode: "dark", icon: "☾", label: "userMenu.themeDark" },
+] as const satisfies readonly { mode: ThemeMode; icon: string; label: string }[];
 
 /**
  * Avatar/initials dropdown for the AppShell top bar (tiqora
  * AccountMenu pattern, trimmed down): shows the signed-in username,
- * a language switcher (Deutsch/English), the existing light/dark
- * theme toggle, and sign-out (incl. markSsoSuppressed so the SSO
+ * a language switcher (Deutsch/English), the system/light/dark
+ * theme selector, and sign-out (incl. markSsoSuppressed so the SSO
  * flow doesn't immediately re-attempt Kerberos login).
  *
  * Rendered both in the desktop bar and inside the mobile (<900px) sheet —
@@ -20,7 +26,7 @@ export function UserMenu({ variant = "desktop" }: { variant?: "desktop" | "mobil
   const username = useAuthStore((s) => s.username);
   const logout = useAuthStore((s) => s.logout);
   const [open, setOpen] = useState(false);
-  const [theme, setTheme] = useState<Theme>(currentTheme);
+  const theme = useThemeMode();
   const rootRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -49,11 +55,6 @@ export function UserMenu({ variant = "desktop" }: { variant?: "desktop" | "mobil
     setLocale(next);
   }
 
-  function onSelectTheme(next: Theme) {
-    applyTheme(next);
-    setTheme(next);
-  }
-
   const initials = (username?.[0] ?? "?").toUpperCase();
 
   return (
@@ -76,7 +77,7 @@ export function UserMenu({ variant = "desktop" }: { variant?: "desktop" | "mobil
           className={
             variant === "mobile"
               ? "mt-1.5 w-full rounded-md border border-line bg-surface-2 p-2 shadow-lg"
-              : "absolute right-0 top-full z-50 mt-1.5 w-56 rounded-md border border-line bg-surface p-2 shadow-lg"
+              : "absolute right-0 top-full z-50 mt-1.5 w-64 rounded-md border border-line bg-surface p-2 shadow-lg"
           }
         >
           <div className="truncate border-b border-line-soft px-1.5 pb-2 text-[12.5px] font-semibold text-ink">
@@ -115,28 +116,20 @@ export function UserMenu({ variant = "desktop" }: { variant?: "desktop" | "mobil
             {t("userMenu.theme")}
           </div>
           <div className="mt-1 flex gap-1 px-1.5">
-            <button
-              type="button"
-              onClick={() => onSelectTheme("light")}
-              className={`flex-1 rounded-md border px-2 py-1 text-[12px] ${
-                theme === "light"
-                  ? "border-accent/50 bg-accent-soft font-semibold text-accent"
-                  : "border-line text-ink-2"
-              }`}
-            >
-              ☀ {t("userMenu.themeLight")}
-            </button>
-            <button
-              type="button"
-              onClick={() => onSelectTheme("dark")}
-              className={`flex-1 rounded-md border px-2 py-1 text-[12px] ${
-                theme === "dark"
-                  ? "border-accent/50 bg-accent-soft font-semibold text-accent"
-                  : "border-line text-ink-2"
-              }`}
-            >
-              ☾ {t("userMenu.themeDark")}
-            </button>
+            {THEME_OPTIONS.map(({ mode, icon, label }) => (
+              <button
+                key={mode}
+                type="button"
+                onClick={() => setThemeMode(mode)}
+                className={`flex-1 whitespace-nowrap rounded-md border px-1.5 py-1 text-[12px] ${
+                  theme === mode
+                    ? "border-accent/50 bg-accent-soft font-semibold text-accent"
+                    : "border-line text-ink-2"
+                }`}
+              >
+                {icon} {t(label)}
+              </button>
+            ))}
           </div>
 
           <div className="mt-2.5 border-t border-line-soft pt-2">

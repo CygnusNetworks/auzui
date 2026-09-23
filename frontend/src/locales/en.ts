@@ -47,11 +47,10 @@ export const en = {
     languageDe: "Deutsch",
     languageEn: "English",
     theme: "Theme",
+    themeSystem: "System",
     themeLight: "Light",
     themeDark: "Dark",
-    logout: "Log out",
-    toggleTheme: "Toggle theme",
-  },
+    logout: "Log out",  },
   login: {
     tagline: "a usable zabbix ui",
     checkingSso: "Signing in via Kerberos…",

@@ -6,6 +6,7 @@ import { router } from "./router";
 import { useAuthStore } from "./lib/auth/store";
 import { isSessionError } from "./lib/auth/session-errors";
 import { I18nProvider } from "./lib/i18n";
+import { initTheme } from "./lib/theme";
 import "./index.css";
 
 function handleQueryError(error: unknown) {
@@ -43,12 +44,7 @@ const queryClient = new QueryClient({
 
 watchSilentReauth(queryClient);
 
-// Dark mode first: default to dark unless the user chose otherwise.
-const storedTheme = localStorage.getItem("auzui-theme");
-const prefersLight = window.matchMedia("(prefers-color-scheme: light)").matches;
-if (storedTheme === "dark" || (storedTheme === null && !prefersLight)) {
-  document.documentElement.classList.add("dark");
-}
+initTheme();
 
 async function bootstrap() {
   // Public demo build only: install the fetch shim and auto-login before the
