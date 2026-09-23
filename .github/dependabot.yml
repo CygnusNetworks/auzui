@@ -42,6 +42,10 @@ updates:
     groups:
       backend:
         patterns: ["*"]
+        # gssapi kommt als eigener PR: ein Bump braucht neu gebaute Wheels auf
+        # pypi.cygnusnet.de und neue URLs im Jenkinsfile, sonst bricht der
+        # interne Jenkins-Build ab. Kein ignore, damit Sicherheitsupdates kommen.
+        exclude-patterns: ["gssapi"]
     open-pull-requests-limit: 5
 
   - package-ecosystem: github-actions
