@@ -50,7 +50,8 @@ export const en = {
     themeSystem: "System",
     themeLight: "Light",
     themeDark: "Dark",
-    logout: "Log out",  },
+    logout: "Log out",
+  },
   login: {
     tagline: "a usable zabbix ui",
     checkingSso: "Signing in via Kerberos…",
