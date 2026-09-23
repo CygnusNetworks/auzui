@@ -14,8 +14,6 @@ import { deriveComponentFacet, deriveUnitFacet } from "../../lib/metrics-facets"
 import { useGroupSuggestions, useHostSuggestions } from "./use-metrics";
 import { useT } from "../../lib/i18n";
 
-const MAX_ITEM_SUGGESTIONS = 8;
-
 type SuggestionRow =
   | { kind: "field"; field: MetricQueryField }
   | { kind: "value"; field: MetricQueryField; value: string; label: string }
@@ -128,7 +126,7 @@ export function QueryBar({
 
   const itemSuggestions: SuggestionRow[] = useMemo(() => {
     if (draft) return [];
-    return items.slice(0, MAX_ITEM_SUGGESTIONS).map((item) => ({ kind: "item" as const, item }));
+    return items.map((item) => ({ kind: "item" as const, item }));
   }, [draft, items]);
 
   const rows: SuggestionRow[] = useMemo(
