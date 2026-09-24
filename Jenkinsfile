@@ -49,8 +49,8 @@ pipeline {
                         // unaffected. Rebuild+reupload (see auzui-jenkins-
                         // internal-docker-build memory) and update the URLs
                         // here whenever uv.lock bumps the gssapi version.
-                        GSSAPI_AMD64_WHEEL_URL: 'https://pypi.cygnusnet.de/packages/gssapi-1.11.1-cp311-abi3-linux_x86_64.whl',
-                        GSSAPI_ARM64_WHEEL_URL: 'https://pypi.cygnusnet.de/packages/gssapi-1.11.1-cp311-abi3-linux_aarch64.whl',
+                        GSSAPI_AMD64_WHEEL_URL: 'https://pypi.cygnusnet.de/packages/gssapi-1.12.0-cp311-abi3-linux_x86_64.whl',
+                        GSSAPI_ARM64_WHEEL_URL: 'https://pypi.cygnusnet.de/packages/gssapi-1.12.0-cp311-abi3-linux_aarch64.whl',
                     ])
                 }
             }

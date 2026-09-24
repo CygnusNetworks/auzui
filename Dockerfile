@@ -9,7 +9,9 @@ ARG PNPM_VERSION=11.20.0
 # frontend/ is part of a pnpm workspace together with packages/* (workspace:*
 # deps consumed as TS source, no separate package build step needed), so the
 # whole workspace context is required for a correct `pnpm install`.
-FROM node:${NODE_VERSION}-alpine AS frontend-build
+# Always runs natively: the output is static files, and under QEMU pnpm's
+# supply-chain metadata fetches fail en masse (ECONNRESET/UND_ERR_SOCKET).
+FROM --platform=$BUILDPLATFORM node:${NODE_VERSION}-alpine AS frontend-build
 ARG PNPM_VERSION
 WORKDIR /workspace
 

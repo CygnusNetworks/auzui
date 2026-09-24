@@ -47,10 +47,10 @@ export const de = {
     languageDe: "Deutsch",
     languageEn: "English",
     theme: "Theme",
+    themeSystem: "System",
     themeLight: "Hell",
     themeDark: "Dunkel",
     logout: "Abmelden",
-    toggleTheme: "Theme umschalten",
   },
   login: {
     tagline: "a usable zabbix ui",
