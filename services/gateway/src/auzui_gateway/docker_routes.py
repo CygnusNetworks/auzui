@@ -338,18 +338,23 @@ def create_docker_router(
             images_by_host.setdefault(row["host_id"], []).append(row)
 
         pairs: list[tuple[str, str]] = []
-        keys: list[tuple[str, str, str]] = []
+        keys: list[tuple[str, str, str, str]] = []
         for c in containers:
             image_ref = f"{c['image']}:{c['tag']}" if c["tag"] else c["image"]
             local_digest = _local_digest(images_by_host.get(c["host_id"], []), c)
             pairs.append((image_ref, local_digest))
-            keys.append((c["host_id"], c["id"], image_ref))
+            keys.append((c["host_id"], c["id"], image_ref, local_digest))
 
         checked = await update_checker.check(pairs)
         updates: dict[str, dict[str, dict]] = {}
-        for host_id, cid, image_ref in keys:
+        for host_id, cid, image_ref, local_digest in keys:
+            # Keyed by (image_ref, local_digest), not image_ref alone: two
+            # containers can share a ref (e.g. nginx:latest on several
+            # hosts) while running different local digests, and each needs
+            # its own status rather than both getting whichever was checked
+            # last (see UpdateChecker.check).
             updates.setdefault(host_id, {})[cid] = checked.get(
-                image_ref,
+                (image_ref, local_digest),
                 {"tag": "", "local_digest": "", "remote_digest": "", "status": "unknown"},
             )
         errors = containers_result["errors"] + images_result["errors"]

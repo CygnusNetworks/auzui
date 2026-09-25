@@ -76,7 +76,7 @@ async def test_check_current_when_digests_match():
     )
 
     result = await checker.check([("nginx:1.25", LOCAL_DIGEST)])
-    assert result["nginx:1.25"] == {
+    assert result[("nginx:1.25", LOCAL_DIGEST)] == {
         "tag": "1.25",
         "local_digest": LOCAL_DIGEST,
         "remote_digest": REMOTE_DIGEST_SAME,
@@ -95,8 +95,8 @@ async def test_check_outdated_when_digests_differ():
     )
 
     result = await checker.check([("nginx:1.25", LOCAL_DIGEST)])
-    assert result["nginx:1.25"]["status"] == "outdated"
-    assert result["nginx:1.25"]["remote_digest"] == REMOTE_DIGEST_NEW
+    assert result[("nginx:1.25", LOCAL_DIGEST)]["status"] == "outdated"
+    assert result[("nginx:1.25", LOCAL_DIGEST)]["remote_digest"] == REMOTE_DIGEST_NEW
 
 
 @respx.mock
@@ -118,8 +118,8 @@ async def test_check_anonymous_docker_hub_token_flow():
     )
 
     result = await checker.check([("nginx", LOCAL_DIGEST)])
-    assert result["nginx"]["status"] == "outdated"
-    assert result["nginx"]["remote_digest"] == REMOTE_DIGEST_NEW
+    assert result[("nginx", LOCAL_DIGEST)]["status"] == "outdated"
+    assert result[("nginx", LOCAL_DIGEST)]["remote_digest"] == REMOTE_DIGEST_NEW
     assert token_route.call_count == 1
     # First HEAD gets the 401 challenge, second HEAD carries the Bearer token.
     assert manifest_route.call_count == 2
@@ -149,7 +149,7 @@ async def test_check_registry_with_credentials():
     )
 
     result = await checker.check([("ghcr.io/org/app:tag", REMOTE_DIGEST_SAME)])
-    assert result["ghcr.io/org/app:tag"]["status"] == "current"
+    assert result[("ghcr.io/org/app:tag", REMOTE_DIGEST_SAME)]["status"] == "current"
     request = token_route.calls[0].request
     assert request.headers["Authorization"].startswith("Basic ")
 
@@ -177,7 +177,7 @@ async def test_check_unknown_without_local_digest():
     checker = UpdateChecker(settings)
 
     result = await checker.check([("nginx:1.25", "")])
-    assert result["nginx:1.25"] == {
+    assert result[("nginx:1.25", "")] == {
         "tag": "1.25",
         "local_digest": "",
         "remote_digest": "",
@@ -195,8 +195,8 @@ async def test_check_unknown_on_404():
     )
 
     result = await checker.check([("nginx:1.25", LOCAL_DIGEST)])
-    assert result["nginx:1.25"]["status"] == "unknown"
-    assert result["nginx:1.25"]["remote_digest"] == ""
+    assert result[("nginx:1.25", LOCAL_DIGEST)]["status"] == "unknown"
+    assert result[("nginx:1.25", LOCAL_DIGEST)]["remote_digest"] == ""
 
 
 @respx.mock
@@ -209,7 +209,7 @@ async def test_check_unknown_on_network_error():
     )
 
     result = await checker.check([("nginx:1.25", LOCAL_DIGEST)])
-    assert result["nginx:1.25"]["status"] == "unknown"
+    assert result[("nginx:1.25", LOCAL_DIGEST)]["status"] == "unknown"
 
 
 @respx.mock
@@ -226,7 +226,7 @@ async def test_check_unknown_on_401_without_credentials():
     respx.get("https://ghcr.io/token").mock(return_value=httpx.Response(401))
 
     result = await checker.check([("ghcr.io/org/app:tag", LOCAL_DIGEST)])
-    assert result["ghcr.io/org/app:tag"]["status"] == "unknown"
+    assert result[("ghcr.io/org/app:tag", LOCAL_DIGEST)]["status"] == "unknown"
 
 
 # --- RepoDigest normalization ----------------------------------------------
@@ -253,9 +253,9 @@ async def test_check_current_when_local_is_a_full_repodigest():
     )
 
     result = await checker.check([("ghcr.io/org/app:1.25", REPO_DIGEST)])
-    assert result["ghcr.io/org/app:1.25"]["status"] == "current"
+    assert result[("ghcr.io/org/app:1.25", REPO_DIGEST)]["status"] == "current"
     # Reported back in the same shape as remote_digest, so the two are comparable.
-    assert result["ghcr.io/org/app:1.25"]["local_digest"] == LOCAL_DIGEST
+    assert result[("ghcr.io/org/app:1.25", REPO_DIGEST)]["local_digest"] == LOCAL_DIGEST
 
 
 @respx.mock
@@ -267,4 +267,35 @@ async def test_check_still_detects_a_real_update_through_a_repodigest():
     )
 
     result = await checker.check([("ghcr.io/org/app:1.25", REPO_DIGEST)])
-    assert result["ghcr.io/org/app:1.25"]["status"] == "outdated"
+    assert result[("ghcr.io/org/app:1.25", REPO_DIGEST)]["status"] == "outdated"
+
+
+# --- same-ref, different-digest (bug #9) ------------------------------------
+
+
+@respx.mock
+async def test_check_keeps_separate_status_for_same_ref_different_local_digest():
+    """Regression: two containers on the same image ref (e.g. nginx:latest
+    reused across hosts, or an old container next to its just-recreated
+    replacement) but with different local digests must each get their own
+    status. Keying results by image_ref alone made the second pair's result
+    overwrite the first's, so an outdated container could report "current"
+    just because another container shared its ref."""
+    checker = UpdateChecker(make_settings())
+
+    # Only one registry call: the per-tag remote-digest cache still dedupes
+    # across pairs that share a ref, regardless of local digest.
+    route = respx.head("https://registry-1.docker.io/v2/library/nginx/manifests/latest").mock(
+        return_value=httpx.Response(200, headers={"Docker-Content-Digest": REMOTE_DIGEST_NEW})
+    )
+
+    result = await checker.check(
+        [
+            ("nginx:latest", REMOTE_DIGEST_NEW),  # up to date
+            ("nginx:latest", LOCAL_DIGEST),  # stale local digest
+        ]
+    )
+
+    assert result[("nginx:latest", REMOTE_DIGEST_NEW)]["status"] == "current"
+    assert result[("nginx:latest", LOCAL_DIGEST)]["status"] == "outdated"
+    assert route.call_count == 1

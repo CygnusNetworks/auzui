@@ -218,21 +218,33 @@ class UpdateChecker:
             "status": status,
         }
 
-    async def check(self, images: list[tuple[str, str]]) -> dict[str, dict[str, Any]]:
+    async def check(self, images: list[tuple[str, str]]) -> dict[tuple[str, str], dict[str, Any]]:
         """Checks a batch of `(image_ref, local_digest)` pairs and returns
-        `{image_ref: {tag, local_digest, remote_digest, status}}`. A missing
-        `local_digest` (image was never pulled from a registry, e.g. built
-        locally) short-circuits to `status="unknown"` without a network call.
-        Every per-image failure degrades to `unknown`; this method itself
-        never raises."""
+        `{(image_ref, local_digest): {tag, local_digest, remote_digest, status}}`.
+        Keying on the *pair* (not just `image_ref`) matters: two containers can
+        share the same ref (e.g. `nginx:latest` on several hosts, or an old and
+        a just-recreated container before the cache catches up) while running
+        different local digests, and each must get its own status rather than
+        both collapsing onto whichever one happened to be checked last. The
+        per-tag remote-digest cache (`self._cache`, keyed by registry/repo/tag)
+        is unaffected by this — it still dedupes registry calls across pairs
+        that share a ref, regardless of local digest.
+
+        A missing `local_digest` (image was never pulled from a registry, e.g.
+        built locally) short-circuits to `status="unknown"` without a network
+        call. Every per-image failure degrades to `unknown`; this method
+        itself never raises."""
         async with self._client() as client:
-            results: dict[str, dict[str, Any]] = {}
+            results: dict[tuple[str, str], dict[str, Any]] = {}
             for ref, local_digest in images:
+                key = (ref, local_digest)
+                if key in results:
+                    continue
                 try:
-                    results[ref] = await self._check_one(client, ref, local_digest)
+                    results[key] = await self._check_one(client, ref, local_digest)
                 except Exception as e:  # noqa: BLE001 - a bad image ref must not abort the batch
                     logger.warning("docker update check for %r failed: %r", ref, e)
-                    results[ref] = {
+                    results[key] = {
                         "tag": "",
                         "local_digest": local_digest,
                         "remote_digest": "",
