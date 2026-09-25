@@ -320,15 +320,29 @@ class DockerHostClient:
     def pull_recreate(self, cid: str) -> dict:
         """Watchtower-principle update: pull the image, and if the digest
         actually changed, replace the container in place while preserving
-        its full runtime config (ports, mounts, env, labels, restart
-        policy, networks). Everything after the old container is stopped
-        is wrapped so ANY failure rolls back to the ORIGINAL container
-        instead of leaving the host with neither the old nor the new one
-        running:
+        its FULL inspected runtime config -- not just a hand-picked subset.
+        That includes security-relevant settings (Config.User,
+        HostConfig.ReadonlyRootfs/CapAdd/CapDrop/SecurityOpt/Privileged),
+        resource limits (Memory/NanoCpus/PidsLimit/Ulimits/...), namespace
+        and mode settings (NetworkMode incl. host/container:<id>, PidMode,
+        IpcMode, UsernsMode, Init, ...), and per-network endpoint details
+        (Aliases -- which Compose relies on for service-name DNS --,
+        static IPAMConfig addresses, Links). See `_recreate_container_spec`
+        for how the inspected `Config`/`HostConfig`/`NetworkSettings` are
+        turned into `client.api.create_container(...)` arguments (the
+        low-level API, which accepts the inspected `HostConfig` dict
+        through as-is via `host_config=`) rather than docker-py's
+        high-level `containers.create(...)`, whose kwargs only cover a
+        fraction of what a container can be configured with.
 
-            pull -> compare RepoDigest -> clone create-kwargs from inspect
+        Everything after the old container is stopped is wrapped so ANY
+        failure rolls back to the ORIGINAL container instead of leaving
+        the host with neither the old nor the new one running:
+
+            pull -> compare RepoDigest -> build create() args from inspect
                  -> stop old -> rename old to "<name>-auzui-backup"
                  -> create + start new container under the original name
+                 -> connect any additional (non-primary) networks
                  -> success: remove the backup
                  -> ANY exception after the rename: remove whatever partial
                     replacement exists, rename the backup back to the
@@ -340,9 +354,11 @@ class DockerHostClient:
         attrs = container.attrs
         image_ref = attrs["Config"]["Image"]
 
+        old_image_config: dict | None = None
         try:
             old_image = client.images.get(attrs["Image"])
             old_digest = _repo_digest(old_image.attrs, image_ref)
+            old_image_config = old_image.attrs.get("Config")
         except docker.errors.NotFound:
             old_digest = None
 
@@ -357,7 +373,9 @@ class DockerHostClient:
 
         name = attrs["Name"].lstrip("/")
         backup_name = f"{name}-auzui-backup"
-        create_kwargs, extra_networks = _clone_create_kwargs(attrs, pulled_image.id)
+        create_kwargs, extra_networks = _recreate_container_spec(
+            attrs, pulled_image.id, old_image_config
+        )
 
         try:
             container.stop()
@@ -378,15 +396,26 @@ class DockerHostClient:
             raise _translate_write_error(e) from e
 
         try:
-            new_container = client.containers.create(name=name, **create_kwargs)
+            created = client.api.create_container(name=name, **create_kwargs)
+            new_container = client.containers.get(created["Id"])
             new_container.start()
-            for net_name in extra_networks:
+            for net_name, endpoint in extra_networks:
                 try:
-                    client.networks.get(net_name).connect(new_container)
+                    ipam = endpoint.get("IPAMConfig") or {}
+                    client.api.connect_container_to_network(
+                        new_container.id,
+                        net_name,
+                        aliases=endpoint.get("Aliases"),
+                        links=endpoint.get("Links"),
+                        ipv4_address=ipam.get("IPv4Address"),
+                        ipv6_address=ipam.get("IPv6Address"),
+                        driver_opt=endpoint.get("DriverOpts"),
+                    )
                 except Exception:
                     # Best-effort: the primary network is already attached
-                    # via create_kwargs["network"]; a secondary network
-                    # failing to attach is logged, not fatal to the update.
+                    # via create_kwargs["networking_config"]; a secondary
+                    # network failing to attach is logged, not fatal to the
+                    # update.
                     logger.warning(
                         "pull_recreate(%s): could not attach replacement to network %s",
                         cid,
@@ -456,55 +485,216 @@ def _repo_digest(image_attrs: dict, image_ref: str) -> str | None:
     return digests[0] if digests else None
 
 
-def _clone_create_kwargs(attrs: dict, image: str) -> tuple[dict[str, Any], list[str]]:
-    """Build `containers.create(...)` kwargs that reproduce `attrs`'
-    runtime configuration (ports/mounts/env/labels/restart-policy/hostname/
-    working-dir) against the freshly pulled `image`. Returns
-    (kwargs, extra_network_names) — docker-py's `create()` only attaches
-    one network up front; any additional networks the original container
-    was on are connected afterward by the caller."""
-    config = attrs.get("Config") or {}
-    host_config = attrs.get("HostConfig") or {}
-    network_settings = attrs.get("NetworkSettings") or {}
+def _with_anonymous_volumes_reused(attrs: dict, host_config: dict) -> dict:
+    """Reuse anonymous (but still NAMED, e.g. `a1b2c3.../data`) volumes by
+    name instead of letting Docker generate a fresh, empty one for the
+    recreated container.
 
-    ports: dict[str, Any] = {}
-    for container_port, bindings in (host_config.get("PortBindings") or {}).items():
-        if not bindings:
-            ports[container_port] = None
-            continue
-        ports[container_port] = [
-            {"HostIp": b.get("HostIp", ""), "HostPort": b.get("HostPort", "")} for b in bindings
-        ]
+    `attrs["Mounts"]` -- the container's actual, resolved mount list --
+    carries every volume mount with its generated `Name`, INCLUDING ones
+    that came from an image's own `VOLUME` directive (e.g. postgres's
+    `/var/lib/postgresql/data`), a bare `docker run -v /data`, or a
+    Compose `volumes: [/data]` entry. None of those show up in
+    `HostConfig.Binds` (which only has `src:dst` pairs for mounts given an
+    explicit source), and a Compose-style one shows up in
+    `HostConfig.Mounts` as `Type=volume` with an EMPTY `Source` -- so
+    passing `HostConfig` through verbatim would create the new container
+    with brand-new, empty volumes at those destinations: silent data loss
+    on every update of e.g. a database container.
 
-    volumes: list[str] = []
+    For every `attrs["Mounts"]` entry with `Type == "volume"` and a `Name`
+    whose `Destination` HostConfig doesn't already cover by name, this
+    adds `"{Name}:{Destination}[:ro]"` to a COPY of `Binds` so the SAME
+    volume is attached, and drops the matching source-less `Mounts` entry
+    (if any) so Docker doesn't reject a duplicate mount point. Named
+    volumes/binds HostConfig already references are left untouched."""
+    host_config = dict(host_config)
+    binds = list(host_config.get("Binds") or [])
+    mounts = list(host_config.get("Mounts") or [])
+
+    covered: set[str] = set()
+    for bind in binds:
+        parts = bind.split(":")
+        if len(parts) >= 2 and parts[0]:
+            covered.add(parts[1])
+    for m in mounts:
+        if m.get("Source"):
+            covered.add(m.get("Target", ""))
+
     for m in attrs.get("Mounts") or []:
+        if m.get("Type") != "volume" or not m.get("Name"):
+            continue
+        destination = m.get("Destination")
+        if not destination or destination in covered:
+            continue
         suffix = "" if m.get("RW", True) else ":ro"
-        source = m.get("Name") if m.get("Type") == "volume" else m.get("Source")
-        if source and m.get("Destination"):
-            volumes.append(f"{source}:{m['Destination']}{suffix}")
+        binds.append(f"{m['Name']}:{destination}{suffix}")
+        mounts = [
+            mm for mm in mounts if not (mm.get("Target") == destination and not mm.get("Source"))
+        ]
+        covered.add(destination)
 
-    restart_policy = host_config.get("RestartPolicy") or {}
-    networks = list((network_settings.get("Networks") or {}).keys())
+    if binds:
+        host_config["Binds"] = binds
+    if host_config.get("Mounts") is not None:
+        host_config["Mounts"] = mounts or None
+    return host_config
+
+
+def _recreate_container_spec(
+    attrs: dict, new_image: str, old_image_config: dict | None
+) -> tuple[dict[str, Any], list[tuple[str, dict[str, Any]]]]:
+    """Build `client.api.create_container(...)` kwargs (docker-py's
+    LOW-level API) that reproduce `attrs`' FULL inspected runtime
+    configuration against the freshly pulled `new_image` -- unlike
+    docker-py's high-level `containers.create(...)`, whose kwargs cover
+    only a hand-picked subset of what a container can be configured with
+    and silently drop everything else (the bug this function fixes).
+
+    `HostConfig` -- which carries every security- and resource-relevant
+    setting (ReadonlyRootfs, CapAdd/CapDrop, SecurityOpt, Privileged,
+    memory/cpu limits, Ulimits, Devices, Dns*, NetworkMode incl.
+    host/container:<id>, PidMode, IpcMode, UsernsMode, Sysctls, LogConfig,
+    Binds/Mounts, RestartPolicy, ...) -- is passed through *verbatim* as
+    `host_config`, aside from one addition: `_with_anonymous_volumes_reused`
+    adds a named Bind for every anonymous volume in `attrs["Mounts"]` (an
+    image `VOLUME`, a bare `-v /data`, or a Compose `volumes: [/data]`
+    entry) that HostConfig doesn't already reference by name, so the
+    recreated container reuses the SAME volume instead of Docker silently
+    creating a fresh, empty one. Nothing security-relevant is stripped.
+
+    Returns (kwargs, extra_networks) where extra_networks is
+    [(network_name, endpoint_settings), ...] for every network beyond the
+    primary one `create_container` attaches at creation time (via
+    `networking_config`); the caller connects those afterward, preserving
+    each one's Aliases/IPAMConfig/Links/DriverOpts."""
+    old_container_id = attrs.get("Id", "")
+    config = dict(attrs.get("Config") or {})
+    config["Image"] = new_image
+
+    # Docker defaults a container's Hostname to its own short id when none
+    # was set explicitly at creation. Carrying that over verbatim would
+    # make the NEW container claim the OLD container's short id as its
+    # hostname instead of getting one auto-generated from its own id.
+    if old_container_id and config.get("Hostname") == old_container_id[:12]:
+        config["Hostname"] = None
+
+    config = _strip_frozen_image_defaults(config, old_image_config)
+
+    host_config = _with_anonymous_volumes_reused(attrs, attrs.get("HostConfig") or {})
+    networking_config, extra_networks = _recreate_networking(attrs, old_container_id)
 
     kwargs: dict[str, Any] = {
-        "image": image,
+        "image": config["Image"],
         "command": config.get("Cmd"),
+        "hostname": config.get("Hostname"),
+        "domainname": config.get("Domainname"),
+        "user": config.get("User"),
+        "tty": bool(config.get("Tty")),
+        "stdin_open": bool(config.get("OpenStdin")),
+        "ports": config.get("ExposedPorts"),
+        "environment": config.get("Env"),
+        "volumes": config.get("Volumes"),
         "entrypoint": config.get("Entrypoint"),
-        "environment": config.get("Env") or [],
-        "labels": config.get("Labels") or {},
-        "ports": ports,
-        "volumes": volumes,
-        "restart_policy": {
-            "Name": restart_policy.get("Name", ""),
-            "MaximumRetryCount": restart_policy.get("MaximumRetryCount", 0),
-        },
-        "hostname": config.get("Hostname") or None,
-        "working_dir": config.get("WorkingDir") or None,
+        "working_dir": config.get("WorkingDir"),
+        "labels": config.get("Labels"),
+        "stop_signal": config.get("StopSignal"),
+        "stop_timeout": config.get("StopTimeout"),
+        "healthcheck": config.get("Healthcheck"),
+        "host_config": host_config,
+        "networking_config": networking_config,
         "detach": True,
     }
-    if networks:
-        kwargs["network"] = networks[0]
-    return kwargs, networks[1:]
+    return kwargs, extra_networks
+
+
+def _env_map(env: list[str]) -> dict[str, str]:
+    result: dict[str, str] = {}
+    for entry in env:
+        result[entry.partition("=")[0]] = entry
+    return result
+
+
+def _strip_frozen_image_defaults(config: dict, old_image_config: dict | None) -> dict:
+    """Watchtower does not "freeze" the old image's defaults into the
+    recreated container: for the handful of `Config` fields that double as
+    image defaults (Env/Labels/Cmd/Entrypoint/ExposedPorts/WorkingDir/User/
+    Healthcheck), a container-level value IDENTICAL to what the OLD image
+    already defaulted to is dropped (set to `None`), so the NEW image's own
+    default applies on the next start. Anything the operator actually
+    overrode -- differs from the old image's default -- is left untouched.
+
+    Skipped entirely, keeping every value exactly as inspected, when the
+    old image's Config could not be looked up (e.g. it was pruned between
+    the container starting and this update) -- that's the safe fallback."""
+    if old_image_config is None:
+        return config
+    config = dict(config)
+
+    old_env = _env_map(old_image_config.get("Env") or [])
+    kept_env = [e for e in (config.get("Env") or []) if old_env.get(e.partition("=")[0]) != e]
+    config["Env"] = kept_env or None
+
+    old_labels = old_image_config.get("Labels") or {}
+    labels = config.get("Labels") or {}
+    config["Labels"] = {k: v for k, v in labels.items() if old_labels.get(k) != v} or None
+
+    for field in ("Cmd", "Entrypoint", "ExposedPorts", "WorkingDir", "User", "Healthcheck"):
+        if config.get(field) == old_image_config.get(field):
+            config[field] = None
+
+    return config
+
+
+def _recreate_networking(
+    attrs: dict, old_container_id: str
+) -> tuple[dict[str, Any] | None, list[tuple[str, dict[str, Any]]]]:
+    """NetworkingConfig for `create_container(...)` (the primary network,
+    attached at creation time) plus the remaining networks to connect
+    afterward -- each with its Aliases/IPAMConfig/Links/DriverOpts intact,
+    which is what Compose relies on for service-name DNS and what a
+    container with a static IP needs to keep it.
+
+    NetworkMode `host`/`none`/`container:<id>` means the container shares
+    or has no network namespace of its own; attaching a network in that
+    case is either meaningless or a Docker API error, so nothing is
+    attached here -- the mode itself already lives, unmodified, in
+    `HostConfig` (passed through verbatim by the caller)."""
+    host_config = attrs.get("HostConfig") or {}
+    network_mode = host_config.get("NetworkMode") or ""
+    if network_mode in ("host", "none") or network_mode.startswith("container:"):
+        return None, []
+
+    networks: dict[str, Any] = (attrs.get("NetworkSettings") or {}).get("Networks") or {}
+    if not networks:
+        return None, []
+
+    names = list(networks.keys())
+    primary = network_mode if network_mode in networks else names[0]
+    others = [n for n in names if n != primary]
+    short_id = old_container_id[:12] if old_container_id else None
+
+    def endpoint_settings(name: str) -> dict[str, Any]:
+        ep = networks.get(name) or {}
+        # Docker auto-adds the container's own short id as an alias; drop
+        # the OLD container's so the new one gets its own, not a stale one.
+        aliases = [a for a in (ep.get("Aliases") or []) if a not in (old_container_id, short_id)]
+        settings: dict[str, Any] = {}
+        if aliases:
+            settings["Aliases"] = aliases
+        if ep.get("Links"):
+            settings["Links"] = ep["Links"]
+        if ep.get("IPAMConfig"):
+            settings["IPAMConfig"] = ep["IPAMConfig"]
+        if ep.get("DriverOpts"):
+            settings["DriverOpts"] = ep["DriverOpts"]
+        if ep.get("MacAddress"):
+            settings["MacAddress"] = ep["MacAddress"]
+        return settings
+
+    networking_config = {"EndpointsConfig": {primary: endpoint_settings(primary)}}
+    extra_networks = [(n, endpoint_settings(n)) for n in others]
+    return networking_config, extra_networks
 
 
 ClientFactory = Callable[[DockerHost, Settings], DockerHostClient]
