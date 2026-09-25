@@ -62,6 +62,23 @@ export function resetReauthCooldown() {
   lastReauthAt = 0;
 }
 
+/**
+ * Bumped by every auth transition that isn't the silent-renewal handshake
+ * itself (logout, password login, loginWithSso from any other caller —
+ * including the handshake's own success path, see below). A pending
+ * `attemptSso({ force: true })` from `handleSessionExpired` captures the
+ * generation before it starts; if the value has moved on by the time the
+ * handshake resolves, the user has explicitly logged out or logged in again
+ * in the meantime, and the stale result (success or failure) must be
+ * discarded rather than clobbering whatever state that newer action set.
+ */
+let authGeneration = 0;
+
+/** Test seam: read the current generation without exporting the counter itself. */
+export function getAuthGeneration() {
+  return authGeneration;
+}
+
 export const useAuthStore = create<AuthState>((set, get) => ({
   token: storedToken,
   username: storedUsername,
@@ -69,6 +86,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   loggingIn: false,
   reauthenticating: false,
   async login(username: string, password: string) {
+    authGeneration++;
     set({ loggingIn: true, loginError: null });
     try {
       const token = await zabbixApi.login(username, password);
@@ -84,12 +102,14 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
   },
   loginWithSso(token: string, username: string) {
+    authGeneration++;
     zabbixClient.setToken(token);
     persistSession(token, username);
     rememberLoginMethod("spnego");
     set({ token, username, loginError: null, loggingIn: false });
   },
   logout() {
+    authGeneration++;
     // Best-effort: fire and forget, we clear local state regardless.
     void zabbixApi.logout().catch(() => undefined);
     clearPersistedSession();
@@ -107,8 +127,20 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     const now = Date.now();
     if (getLoginMethod() === "spnego" && now - lastReauthAt >= REAUTH_COOLDOWN_MS) {
       lastReauthAt = now;
+      // Captured before the handshake starts: if logout()/login()/
+      // loginWithSso() run while it's in flight, this goes stale and the
+      // result below (success or failure) must be ignored — see
+      // `authGeneration` doc comment above.
+      const generation = authGeneration;
       set({ reauthenticating: true });
       void attemptSso({ force: true }).then((result) => {
+        if (authGeneration !== generation) {
+          // Superseded by a newer auth action. Only release the flag, which
+          // login()/loginWithSso() don't reset; a stuck `true` would make
+          // every later session expiry bail out early.
+          if (get().reauthenticating) set({ reauthenticating: false });
+          return;
+        }
         if (result) {
           get().loginWithSso(result.token, result.username);
           set({ reauthenticating: false });

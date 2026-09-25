@@ -9,7 +9,7 @@ vi.mock("../sso", () => ({
 
 import { attemptSso } from "../sso";
 import { rememberLoginMethod } from "../login-method";
-import { resetReauthCooldown, useAuthStore, zabbixClient } from "../store";
+import { resetReauthCooldown, useAuthStore, zabbixApi, zabbixClient } from "../store";
 
 const attemptSsoMock = vi.mocked(attemptSso);
 
@@ -123,6 +123,105 @@ describe("handleSessionExpired", () => {
     await flush();
 
     expect(attemptSsoMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("logout during a pending renewal is not undone by a late-resolving success", async () => {
+    rememberLoginMethod("spnego");
+    let resolveSso: (result: { token: string; username: string } | null) => void;
+    attemptSsoMock.mockReturnValue(
+      new Promise((resolve) => {
+        resolveSso = resolve;
+      }),
+    );
+
+    useAuthStore.getState().handleSessionExpired();
+    expect(useAuthStore.getState().reauthenticating).toBe(true);
+
+    useAuthStore.getState().logout();
+    expect(useAuthStore.getState()).toMatchObject({
+      token: null,
+      username: null,
+      loginError: null,
+      reauthenticating: false,
+    });
+
+    // The in-flight handshake finally resolves successfully, after the user
+    // already logged out — it must not resurrect the session.
+    resolveSso!({ token: "late-token", username: "alice" });
+    await flush();
+
+    expect(useAuthStore.getState()).toMatchObject({
+      token: null,
+      username: null,
+      loginError: null,
+      reauthenticating: false,
+    });
+    expect(sessionStorage.getItem("auzui-session-token")).toBeNull();
+  });
+
+  it("logout during a pending renewal is not turned into a 'session expired' error by a late failure", async () => {
+    rememberLoginMethod("spnego");
+    let resolveSso: (result: { token: string; username: string } | null) => void;
+    attemptSsoMock.mockReturnValue(
+      new Promise((resolve) => {
+        resolveSso = resolve;
+      }),
+    );
+
+    useAuthStore.getState().handleSessionExpired();
+    useAuthStore.getState().logout();
+
+    // The in-flight handshake finally resolves with failure — must not set
+    // loginError or otherwise touch state after an explicit logout.
+    resolveSso!(null);
+    await flush();
+
+    expect(useAuthStore.getState()).toMatchObject({
+      token: null,
+      username: null,
+      loginError: null,
+      reauthenticating: false,
+    });
+  });
+
+  it("login during a pending renewal is not undone by a late-resolving handshake", async () => {
+    rememberLoginMethod("spnego");
+    const loginSpy = vi.spyOn(zabbixApi, "login").mockResolvedValue("bob-token");
+    let resolveSso: (result: { token: string; username: string } | null) => void;
+    attemptSsoMock.mockReturnValue(
+      new Promise((resolve) => {
+        resolveSso = resolve;
+      }),
+    );
+
+    useAuthStore.getState().handleSessionExpired();
+
+    const loginPromise = useAuthStore.getState().login("bob", "s3cret");
+    resolveSso!({ token: "late-token", username: "alice" });
+    await Promise.all([loginPromise, flush()]);
+
+    // The password login (a fresh, different identity) must win — the stale
+    // Kerberos result for "alice" must not overwrite it.
+    expect(useAuthStore.getState().username).toBe("bob");
+    // ...and the discarded handshake must not leave the flag stuck, or every
+    // later session expiry would bail out as "handshake already running".
+    expect(useAuthStore.getState().reauthenticating).toBe(false);
+    loginSpy.mockRestore();
+  });
+
+  it("normal renewal still works when nothing interrupts it", async () => {
+    rememberLoginMethod("spnego");
+    attemptSsoMock.mockResolvedValue({ token: "fresh-token", username: "alice" });
+
+    useAuthStore.getState().handleSessionExpired();
+    await flush();
+
+    expect(useAuthStore.getState()).toMatchObject({
+      token: "fresh-token",
+      username: "alice",
+      loginError: null,
+      reauthenticating: false,
+    });
   });
 
   it("only re-auths once per cooldown window, then expires normally", async () => {
