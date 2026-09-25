@@ -281,6 +281,8 @@ export interface MaintenanceFormState {
   /** Weekday indices (0=Mon…6=Sun) — weekly only. */
   weekdays: number[];
   everyDays: number;
+  /** Weekly only: repeat every N weeks. */
+  everyWeeks: number;
   monthDay: number;
   weekdayIndex: number;
   weekdayOccurrence: number;
@@ -318,6 +320,7 @@ export function maintenanceToFormState(m: {
     startTimeSeconds: Number(tp.start_time ?? 0),
     weekdays: [] as number[],
     everyDays: 1,
+    everyWeeks: 1,
     monthDay: 1,
     weekdayIndex: 0,
     weekdayOccurrence: 1,
@@ -348,6 +351,7 @@ export function maintenanceToFormState(m: {
         recurrence: "weekly",
         startSeconds: Number(m.active_since),
         weekdays,
+        everyWeeks: Number(tp.every ?? 1) || 1,
       };
     }
     case "4": {

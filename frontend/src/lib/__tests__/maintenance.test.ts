@@ -584,8 +584,103 @@ describe("maintenanceToFormState", () => {
     ).toBeNull();
   });
 
-  it("round-trips through buildMaintenancePayload for a weekly window", () => {
-    const payload = buildMaintenancePayload({
+  /**
+   * Builds a create payload from `input`, decodes it back to form state as if
+   * it had come from maintenance.get (stringified, like the real API), and
+   * re-encodes that decoded state through buildMaintenancePayload. Asserts
+   * the re-encoded timeperiod matches the original one-for-one — i.e.
+   * nothing that round-trips through the edit form silently changes.
+   */
+  function roundTrip(
+    input: Parameters<typeof buildMaintenancePayload>[0],
+  ): { decoded: ReturnType<typeof maintenanceToFormState>; rebuilt: ReturnType<typeof buildMaintenancePayload> } {
+    const payload = buildMaintenancePayload(input);
+    const tp = payload.timeperiods[0]!;
+    const decoded = maintenanceToFormState({
+      name: payload.name,
+      active_since: String(payload.active_since),
+      active_till: String(payload.active_till),
+      maintenance_type: String(payload.maintenance_type) as "0" | "1",
+      hosts: input.hostids.map((hostid) => ({ hostid, host: hostid })),
+      hostgroups: input.groupids.map((groupid) => ({ groupid, name: groupid })),
+      timeperiods: [
+        {
+          timeperiod_type: String(tp.timeperiod_type),
+          period: String(tp.period),
+          ...(tp.every !== undefined ? { every: String(tp.every) } : {}),
+          ...(tp.dayofweek !== undefined ? { dayofweek: String(tp.dayofweek) } : {}),
+          ...(tp.start_time !== undefined ? { start_time: String(tp.start_time) } : {}),
+          ...(tp.start_date !== undefined ? { start_date: String(tp.start_date) } : {}),
+          ...(tp.month !== undefined ? { month: String(tp.month) } : {}),
+          ...(tp.day !== undefined ? { day: String(tp.day) } : {}),
+        },
+      ],
+    });
+    expect(decoded).not.toBeNull();
+    const d = decoded!;
+    const rebuilt = buildMaintenancePayload({
+      name: d.name,
+      description: d.description,
+      hostids: d.hosts.map((h) => h.id),
+      groupids: d.groups.map((g) => g.id),
+      startSeconds: d.startSeconds,
+      durationSeconds: d.durationSeconds,
+      withDataCollection: d.withDataCollection,
+      recurrence: d.recurrence,
+      activeTillSeconds: d.recurrence === "once" ? undefined : d.activeTillSeconds,
+      startTimeSeconds: d.recurrence === "once" ? undefined : d.startTimeSeconds,
+      everyDays: d.everyDays,
+      everyWeeks: d.everyWeeks,
+      dayofweek:
+        d.recurrence === "weekly"
+          ? d.weekdays.reduce((mask, i) => mask | dayOfWeekBitLocal(i), 0)
+          : d.recurrence === "monthlyWeekday"
+            ? dayOfWeekBitLocal(d.weekdayIndex)
+            : undefined,
+      weekdayOccurrence: d.recurrence === "monthlyWeekday" ? d.weekdayOccurrence : undefined,
+      monthDay: d.recurrence === "monthlyDay" || d.recurrence === "yearly" ? d.monthDay : undefined,
+      month: d.recurrence === "yearly" ? d.yearlyMonth : undefined,
+    });
+    return { decoded, rebuilt };
+  }
+
+  function dayOfWeekBitLocal(index: number): number {
+    return 1 << index;
+  }
+
+  it("round-trips a one-time window unchanged", () => {
+    const { rebuilt } = roundTrip({
+      name: "Patchday",
+      hostids: ["1"],
+      groupids: [],
+      startSeconds: 1000,
+      durationSeconds: 7200,
+      withDataCollection: true,
+    });
+    expect(rebuilt.timeperiods).toEqual([
+      { timeperiod_type: 0, period: 7200, start_date: 1000 },
+    ]);
+  });
+
+  it("round-trips a daily window (every 3 days) unchanged", () => {
+    const { rebuilt } = roundTrip({
+      name: "Patchday",
+      hostids: ["1"],
+      groupids: [],
+      startSeconds: 1000,
+      durationSeconds: 7200,
+      withDataCollection: true,
+      recurrence: "daily",
+      everyDays: 3,
+      startTimeSeconds: 79200,
+    });
+    expect(rebuilt.timeperiods).toEqual([
+      { timeperiod_type: 2, period: 7200, every: 3, start_time: 79200 },
+    ]);
+  });
+
+  it("round-trips a weekly window with every-2-weeks unchanged (regression: used to collapse to every week)", () => {
+    const { decoded, rebuilt } = roundTrip({
       name: "Patchday",
       hostids: ["1"],
       groupids: [],
@@ -593,32 +688,90 @@ describe("maintenanceToFormState", () => {
       durationSeconds: 7200,
       withDataCollection: true,
       recurrence: "weekly",
-      dayofweek: 65,
+      dayofweek: 65, // Mon + Sun
+      everyWeeks: 2,
       startTimeSeconds: 79200,
     });
-    const tp = payload.timeperiods[0]!;
-    const state = maintenanceToFormState({
-      name: payload.name,
-      active_since: String(payload.active_since),
-      active_till: String(payload.active_till),
-      maintenance_type: "0",
-      hosts: [{ hostid: "1", host: "web-01" }],
-      timeperiods: [
-        {
-          timeperiod_type: String(tp.timeperiod_type),
-          period: String(tp.period),
-          every: String(tp.every),
-          dayofweek: String(tp.dayofweek),
-          start_time: String(tp.start_time),
-        },
-      ],
-    });
-    expect(state).toMatchObject({
-      recurrence: "weekly",
-      weekdays: [0, 6],
-      startTimeSeconds: 79200,
-      durationSeconds: 7200,
+    expect(decoded).toMatchObject({ everyWeeks: 2, weekdays: [0, 6] });
+    expect(rebuilt.timeperiods).toEqual([
+      { timeperiod_type: 3, period: 7200, every: 2, dayofweek: 65, start_time: 79200 },
+    ]);
+  });
+
+  it("round-trips a weekly window with the default every-1-week unchanged", () => {
+    const { rebuilt } = roundTrip({
+      name: "Patchday",
+      hostids: ["1"],
+      groupids: [],
       startSeconds: 1000,
+      durationSeconds: 7200,
+      withDataCollection: true,
+      recurrence: "weekly",
+      dayofweek: 2,
+      startTimeSeconds: 79200,
     });
+    expect(rebuilt.timeperiods).toEqual([
+      { timeperiod_type: 3, period: 7200, every: 1, dayofweek: 2, start_time: 79200 },
+    ]);
+  });
+
+  it("round-trips a monthly-day-of-month window unchanged", () => {
+    const { rebuilt } = roundTrip({
+      name: "Patchday",
+      hostids: ["1"],
+      groupids: [],
+      startSeconds: 1000,
+      durationSeconds: 1800,
+      withDataCollection: true,
+      recurrence: "monthlyDay",
+      monthDay: 15,
+      startTimeSeconds: 3600,
+    });
+    expect(rebuilt.timeperiods).toEqual([
+      { timeperiod_type: 4, period: 1800, month: 0b111111111111, day: 15, start_time: 3600 },
+    ]);
+  });
+
+  it("round-trips a monthly-weekday window (2nd Tuesday) unchanged", () => {
+    const { rebuilt } = roundTrip({
+      name: "Patchday",
+      hostids: ["1"],
+      groupids: [],
+      startSeconds: 1000,
+      durationSeconds: 4320,
+      withDataCollection: true,
+      recurrence: "monthlyWeekday",
+      dayofweek: 2,
+      weekdayOccurrence: 2,
+      startTimeSeconds: 32400,
+    });
+    expect(rebuilt.timeperiods).toEqual([
+      {
+        timeperiod_type: 4,
+        period: 4320,
+        month: 0b111111111111,
+        dayofweek: 2,
+        every: 2,
+        start_time: 32400,
+      },
+    ]);
+  });
+
+  it("round-trips a yearly window unchanged", () => {
+    const { rebuilt } = roundTrip({
+      name: "Patchday",
+      hostids: ["1"],
+      groupids: [],
+      startSeconds: 1000,
+      durationSeconds: 1800,
+      withDataCollection: true,
+      recurrence: "yearly",
+      month: 3,
+      monthDay: 15,
+      startTimeSeconds: 3600,
+    });
+    expect(rebuilt.timeperiods).toEqual([
+      { timeperiod_type: 4, period: 1800, month: 0b100, day: 15, start_time: 3600 },
+    ]);
   });
 });

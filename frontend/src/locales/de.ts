@@ -809,6 +809,7 @@ export const de = {
       activeTill: "Aktiv bis",
       everyNDays: "Alle wie viele Tage",
       weekdays: "Wochentage",
+      everyNWeeks: "Alle wie viele Wochen",
       dayOfMonth: "Tag im Monat",
       month: "Monat",
       occurrence: "Wiederholung",

@@ -131,6 +131,7 @@ export function CreateMaintenanceForm({
     initial && initial.recurrence !== "once" ? formatStartTime(initial.startTimeSeconds) : "09:00",
   );
   const [everyDays, setEveryDays] = useState(String(initial?.everyDays ?? 1));
+  const [everyWeeks, setEveryWeeks] = useState(String(initial?.everyWeeks ?? 1));
   const [monthDay, setMonthDay] = useState(String(initial?.monthDay ?? 1));
   const [weekdayIndex, setWeekdayIndex] = useState(initial?.weekdayIndex ?? 0);
   const [weekdayOccurrence, setWeekdayOccurrence] = useState(initial?.weekdayOccurrence ?? 1);
@@ -186,6 +187,7 @@ export function CreateMaintenanceForm({
     setWeekdays(new Set());
     setRecurringTime("09:00");
     setEveryDays("1");
+    setEveryWeeks("1");
     setMonthDay("1");
     setWeekdayIndex(0);
     setWeekdayOccurrence(1);
@@ -246,6 +248,7 @@ export function CreateMaintenanceForm({
               ...recurring,
               recurrence: "weekly",
               dayofweek,
+              everyWeeks: Number(everyWeeks) || 1,
               startTimeSeconds,
             },
             locale,
@@ -435,6 +438,20 @@ export function CreateMaintenanceForm({
             ))}
           </div>
         </div>
+      )}
+
+      {recurrence === "weekly" && (
+        <label className="flex flex-col gap-1 text-xs text-ink-2">
+          {t("maintenance.form.everyNWeeks")}
+          <input
+            type="number"
+            min={1}
+            step={1}
+            value={everyWeeks}
+            onChange={(e) => setEveryWeeks(e.target.value)}
+            className="w-24 rounded-md border border-line bg-surface-2 px-2.5 py-1.5 text-[12.5px] text-ink"
+          />
+        </label>
       )}
 
       {(recurrence === "monthlyDay" || recurrence === "yearly") && (

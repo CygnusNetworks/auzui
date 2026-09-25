@@ -798,6 +798,7 @@ export const en = {
       activeTill: "Active till",
       everyNDays: "Every how many days",
       weekdays: "Weekdays",
+      everyNWeeks: "Every how many weeks",
       dayOfMonth: "Day of month",
       month: "Month",
       occurrence: "Occurrence",
