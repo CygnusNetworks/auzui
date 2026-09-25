@@ -757,7 +757,9 @@ async def test_stacks_listing_groups_by_project(docker_client):
 @respx.mock
 async def test_stacks_listing_enriches_compose_host_with_ps(docker_client):
     mock_zabbix_session_ok()
-    ps_cmd = build_compose_command(EDGE_WORKING_DIR, EDGE_CONFIG_FILES, "ps", "--format", "json")
+    ps_cmd = build_compose_command(
+        EDGE_WORKING_DIR, EDGE_CONFIG_FILES, EDGE_PROJECT, "ps", "--format", "json"
+    )
     FakeDockerHostClient.ssh_responses[ps_cmd] = (
         0,
         json.dumps([{"Name": "myapp-web-1", "State": "running"}]),
@@ -776,7 +778,9 @@ async def test_stacks_listing_enriches_compose_host_with_ps(docker_client):
 @respx.mock
 async def test_stacks_listing_ps_failure_keeps_stack_and_records_error(docker_client):
     mock_zabbix_session_ok()
-    ps_cmd = build_compose_command(EDGE_WORKING_DIR, EDGE_CONFIG_FILES, "ps", "--format", "json")
+    ps_cmd = build_compose_command(
+        EDGE_WORKING_DIR, EDGE_CONFIG_FILES, EDGE_PROJECT, "ps", "--format", "json"
+    )
     FakeDockerHostClient.ssh_responses[ps_cmd] = (1, "", "connection reset")
     res = await docker_client.get(f"/api/docker/stacks/{EDGE}", headers=AUTH)
     assert res.status_code == 200

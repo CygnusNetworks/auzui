@@ -20,42 +20,43 @@ CONFIG_FILES = ["/srv/stacks/myapp/docker-compose.yml", "/srv/stacks/myapp/overr
 
 
 def test_build_compose_command_pull():
-    cmd = build_compose_command(WORKING_DIR, CONFIG_FILES, "pull")
+    cmd = build_compose_command(WORKING_DIR, CONFIG_FILES, "myapp", "pull")
     assert cmd == (
-        "cd /srv/stacks/myapp && docker compose "
+        "cd /srv/stacks/myapp && docker compose --project-name myapp "
         "-f /srv/stacks/myapp/docker-compose.yml -f /srv/stacks/myapp/override.yml pull"
     )
 
 
 def test_build_compose_command_up():
-    cmd = build_compose_command(WORKING_DIR, CONFIG_FILES, "up", "-d")
+    cmd = build_compose_command(WORKING_DIR, CONFIG_FILES, "myapp", "up", "-d")
     assert cmd == (
-        "cd /srv/stacks/myapp && docker compose "
+        "cd /srv/stacks/myapp && docker compose --project-name myapp "
         "-f /srv/stacks/myapp/docker-compose.yml -f /srv/stacks/myapp/override.yml up -d"
     )
 
 
 def test_build_compose_command_restart():
-    cmd = build_compose_command(WORKING_DIR, CONFIG_FILES, "restart")
+    cmd = build_compose_command(WORKING_DIR, CONFIG_FILES, "myapp", "restart")
     assert cmd == (
-        "cd /srv/stacks/myapp && docker compose "
+        "cd /srv/stacks/myapp && docker compose --project-name myapp "
         "-f /srv/stacks/myapp/docker-compose.yml -f /srv/stacks/myapp/override.yml restart"
     )
 
 
 def test_build_compose_command_ps():
-    cmd = build_compose_command(WORKING_DIR, CONFIG_FILES, "ps", "--format", "json")
+    cmd = build_compose_command(WORKING_DIR, CONFIG_FILES, "myapp", "ps", "--format", "json")
     assert cmd == (
-        "cd /srv/stacks/myapp && docker compose "
+        "cd /srv/stacks/myapp && docker compose --project-name myapp "
         "-f /srv/stacks/myapp/docker-compose.yml -f /srv/stacks/myapp/override.yml "
         "ps --format json"
     )
 
 
 def test_build_compose_command_single_file():
-    cmd = build_compose_command(WORKING_DIR, [CONFIG_FILES[0]], "pull")
+    cmd = build_compose_command(WORKING_DIR, [CONFIG_FILES[0]], "myapp", "pull")
     assert cmd == (
-        "cd /srv/stacks/myapp && docker compose -f /srv/stacks/myapp/docker-compose.yml pull"
+        "cd /srv/stacks/myapp && docker compose --project-name myapp "
+        "-f /srv/stacks/myapp/docker-compose.yml pull"
     )
 
 
@@ -65,8 +66,24 @@ def test_build_cat_command():
 
 
 def test_build_compose_command_quotes_paths_with_spaces():
-    cmd = build_compose_command("/srv/my app", ["/srv/my app/docker-compose.yml"], "pull")
-    assert cmd == ("cd '/srv/my app' && docker compose -f '/srv/my app/docker-compose.yml' pull")
+    cmd = build_compose_command("/srv/my app", ["/srv/my app/docker-compose.yml"], "myapp", "pull")
+    assert cmd == (
+        "cd '/srv/my app' && docker compose --project-name myapp "
+        "-f '/srv/my app/docker-compose.yml' pull"
+    )
+
+
+def test_build_compose_command_quotes_project_name_regardless_of_validation():
+    """validate_project_name already restricts the charset, but the quoting
+    here is defense in depth (matches how paths are always shlex.quote'd
+    even though validate_compose_path already rejects shell metacharacters)."""
+    cmd = build_compose_command(WORKING_DIR, [CONFIG_FILES[0]], "my-app_1.2", "pull")
+    assert "--project-name my-app_1.2" in cmd
+
+
+def test_build_compose_command_rejects_invalid_project_name():
+    with pytest.raises(ValueError):
+        build_compose_command(WORKING_DIR, [CONFIG_FILES[0]], "app;rm -rf /", "pull")
 
 
 # --- path validation attack matrix -------------------------------------------
@@ -240,14 +257,16 @@ async def test_act_pull_runs_expected_command():
     runner = make_runner()
     result = await runner.act("edge", "myapp", "pull")
     assert result == {"stdout": "", "stderr": ""}
-    assert FakeDockerHostClient.calls == [build_compose_command(WORKING_DIR, CONFIG_FILES, "pull")]
+    assert FakeDockerHostClient.calls == [
+        build_compose_command(WORKING_DIR, CONFIG_FILES, "myapp", "pull")
+    ]
 
 
 async def test_act_up_runs_expected_command():
     runner = make_runner()
     await runner.act("edge", "myapp", "up")
     assert FakeDockerHostClient.calls == [
-        build_compose_command(WORKING_DIR, CONFIG_FILES, "up", "-d")
+        build_compose_command(WORKING_DIR, CONFIG_FILES, "myapp", "up", "-d")
     ]
 
 
@@ -255,7 +274,7 @@ async def test_act_restart_runs_expected_command():
     runner = make_runner()
     await runner.act("edge", "myapp", "restart")
     assert FakeDockerHostClient.calls == [
-        build_compose_command(WORKING_DIR, CONFIG_FILES, "restart")
+        build_compose_command(WORKING_DIR, CONFIG_FILES, "myapp", "restart")
     ]
 
 
@@ -299,7 +318,7 @@ async def test_act_unknown_project():
 
 
 async def test_ps_parses_json_array_response():
-    command = build_compose_command(WORKING_DIR, CONFIG_FILES, "ps", "--format", "json")
+    command = build_compose_command(WORKING_DIR, CONFIG_FILES, "myapp", "ps", "--format", "json")
     FakeDockerHostClient.responses[command] = (
         0,
         '[{"Name":"myapp-web-1","State":"running"}]',
@@ -311,7 +330,7 @@ async def test_ps_parses_json_array_response():
 
 
 async def test_ps_parses_json_lines_response():
-    command = build_compose_command(WORKING_DIR, CONFIG_FILES, "ps", "--format", "json")
+    command = build_compose_command(WORKING_DIR, CONFIG_FILES, "myapp", "ps", "--format", "json")
     FakeDockerHostClient.responses[command] = (
         0,
         '{"Name":"myapp-web-1","State":"running"}\n{"Name":"myapp-db-1","State":"exited"}\n',

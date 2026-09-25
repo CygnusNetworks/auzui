@@ -84,11 +84,36 @@ def _quote_path(path: str) -> str:
     return shlex.quote(path)
 
 
-def build_compose_command(working_dir: str, config_files: list[str], *args: str) -> str:
-    """Builds `cd <working_dir> && docker compose -f <f1> -f <f2> ... <args>`
-    with every path individually validated and quoted. `args` must already be
-    literal words from the action whitelist (never caller-supplied text)."""
-    parts = ["cd", _quote_path(working_dir), "&&", "docker", "compose"]
+def build_compose_command(
+    working_dir: str, config_files: list[str], project: str, *args: str
+) -> str:
+    """Builds `cd <working_dir> && docker compose --project-name <project>
+    -f <f1> -f <f2> ... <args>` with every path individually validated and
+    quoted. `args` must already be literal words from the action whitelist
+    (never caller-supplied text).
+
+    `--project-name` matters: without it, compose derives the project from
+    `COMPOSE_PROJECT_NAME` / a top-level `name:` in the compose file /
+    the working directory's basename — which does not have to match the
+    project the stack was actually *started* with (e.g. `docker compose -p
+    foo` run from `/srv/bar` names the project `foo`, but its basename is
+    `bar`). Without `--project-name` here, `up`/`restart`/`pull`/`ps` would
+    silently operate on project `bar` instead of `foo`: a second, duplicate
+    stack (port conflicts, orphaned containers) rather than the one the
+    caller asked about. `project` is expected to already be validated via
+    `validate_project_name` (as `_project_labels` does, from the
+    `com.docker.compose.project` label) but is quoted here regardless as
+    defense in depth, same as the paths."""
+    validate_project_name(project)
+    parts = [
+        "cd",
+        _quote_path(working_dir),
+        "&&",
+        "docker",
+        "compose",
+        "--project-name",
+        shlex.quote(project),
+    ]
     for f in config_files:
         parts += ["-f", _quote_path(f)]
     parts += list(args)
@@ -195,7 +220,9 @@ class ComposeRunner:
         """Live `docker compose ps --format json` for one stack."""
         host = self._compose_host(host_id)
         working_dir, config_files = await self._project_labels(host, project)
-        command = build_compose_command(working_dir, config_files, "ps", "--format", "json")
+        command = build_compose_command(
+            working_dir, config_files, project, "ps", "--format", "json"
+        )
         exit_code, stdout, stderr = await self._exec(host, command)
         if exit_code != 0:
             raise HTTPException(502, f"compose ps failed: {_truncate(stderr)}")
@@ -223,7 +250,7 @@ class ComposeRunner:
             raise HTTPException(400, f"unsupported compose action: {action!r}")
         host = self._compose_host(host_id)
         working_dir, config_files = await self._project_labels(host, project)
-        command = build_compose_command(working_dir, config_files, *_ACTIONS[action])
+        command = build_compose_command(working_dir, config_files, project, *_ACTIONS[action])
         exit_code, stdout, stderr = await self._exec(host, command)
         if exit_code != 0:
             raise HTTPException(502, f"compose {action} failed: {_truncate(stderr)}")
