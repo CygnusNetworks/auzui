@@ -1,3 +1,5 @@
+import json
+
 import httpx
 import pytest
 import respx
@@ -12,10 +14,16 @@ BOB = {"Authorization": "Bearer bob-token"}
 
 
 def _username_side_effect(request):
-    """Map each session token to a Zabbix username via user.get."""
-    auth = request.headers["Authorization"]
-    user = "alice" if "alice" in auth else "bob"
-    return Response(200, json=zabbix_result([{"userid": "1", "username": user}]))
+    """Map each session token to a Zabbix username via
+    user.checkAuthentication's sessionid path — no Authorization header (
+    Zabbix rejects the method with one) and no user.get fallback."""
+    assert "Authorization" not in request.headers
+    body = json.loads(request.content)
+    assert body["method"] == "user.checkAuthentication"
+    assert body["params"] == {"sessionid": body["params"]["sessionid"], "extend": False}
+    token = body["params"]["sessionid"]
+    user = "alice" if "alice" in token else "bob"
+    return Response(200, json=zabbix_result({"userid": "1", "username": user}))
 
 
 @pytest.fixture
@@ -138,17 +146,18 @@ async def test_read_only_storage_degrades_without_crash(tmp_path):
 
 @respx.mock
 async def test_username_via_check_authentication(fs_client):
-    """Session ids resolve via user.checkAuthentication (dict result) — an
-    unfiltered user.get would return the whole user list (first row: guest)."""
+    """Session ids resolve via user.checkAuthentication (dict result), sent
+    without an Authorization header and with no user.get fallback — an
+    unfiltered user.get would misreport the first listed user (e.g. guest,
+    or for an Admin/Super-admin role, some other real user's row)."""
 
     def by_method(request):
-        import json as _json
-
-        body = _json.loads(request.content)
+        assert "Authorization" not in request.headers
+        body = json.loads(request.content)
         if body["method"] == "user.checkAuthentication":
+            assert body["params"] == {"sessionid": "session-id", "extend": False}
             return Response(200, json=zabbix_result({"userid": "6", "username": "valerius"}))
-        # user.get fallback would misreport the first listed user:
-        return Response(200, json=zabbix_result([{"userid": "2", "username": "guest"}]))
+        raise AssertionError(f"unexpected method {body['method']} (no user.get fallback)")
 
     respx.post(ZABBIX_URL).mock(side_effect=by_method)
     created = await fs_client.post(
@@ -158,3 +167,55 @@ async def test_username_via_check_authentication(fs_client):
     )
     assert created.status_code == 200 or created.status_code == 201
     assert created.json()["owner"] == "valerius"
+
+
+@respx.mock
+async def test_username_via_api_token_when_sessionid_fails(fs_client):
+    """A caller using a Zabbix API token (not a UI sessionid): the sessionid
+    attempt is rejected by Zabbix, so `token` is tried next — still with no
+    user.get fallback."""
+
+    def by_method(request):
+        assert "Authorization" not in request.headers
+        body = json.loads(request.content)
+        assert body["method"] == "user.checkAuthentication"
+        if "sessionid" in body["params"]:
+            return Response(
+                200,
+                json={
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "error": {"message": "Session terminated, re-login, please."},
+                },
+            )
+        assert body["params"] == {"token": "api-token-value"}
+        return Response(200, json=zabbix_result({"userid": "9", "username": "svc-account"}))
+
+    respx.post(ZABBIX_URL).mock(side_effect=by_method)
+    created = await fs_client.post(
+        "/api/logs/filter-sets",
+        headers={"Authorization": "Bearer api-token-value"},
+        json={"name": "s", "shared": False, "filters": {"include": [], "exclude": []}},
+    )
+    assert created.status_code == 200 or created.status_code == 201
+    assert created.json()["owner"] == "svc-account"
+
+
+@respx.mock
+async def test_username_invalid_token_is_401(fs_client):
+    """Neither a sessionid nor a token resolves -> 401, never a fallback to
+    the first user.get row."""
+
+    def by_method(request):
+        body = json.loads(request.content)
+        assert body["method"] == "user.checkAuthentication"
+        return Response(
+            200,
+            json={"jsonrpc": "2.0", "id": 1, "error": {"message": "Session terminated."}},
+        )
+
+    respx.post(ZABBIX_URL).mock(side_effect=by_method)
+    res = await fs_client.get(
+        "/api/logs/filter-sets", headers={"Authorization": "Bearer bogus-token"}
+    )
+    assert res.status_code == 401

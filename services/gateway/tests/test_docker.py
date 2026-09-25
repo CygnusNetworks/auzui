@@ -544,6 +544,10 @@ async def test_role_via_checkauthentication_type_field(docker_client):
         if payload["method"] == "user.get":
             return Response(200, json=zabbix_result([{"userid": "1"}]))
         if payload["method"] == "user.checkAuthentication":
+            # Zabbix >=7.0 rejects this method if an Authorization header
+            # is present at all.
+            assert "Authorization" not in request.headers
+            assert payload["params"] == {"sessionid": "zbx-session-token", "extend": False}
             return Response(200, json=zabbix_result({"userid": "1", "type": 3}))
         raise AssertionError(f"unexpected method {payload['method']}")
 
@@ -579,18 +583,24 @@ async def test_role_via_checkauthentication_roleid_and_role_get(docker_client):
 
 
 @respx.mock
-async def test_role_via_api_token_fallback_user_get(docker_client):
+async def test_role_via_api_token_param_when_sessionid_fails(docker_client):
+    """A caller using a Zabbix API token: the sessionid attempt to
+    user.checkAuthentication is rejected, so the `token` parameter is tried
+    next on the *same* method — there is no user.get fallback for role
+    resolution (it could only ever report somebody else's role)."""
+
     def side_effect(request):
         payload = json.loads(request.content)
-        if payload["method"] == "user.checkAuthentication":
-            # API tokens are not session ids -> Zabbix rejects this call.
-            return Response(
-                200, json={"jsonrpc": "2.0", "id": 1, "error": {"message": "not authorized"}}
-            )
         if payload["method"] == "user.get":
-            if payload["params"].get("output") == ["userid"]:
-                return Response(200, json=zabbix_result([{"userid": "1"}]))
-            return Response(200, json=zabbix_result([{"userid": "1", "roleid": "3", "type": 3}]))
+            return Response(200, json=zabbix_result([{"userid": "1"}]))
+        if payload["method"] == "user.checkAuthentication":
+            if "sessionid" in payload["params"]:
+                # API tokens are not session ids -> Zabbix rejects this call.
+                return Response(
+                    200, json={"jsonrpc": "2.0", "id": 1, "error": {"message": "not authorized"}}
+                )
+            assert payload["params"] == {"token": "zbx-session-token"}
+            return Response(200, json=zabbix_result({"userid": "1", "roleid": "3", "type": 3}))
         raise AssertionError(f"unexpected method {payload['method']}")
 
     respx.post(ZABBIX_URL).mock(side_effect=side_effect)

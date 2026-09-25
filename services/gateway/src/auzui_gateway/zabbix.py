@@ -26,12 +26,16 @@ class ZabbixClient:
         )
         self._role_cache: TTLCache[int] = TTLCache(settings.permission_cache_ttl)
 
-    async def _call(self, token: str, method: str, params: Any) -> Any:
+    async def _call(self, token: str | None, method: str, params: Any, *, auth: bool = True) -> Any:
+        """`auth=False` omits the Authorization header entirely — Zabbix
+        ≥7.0 rejects methods that must be called *without* one (e.g.
+        `user.checkAuthentication`; see CLocalApiClient.php: 'must be
+        called without authorization header') with an error that would
+        otherwise be swallowed and misread as an invalid session."""
         payload = {"jsonrpc": "2.0", "id": 1, "method": method, "params": params}
-        headers = {
-            "Content-Type": "application/json-rpc",
-            "Authorization": f"Bearer {token}",
-        }
+        headers = {"Content-Type": "application/json-rpc"}
+        if auth:
+            headers["Authorization"] = f"Bearer {token}"
         try:
             async with httpx.AsyncClient(timeout=self._timeout) as client:
                 res = await client.post(self._url, json=payload, headers=headers)
@@ -105,32 +109,54 @@ class ZabbixClient:
     async def get_username(self, token: str) -> str:
         """The login name behind the session token — used as the `owner` of
         saved filter sets. user.checkAuthentication is the only call that
-        identifies the *current* user (an unfiltered user.get returns the
-        whole user list — first row is typically "guest"); it only accepts
-        session ids, so API tokens fall back to user.get, which for a plain
-        user is scoped to themselves. 401 if the session is invalid."""
+        identifies the *current* user; an unfiltered user.get would return
+        the whole user list, and for an Admin/Super-admin role that means
+        the FIRST visible user rather than the caller — a filter-set
+        ownership leak, not a fallback, so it is never used here. 401 if
+        neither a sessionid nor an API token resolves."""
         cached = self._username_cache.get(token)
         if cached is not None:
             return cached
-        row: dict = {}
-        try:
-            auth = await self._call(token, "user.checkAuthentication", {"sessionid": token})
-            if isinstance(auth, dict):
-                row = auth
-        except HTTPException:
-            pass  # API tokens are not session ids — fall back below
-        if not row.get("username"):
-            result = await self._call(
-                token, "user.get", {"output": ["userid", "username"], "limit": 1}
-            )
-            if not result:
-                raise HTTPException(401, "session token resolves to no user")
-            row = result[0]
+        row = await self._check_authentication(token)
         username = str(row.get("username") or f"userid:{row.get('userid')}")
         self._username_cache.set(token, username)
         # A resolved username also proves the session is live.
         self._perm_cache.set(f"session:{token}", True)
         return username
+
+    async def _check_authentication(self, token: str) -> dict:
+        """Resolve the caller behind `token` via user.checkAuthentication,
+        called WITHOUT the Authorization header — Zabbix ≥7.0 rejects the
+        method outright when the header is present ('must be called
+        without authorization header'), which used to be swallowed here
+        and misread as "not a valid session".
+
+        `token` may be a browser/UI sessionid or an API token; Zabbix
+        ≥6.4/7.0 accepts either as a *parameter* to this same method
+        (https://www.zabbix.com/documentation/7.0/en/manual/api/reference/user/checkauthentication).
+        sessionid is tried first (the common case for this gateway);
+        `extend: false` is passed so an identity check does not silently
+        prolong the caller's UI session as a side effect. If that fails,
+        token is tried. There is deliberately no further fallback to
+        user.get: it cannot identify the caller unambiguously (see
+        get_username), so any failure here is a genuine 401, never
+        papered over by guessing.
+        """
+        last_exc: HTTPException | None = None
+        for params in (
+            {"sessionid": token, "extend": False},
+            {"token": token},
+        ):
+            try:
+                result = await self._call(None, "user.checkAuthentication", params, auth=False)
+            except HTTPException as e:
+                last_exc = e
+                continue
+            if isinstance(result, dict):
+                return result
+        if last_exc is not None:
+            raise last_exc
+        raise HTTPException(401, "session token resolves to no user")
 
     async def get_user_role_type(self, token: str) -> int:
         """Zabbix role "type" (0=user, 1=admin, 2=Admin, 3=Super Admin) behind
@@ -146,10 +172,10 @@ class ZabbixClient:
         Zabbix ≤6.0's `user.checkAuthentication` returns the role `type`
         directly; ≥6.4 returns a `roleid` instead, requiring a follow-up
         `role.get` (with the caller's own token, so it can only see whatever
-        role.get already permits) to resolve the type. API tokens are not
-        session ids, so `checkAuthentication` fails for them the same way it
-        does in `get_username` — the fallback there (a self-scoped
-        `user.get`) is reused here, extended with `roleid`/`type`."""
+        role.get already permits) to resolve the type. Identity comes from
+        `_check_authentication` (sessionid, then API token — see
+        `get_username`); there is no user.get fallback, so a role can never
+        be derived from somebody else's row."""
         cached = self._role_cache.get(token)
         if cached is not None:
             return cached
@@ -158,33 +184,16 @@ class ZabbixClient:
         return role_type
 
     async def _resolve_role_type(self, token: str) -> int:
-        auth: dict | None = None
         try:
-            result = await self._call(token, "user.checkAuthentication", {"sessionid": token})
-            if isinstance(result, dict):
-                auth = result
+            auth = await self._check_authentication(token)
         except HTTPException:
-            pass  # API tokens are not session ids — fall back to user.get below
-        if auth is not None:
-            if "type" in auth:
-                return _as_int(auth.get("type"))
-            if auth.get("roleid"):
-                return await self._role_type_for_roleid(token, auth["roleid"])
+            # Never raise outward for a permission CHECK — an undeterminable
+            # role degrades to 0 (no admin), per the docstring above.
             return 0
-
-        try:
-            result = await self._call(
-                token, "user.get", {"output": ["userid", "roleid", "type"], "limit": 1}
-            )
-        except HTTPException:
-            return 0
-        if not result:
-            return 0
-        row = result[0]
-        if row.get("type") is not None:
-            return _as_int(row.get("type"))
-        if row.get("roleid"):
-            return await self._role_type_for_roleid(token, row["roleid"])
+        if "type" in auth:
+            return _as_int(auth.get("type"))
+        if auth.get("roleid"):
+            return await self._role_type_for_roleid(token, auth["roleid"])
         return 0
 
     async def _role_type_for_roleid(self, token: str, roleid: Any) -> int:
