@@ -245,9 +245,17 @@ export function buildMaintenancePayload(
       maintenance_type: input.withDataCollection ? 0 : 1,
     };
   }
-  if (input.hostids.length > 0) payload.hosts = input.hostids.map((hostid) => ({ hostid }));
-  if (input.groupids.length > 0) payload.groups = input.groupids.map((groupid) => ({ groupid }));
-  if (input.description?.trim()) payload.description = input.description.trim();
+  // Always send hosts/groups/description explicitly, even empty — Zabbix's
+  // maintenance.update *replaces* these wholesale, but only for properties
+  // that are actually present in the request; an omitted property is left
+  // untouched. Omitting `hosts` when the user cleared all hosts (or
+  // `groups`, or `description`) would therefore silently fail to clear it on
+  // an existing maintenance. (create tolerates the same shape: Zabbix only
+  // requires that hosts+groups aren't *both* empty, which noHostOrGroup
+  // above already guarantees.)
+  payload.hosts = input.hostids.map((hostid) => ({ hostid }));
+  payload.groups = input.groupids.map((groupid) => ({ groupid }));
+  payload.description = input.description?.trim() ?? "";
   return payload;
 }
 

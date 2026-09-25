@@ -62,7 +62,11 @@ describe("buildMaintenancePayload", () => {
       timeperiods: [{ timeperiod_type: 0, period: 3600 }],
       maintenance_type: 0,
     });
-    expect(payload.groups).toBeUndefined();
+    // Sent as an explicit empty array, not omitted — see buildMaintenancePayload's
+    // comment: maintenance.update only replaces properties present in the
+    // request, so an omitted `groups` would leave stale groups in place when
+    // editing an existing maintenance down to "hosts only".
+    expect(payload.groups).toEqual([]);
   });
 
   it("sets start_date on one-time periods (Zabbix would default to creation time)", () => {
@@ -70,9 +74,9 @@ describe("buildMaintenancePayload", () => {
     expect(payload.timeperiods[0]!.start_date).toBe(1000);
   });
 
-  it("omits hosts when empty and includes groups when present", () => {
+  it("sends hosts/groups as explicit (possibly empty) arrays, never omitted", () => {
     const payload = buildMaintenancePayload({ ...base, hostids: [], groupids: ["5"] });
-    expect(payload.hosts).toBeUndefined();
+    expect(payload.hosts).toEqual([]);
     expect(payload.groups).toEqual([{ groupid: "5" }]);
   });
 
@@ -81,11 +85,14 @@ describe("buildMaintenancePayload", () => {
     expect(buildMaintenancePayload({ ...base, withDataCollection: false }).maintenance_type).toBe(1);
   });
 
-  it("includes trimmed description only when non-empty", () => {
-    expect(buildMaintenancePayload(base).description).toBeUndefined();
+  it("sends description as an explicit (possibly empty) string, never omitted", () => {
+    // Omitting it on update would leave a stale description in place when the
+    // user clears the field.
+    expect(buildMaintenancePayload(base).description).toBe("");
     expect(buildMaintenancePayload({ ...base, description: "  Kernel-Update  " }).description).toBe(
       "Kernel-Update",
     );
+    expect(buildMaintenancePayload({ ...base, description: "   " }).description).toBe("");
   });
 
   it("throws on an empty name", () => {
