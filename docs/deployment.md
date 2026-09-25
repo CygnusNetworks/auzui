@@ -151,16 +151,19 @@ server {
         proxy_set_header Host $host;
     }
 
-    # Existing headless Zabbix API, unchanged
-    location /zabbix-api/ {
+    # Zabbix JSON-RPC API. The SPA calls the same-origin path
+    # /api_jsonrpc.php directly (login and every Zabbix query); the gateway
+    # does not proxy it, so without this block login fails.
+    location = /api_jsonrpc.php {
         proxy_pass http://zabbix-web-nginx-pgsql/api_jsonrpc.php;
     }
 }
 ```
 
 If `auzui-gateway` serves the built frontend itself
-(`AUZUI_SERVE_FRONTEND=true`), nginx only needs a single `proxy_pass` to
-the gateway container and no separate static file server.
+(`AUZUI_SERVE_FRONTEND=true`), nginx needs no separate static file server:
+`location /` goes to the gateway container, and only `/api_jsonrpc.php` is
+routed to Zabbix.
 
 ## Deploying the Docker plugin
 

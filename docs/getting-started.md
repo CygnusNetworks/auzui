@@ -46,6 +46,8 @@ docker compose logs -f auzui   # watch startup / health
 
 The container binds to `127.0.0.1:8080` by default (see the compose file) —
 put a reverse proxy (nginx, Traefik, …) in front for TLS and external access.
+The proxy must also route `/api_jsonrpc.php` to your Zabbix frontend: the SPA
+calls the Zabbix API on its own origin, and the gateway does not proxy it.
 See [deployment.md](deployment.md) for the nginx pattern, security headers,
 and hardening notes, and [configuration.md](configuration.md) for the full
 environment variable reference (InfluxDB, Graylog, SPNEGO, CORS, …).
