@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useAuthStore } from "../lib/auth/store";
-import { attemptSso, isSsoAttempted, isSsoSuppressed } from "../lib/auth/sso";
+import { attemptSso, fetchSpnegoEnabled, isSsoAttempted, isSsoSuppressed } from "../lib/auth/sso";
 import { Spinner } from "../components/Spinner";
 import { useT } from "../lib/i18n";
 
@@ -17,6 +17,17 @@ export function LoginPage() {
 
   const [checkingSso, setCheckingSso] = useState(() => !isSsoAttempted() && !isSsoSuppressed());
   const [ssoUnavailable, setSsoUnavailable] = useState(false);
+  const [spnegoEnabled, setSpnegoEnabled] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetchSpnegoEnabled().then((enabled) => {
+      if (!cancelled) setSpnegoEnabled(enabled);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (!checkingSso) return;
@@ -98,7 +109,7 @@ export function LoginPage() {
               />
             </label>
 
-            {ssoUnavailable && !loginError && (
+            {spnegoEnabled && ssoUnavailable && !loginError && (
               <div className="mb-3 text-xs text-ink-muted">{t("login.ssoUnavailable")}</div>
             )}
             {loginError && <div className="mb-3 text-xs text-sev-high">{loginError}</div>}
@@ -110,13 +121,15 @@ export function LoginPage() {
             >
               {loggingIn ? t("login.signingIn") : t("login.signIn")}
             </button>
-            <button
-              type="button"
-              onClick={onKerberosClick}
-              className="mt-2 w-full rounded-md border border-line bg-surface-2 px-3 py-2 text-sm text-ink-2"
-            >
-              {t("login.signInWithKerberos")}
-            </button>
+            {spnegoEnabled && (
+              <button
+                type="button"
+                onClick={onKerberosClick}
+                className="mt-2 w-full rounded-md border border-line bg-surface-2 px-3 py-2 text-sm text-ink-2"
+              >
+                {t("login.signInWithKerberos")}
+              </button>
+            )}
           </form>
         )}
       </div>

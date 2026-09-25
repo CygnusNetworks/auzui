@@ -42,6 +42,22 @@ export function markSsoSuppressed(): void {
 }
 
 /**
+ * Whether the gateway offers Kerberos/SPNEGO. Resolves to `false` (never
+ * rejects) when the gateway is absent, unreachable, or SPNEGO is disabled, so
+ * the login page only shows the Kerberos button when it can actually work.
+ */
+export async function fetchSpnegoEnabled(): Promise<boolean> {
+  try {
+    const res = await fetch("/api/auth/methods", { credentials: "include" });
+    if (!res.ok) return false;
+    const methods = (await res.json()) as AuthMethodsResponse;
+    return methods.spnego === true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Attempts a transparent Kerberos/SPNEGO login via the gateway.
  *
  * Resolves to `null` (never rejects) whenever SSO isn't available or fails for
