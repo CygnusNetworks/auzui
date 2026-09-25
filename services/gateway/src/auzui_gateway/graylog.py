@@ -356,6 +356,35 @@ class GraylogService:
         """[{id, label}] — never exposes tokens or URLs."""
         return [{"id": c.server.id, "label": c.server.label} for c in self._clients.values()]
 
+    def _enforce_stream_allowlist(self, stream_ids: list[str] | None) -> list[str] | None:
+        """GRAYLOG_DEFAULT_STREAMS is documented as restricting what auzui
+        offers/searches; the allowlist applies uniformly to every configured
+        server (it is one global Settings value, not per-server), so it is
+        enforced once here rather than inside each GraylogClient.search call
+        (which would otherwise turn a 403 into a per-server error that the
+        fan-out layer downgrades to a 502).
+
+        - allowlist empty: unchanged (no restriction configured).
+        - no stream_ids requested: unchanged; the per-client default (the
+          allowlist itself) still applies as before.
+        - stream_ids requested but NONE are in the allowlist: reject with 403
+          rather than silently falling back to the allowed set (which would
+          hide the bypass attempt as a normal empty/partial result) or
+          searching unrestricted.
+        - stream_ids requested and SOME are in the allowlist: narrow the
+          request to just that permitted subset.
+        """
+        allowed = self._s.default_stream_ids
+        if not allowed or not stream_ids:
+            return stream_ids
+        allowed_set = set(allowed)
+        permitted = [sid for sid in stream_ids if sid in allowed_set]
+        if not permitted:
+            raise HTTPException(
+                403, "requested stream_ids are outside the configured Graylog stream allowlist"
+            )
+        return permitted
+
     def _select(self, server_ids: list[str] | None) -> list[GraylogClient]:
         if not server_ids:
             return list(self._clients.values())
@@ -407,6 +436,7 @@ class GraylogService:
         `limit` cap, so a page returns up to `limit` distinct rows. `total`
         stays the raw sum of per-server totals and is therefore approximate
         (an upper bound) once duplicates are collapsed."""
+        stream_ids = self._enforce_stream_allowlist(stream_ids)
         clients = self._select(server_ids)
         dedupe_active = self._s.log_dedup_enabled and dedupe and len(clients) > 1
 

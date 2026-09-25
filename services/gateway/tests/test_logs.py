@@ -1,8 +1,11 @@
 import json
 
+import httpx
+import pytest
 import respx
 from httpx import Response
 
+from auzui_gateway.app import create_app
 from auzui_gateway.graylog import (
     LogFilter,
     apply_filters,
@@ -11,7 +14,7 @@ from auzui_gateway.graylog import (
     parens_balanced,
 )
 
-from .conftest import AUTH, GRAYLOG_URL, ZABBIX_URL, zabbix_result
+from .conftest import AUTH, GRAYLOG_URL, ZABBIX_URL, make_settings, zabbix_result
 
 STREAMS_BODY = {
     "streams": [
@@ -173,6 +176,121 @@ async def test_host_logs_passes_offset_and_filters(client):
     assert params["offset"] == "25"
     assert 'NOT source:"noisy-host"' in params["query"]
     assert 'source:"acc-sw-b04"' in params["query"]
+
+
+@pytest.fixture
+async def allowlist_client():
+    """GRAYLOG_DEFAULT_STREAMS restricted to s1/s2 — used to test that the
+    allowlist is enforced, not just used as a default."""
+    app = create_app(make_settings(graylog_default_streams="s1,s2"))
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://gw.test") as c:
+        yield c
+
+
+@respx.mock
+async def test_search_rejects_stream_ids_entirely_outside_allowlist(allowlist_client):
+    """A caller passing stream_ids outside GRAYLOG_DEFAULT_STREAMS must be
+    rejected (403), not silently fall back to searching the allowed streams
+    or the caller's requested (unrestricted) streams — this is the bypass
+    the allowlist exists to prevent."""
+    respx.post(ZABBIX_URL).mock(return_value=Response(200, json=zabbix_result([{"userid": "1"}])))
+    route = respx.get(f"{GRAYLOG_URL}/api/search/universal/absolute").mock(
+        return_value=Response(200, json=SEARCH_BODY)
+    )
+    res = await allowlist_client.post(
+        "/api/logs/search",
+        json={"query": "*", "from": 0, "to": 1, "limit": 5, "stream_ids": ["secret-stream"]},
+        headers=AUTH,
+    )
+    assert res.status_code == 403
+    assert route.calls == []
+
+
+@respx.mock
+async def test_host_logs_rejects_stream_ids_outside_allowlist(allowlist_client):
+    """The host-scoped search path must get the same enforcement as the
+    free-text search path."""
+    respx.post(ZABBIX_URL).mock(
+        return_value=Response(
+            200,
+            json=zabbix_result(
+                [{"hostid": "42", "host": "acc-sw-b04", "name": "acc-sw-b04", "interfaces": []}]
+            ),
+        )
+    )
+    route = respx.get(f"{GRAYLOG_URL}/api/search/universal/absolute").mock(
+        return_value=Response(200, json=SEARCH_BODY)
+    )
+    res = await allowlist_client.post(
+        "/api/logs/host/42",
+        json={"from": 0, "to": 100, "stream_ids": ["secret-stream"]},
+        headers=AUTH,
+    )
+    assert res.status_code == 403
+    assert route.calls == []
+
+
+@respx.mock
+async def test_search_filters_stream_ids_to_permitted_subset(allowlist_client):
+    """Requesting a mix of allowed and disallowed streams narrows the query
+    to just the permitted subset instead of rejecting or searching everything
+    requested."""
+    respx.post(ZABBIX_URL).mock(return_value=Response(200, json=zabbix_result([{"userid": "1"}])))
+    route = respx.get(f"{GRAYLOG_URL}/api/search/universal/absolute").mock(
+        return_value=Response(200, json=SEARCH_BODY)
+    )
+    res = await allowlist_client.post(
+        "/api/logs/search",
+        json={
+            "query": "*",
+            "from": 0,
+            "to": 1,
+            "limit": 5,
+            "stream_ids": ["s1", "secret-stream"],
+        },
+        headers=AUTH,
+    )
+    assert res.status_code == 200
+    params = dict(route.calls[0].request.url.params)
+    assert params["filter"] == "streams:s1"
+
+
+@respx.mock
+async def test_search_with_empty_allowlist_passes_requested_streams_through(client):
+    """No GRAYLOG_DEFAULT_STREAMS configured (the default `client` fixture) ->
+    no restriction at all; whatever stream_ids the caller asks for is used
+    unchanged."""
+    respx.post(ZABBIX_URL).mock(return_value=Response(200, json=zabbix_result([{"userid": "1"}])))
+    route = respx.get(f"{GRAYLOG_URL}/api/search/universal/absolute").mock(
+        return_value=Response(200, json=SEARCH_BODY)
+    )
+    res = await client.post(
+        "/api/logs/search",
+        json={"query": "*", "from": 0, "to": 1, "limit": 5, "stream_ids": ["any-stream"]},
+        headers=AUTH,
+    )
+    assert res.status_code == 200
+    params = dict(route.calls[0].request.url.params)
+    assert params["filter"] == "streams:any-stream"
+
+
+@respx.mock
+async def test_search_without_stream_ids_defaults_to_allowlist(allowlist_client):
+    """No stream_ids requested -> the allowlist itself is used as the
+    default filter, same as before this fix."""
+    respx.post(ZABBIX_URL).mock(return_value=Response(200, json=zabbix_result([{"userid": "1"}])))
+    route = respx.get(f"{GRAYLOG_URL}/api/search/universal/absolute").mock(
+        return_value=Response(200, json=SEARCH_BODY)
+    )
+    res = await allowlist_client.post(
+        "/api/logs/search",
+        json={"query": "*", "from": 0, "to": 1, "limit": 5},
+        headers=AUTH,
+    )
+    assert res.status_code == 200
+    params = dict(route.calls[0].request.url.params)
+    assert params["filter"] == "streams:s1,s2"
 
 
 class TestFilterQueryConstruction:
