@@ -170,6 +170,14 @@ class Settings(BaseSettings):
     # Path to a known_hosts file (read-only mount) used for ssh:// hosts;
     # paramiko verifies against it with RejectPolicy — never AutoAddPolicy.
     docker_ssh_known_hosts: str = ""
+    # Overall wall-clock budget for one exec_ssh() call (docker_hosts.py),
+    # i.e. `docker compose pull`/`up`/`restart` run over SSH from
+    # docker_compose.py. Deliberately separate from (and much larger than)
+    # docker_timeout: that setting bounds individual docker-py/paramiko
+    # socket calls (connect, recv), while a `compose pull` on a multi-image
+    # stack can legitimately run for minutes. 5 minutes is a generous
+    # default for that; tune per-deployment if stacks are bigger.
+    docker_ssh_exec_timeout: float = 300.0
 
     @property
     def effective_zabbix_web_url(self) -> str:

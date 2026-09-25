@@ -24,7 +24,7 @@ from typing import Any, Literal
 from fastapi import HTTPException
 
 from .config import DockerHost, Settings
-from .docker_hosts import DockerHostClient, DockerService
+from .docker_hosts import DockerHostClient, DockerService, SSHExecTimeoutError
 
 logger = logging.getLogger(__name__)
 
@@ -214,7 +214,15 @@ class ComposeRunner:
 
     async def _exec(self, host: DockerHost, command: str) -> tuple[int, str, str]:
         client = DockerHostClient(host, self._settings)
-        return await asyncio.to_thread(client.exec_ssh, command)
+        try:
+            return await asyncio.to_thread(client.exec_ssh, command)
+        except SSHExecTimeoutError as e:
+            # The remote command didn't exit within its wall-clock budget
+            # (settings.docker_ssh_exec_timeout) -- e.g. hung, or genuinely
+            # still running a very long compose operation. 504: the gateway
+            # gave up waiting on an upstream, same convention as a timed-out
+            # docker-py call elsewhere in this codebase.
+            raise HTTPException(504, str(e)) from e
 
     async def ps(self, host_id: str, project: str) -> list[dict[str, Any]]:
         """Live `docker compose ps --format json` for one stack."""

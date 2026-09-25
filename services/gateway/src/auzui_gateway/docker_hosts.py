@@ -21,6 +21,7 @@ import asyncio
 import logging
 import os
 import threading
+import time
 from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Any
@@ -74,6 +75,36 @@ class ReadOnlyUpstreamError(RuntimeError):
     read-only socket proxy (e.g. tecnativa/docker-socket-proxy with
     POST=0), which answers writes with HTTP 403/405 instead of performing
     them. DockerService translates this into HTTPException(403)."""
+
+
+class SSHExecTimeoutError(RuntimeError):
+    """Raised by DockerHostClient.exec_ssh() when a command's wall-clock
+    budget (settings.docker_ssh_exec_timeout, see exec_ssh's docstring for
+    why that's separate from docker_timeout) elapses before the remote
+    command exits. The channel has already been closed by the time this is
+    raised. docker_compose.py turns this into HTTPException(504)."""
+
+
+# -- exec_ssh tuning -----------------------------------------------------
+# How often exec_ssh polls the channel for new output/exit status while
+# waiting. Small enough that a fast command doesn't feel laggy, large
+# enough not to busy-spin. Tests inject a much smaller value to stay fast.
+SSH_EXEC_POLL_INTERVAL = 0.05
+
+# exec_ssh retains only the last N bytes of each stream (stdout/stderr) it
+# has read so far, so a runaway/verbose command (e.g. `compose pull -v` on
+# many images) can't grow the gateway's memory without bound even though it
+# is still fully drained off the SSH channel (which is the whole point —
+# not draining it is what causes the paramiko window deadlock this guards
+# against; see exec_ssh's docstring).
+SSH_EXEC_MAX_CAPTURE_BYTES = 1024 * 1024  # 1 MiB per stream
+_SSH_EXEC_READ_CHUNK = 32 * 1024
+
+
+def _append_capped(buf: bytearray, data: bytes, cap: int) -> None:
+    buf.extend(data)
+    if len(buf) > cap:
+        del buf[: len(buf) - cap]
 
 
 class DockerHostClient:
@@ -291,18 +322,90 @@ class DockerHostClient:
     def list_networks(self) -> list[dict]:
         return [n.attrs for n in self._get_client().networks.list()]
 
-    def exec_ssh(self, command: str) -> tuple[int, str, str]:
+    def exec_ssh(
+        self,
+        command: str,
+        *,
+        timeout: float | None = None,
+        poll_interval: float = SSH_EXEC_POLL_INTERVAL,
+    ) -> tuple[int, str, str]:
         """Run one server-constructed, already-quoted command over SSH (used
-        by docker_compose.py). Only valid for ssh:// hosts."""
+        by docker_compose.py). Only valid for ssh:// hosts.
+
+        Deliberately does NOT call `recv_exit_status()` before draining
+        stdout/stderr (as a naive `client.exec_command()` + `.read()` +
+        `recv_exit_status()` sequence would). Paramiko's SSH channel has a
+        ~2 MiB receive window; if the remote writes more than that before
+        the local side reads anything, the remote blocks on its own write
+        and `recv_exit_status()` — which paramiko does not apply
+        `exec_command`'s `timeout=` to; that only covers individual
+        recv/send calls — waits forever, pinning the calling thread. This
+        is a documented paramiko footgun, and `docker compose pull -v` on a
+        multi-image stack is exactly the kind of chatty command that can
+        exceed the window.
+
+        Instead this polls the channel directly (`recv_ready` /
+        `recv_stderr_ready` / `exit_status_ready`), draining both streams
+        as data arrives regardless of whether the command has exited yet,
+        under one overall wall-clock budget (`timeout`, defaulting to
+        `settings.docker_ssh_exec_timeout` — deliberately much larger than
+        `settings.docker_timeout`, since a legitimate `compose pull` can run
+        for minutes; see that setting's docstring in config.py). If the
+        deadline is hit before the command exits, the channel is closed and
+        `SSHExecTimeoutError` is raised — docker_compose.py turns that into
+        HTTPException(504). Each stream is capped to the last
+        `SSH_EXEC_MAX_CAPTURE_BYTES` it produced (still fully drained off
+        the wire, just not fully retained) so a runaway command can't grow
+        the gateway's memory without bound.
+        """
         if not self._host.url.startswith("ssh://"):
             raise RuntimeError(
                 f"exec_ssh is only available for ssh:// hosts (host={self._host.id})"
             )
+        if timeout is None:
+            timeout = self._settings.docker_ssh_exec_timeout
         client = self._paramiko_client()
         try:
-            _, stdout, stderr = client.exec_command(command, timeout=self._settings.docker_timeout)
-            exit_code = stdout.channel.recv_exit_status()
-            return exit_code, _decode(stdout.read()), _decode(stderr.read())
+            # exec_command()'s own `timeout=` only bounds the channel's
+            # individual blocking calls (connect/recv/send), not the
+            # command's overall runtime -- that's `timeout` above, enforced
+            # by the poll loop below. We only use the returned `stdout` to
+            # reach the underlying channel; its/`stderr`'s file-like
+            # .read() is never called (that's the deadlock this avoids).
+            _, stdout, _stderr = client.exec_command(command, timeout=self._settings.docker_timeout)
+            chan = stdout.channel
+            deadline = time.monotonic() + timeout
+            stdout_buf = bytearray()
+            stderr_buf = bytearray()
+            while True:
+                drained = False
+                while chan.recv_ready():
+                    chunk = chan.recv(_SSH_EXEC_READ_CHUNK)
+                    if not chunk:
+                        break
+                    _append_capped(stdout_buf, chunk, SSH_EXEC_MAX_CAPTURE_BYTES)
+                    drained = True
+                while chan.recv_stderr_ready():
+                    chunk = chan.recv_stderr(_SSH_EXEC_READ_CHUNK)
+                    if not chunk:
+                        break
+                    _append_capped(stderr_buf, chunk, SSH_EXEC_MAX_CAPTURE_BYTES)
+                    drained = True
+                if (
+                    chan.exit_status_ready()
+                    and not chan.recv_ready()
+                    and not chan.recv_stderr_ready()
+                ):
+                    exit_code = chan.recv_exit_status()
+                    return exit_code, _decode(bytes(stdout_buf)), _decode(bytes(stderr_buf))
+                if time.monotonic() >= deadline:
+                    chan.close()
+                    raise SSHExecTimeoutError(
+                        f"command on host {self._host.id!r} did not exit within "
+                        f"{timeout:.0f}s: {command!r}"
+                    )
+                if not drained:
+                    time.sleep(poll_interval)
         finally:
             client.close()
 

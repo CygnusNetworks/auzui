@@ -108,7 +108,8 @@ multi-server fan-out and dedup algorithm: [logs.md](logs.md).
 |---|---|---|
 | `DOCKER_HOSTS` | *(empty)* | Docker Engines the gateway can manage, as a **JSON array** — see [`DOCKER_HOSTS` schema](#docker_hosts-schema) below. Empty disables the whole feature: `/api/docker/status` reports `enabled: false`, every `/api/docker/*` data route 404s, and the SPA hides the Docker nav entry. |
 | `DOCKER_REGISTRIES` | *(empty)* | Registry credentials the update-checker authenticates against, as a JSON array: `[{"registry":"ghcr.io","username":"...","token":"..."}]`. Registries not listed here (notably Docker Hub) are queried anonymously. `username`/`token` are optional per entry. |
-| `DOCKER_TIMEOUT` | `10.0` | HTTP/SSH timeout (seconds) for calls to a Docker host (docker-py client construction, API calls, `exec_ssh`). |
+| `DOCKER_TIMEOUT` | `10.0` | HTTP/SSH timeout (seconds) for calls to a Docker host (docker-py client construction, API calls, individual SSH channel operations). |
+| `DOCKER_SSH_EXEC_TIMEOUT` | `300.0` | Overall time limit (seconds) for one compose command run over SSH (`ps`, `pull`, `up`, `restart`). A command still running at the deadline is aborted and the request fails with 504. |
 | `DOCKER_CACHE_TTL` | `10.0` | Cache lifetime (seconds) for the host summary (`/api/docker/hosts`) and container list (`/api/docker/containers`). |
 | `DOCKER_STATS_CACHE_TTL` | `5.0` | Cache lifetime (seconds) for bulk container stats (`POST /api/docker/stats`). |
 | `DOCKER_UPDATE_CHECK_TTL` | `3600.0` | Cache lifetime (seconds) for a resolved registry digest, keyed per `(registry, repo, tag)`. Kept high to stay gentle on registry rate limits (notably Docker Hub's anonymous pull quota). |
