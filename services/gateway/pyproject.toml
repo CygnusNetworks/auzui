@@ -32,6 +32,10 @@ dev = [
     # config_file.py's YAML path is exercised in tests; keep it installed in
     # dev so those tests actually run instead of being importorskip'd.
     "pyyaml>=6",
+    # test_docker_recreate.py imports docker unconditionally (docker_hosts.py
+    # itself only imports it lazily); keep it installed in dev so collection
+    # doesn't fail.
+    "docker>=7",
 ]
 
 [build-system]
