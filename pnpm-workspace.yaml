@@ -32,3 +32,9 @@ minimumReleaseAge: 4320
 # pruefen, ob der Build ohne wirklich scheitert.
 allowBuilds:
   esbuild: false
+
+# GHSA-68fv-2mgg-jv7q: @tailwindcss/node pulls in source-map-js 1.2.1, which
+# has an event-loop DoS fixed in 1.2.2. Force the patched version until
+# tailwindcss bumps its own dependency.
+overrides:
+  source-map-js: ^1.2.2
