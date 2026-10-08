@@ -11,6 +11,7 @@ class StubIntersectionObserver implements IntersectionObserver {
   static instances: StubIntersectionObserver[] = [];
   readonly root = null;
   readonly rootMargin = "";
+  readonly scrollMargin = "";
   readonly thresholds: ReadonlyArray<number> = [];
   observe = vi.fn();
   unobserve = vi.fn();

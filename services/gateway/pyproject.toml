@@ -32,6 +32,9 @@ dev = [
     # config_file.py's YAML path is exercised in tests; keep it installed in
     # dev so those tests actually run instead of being importorskip'd.
     "pyyaml>=6",
+    # test_docker_recreate.py imports docker.errors directly; keep it
+    # installed in dev so that test module can be collected.
+    "docker>=7",
 ]
 
 [build-system]
