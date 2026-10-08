@@ -8,15 +8,8 @@
 # Fund kommt also automatisch zurueck auf den Tisch statt still zu verschwinden.
 # Neue Funde sind von dieser Datei nicht betroffen und brechen den Workflow
 # sofort.
-
-[[IgnoredVulns]]
-id = "GHSA-rgw5-rvv9-x895"
-ignoreUntil = 2026-09-03
-reason = """
-brace-expansion: DoS durch unbegrenzte Zwischenarrays. Transitiv ueber eslint
-und typescript-eslint, also reines Entwicklungswerkzeug -- der Pfad wird nie
-mit Angreifereingaben aufgerufen, und im Produktions-Image ist das Paket gar
-nicht enthalten. Behebbar durch ein eslint-Update; zurueckgestellt, um die
-Supply-Chain-Haertung vom 2026-08-04 nicht mit einem Dependency-Update zu
-vermischen.
-"""
+#
+# GHSA-rgw5-rvv9-x895 (brace-expansion, zurueckgestellt bis 2026-09-03) ist
+# durch ein spaeteres eslint-Update behoben und daher nicht mehr im Lockfile
+# -- der Eintrag wurde entfernt, weil der Scanner ihn sonst als "unused
+# ignore" meldet.
