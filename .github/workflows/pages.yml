@@ -52,16 +52,16 @@ jobs:
           rm -rf _site
           mkdir -p _site/assets/screenshots _site/demo
 
-          # Landing
-          cp site/index.html site/styles.css _site/
+          # Landing (English at /, German at /de/), shared stylesheet + gallery script
+          cp site/index.html site/styles.css site/gallery.js _site/
+          mkdir -p _site/de
+          cp site/de/index.html _site/de/
           cp frontend/public/logo.svg frontend/public/logo-wordmark.svg frontend/public/favicon.svg _site/assets/
 
-          # Screenshots used by the landing gallery.
-          # Both light and dark variants (the landing gallery has a switch).
-          for f in \
-            problems host-detail latest-data explorer topology metrics logs \
-            command-palette
-          do
+          # Screenshots for the landing gallery: every shot either language page
+          # references, in both light and dark (the gallery has a switch). Fail
+          # the build on a missing file instead of publishing a broken image.
+          for f in $(grep -ho 'data-shot="[^"]*"' site/index.html site/de/index.html | cut -d'"' -f2 | sort -u); do
             cp "docs/images/$f.png" "_site/assets/screenshots/$f.png"
             cp "docs/images/$f-dark.png" "_site/assets/screenshots/$f-dark.png"
           done

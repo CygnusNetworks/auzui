@@ -1,0 +1,425 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="auzui — A Usable Zabbix UI. Moderne, selbst gehostete Monitoring-Oberfläche, die neben Ihrem bestehenden Zabbix läuft: Problem-Triage in Echtzeit, automatisch generierte Host-Dashboards, Infrastruktur-Explorer, Auto-Topologie und Command-Palette."
+    />
+    <meta name="theme-color" content="#0a0d12" />
+    <link rel="canonical" href="https://cygnusnetworks.github.io/auzui/de/" />
+    <link rel="alternate" hreflang="en" href="https://cygnusnetworks.github.io/auzui/" />
+    <link rel="alternate" hreflang="de" href="https://cygnusnetworks.github.io/auzui/de/" />
+    <link rel="alternate" hreflang="x-default" href="https://cygnusnetworks.github.io/auzui/" />
+    <meta property="og:type" content="website" />
+    <meta property="og:locale" content="de_DE" />
+    <meta property="og:site_name" content="auzui" />
+    <meta property="og:title" content="auzui — A Usable Zabbix UI" />
+    <meta
+      property="og:description"
+      content="Selbst gehostete Monitoring-Oberfläche (AGPL-3.0) neben der Zabbix-Weboberfläche: Live-Triage, automatische Host-Dashboards, Topologie und ⌘K-Command-Palette."
+    />
+    <meta property="og:url" content="https://cygnusnetworks.github.io/auzui/de/" />
+    <meta property="og:image" content="https://cygnusnetworks.github.io/auzui/assets/screenshots/problems-dark.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="icon" type="image/svg+xml" href="../assets/favicon.svg" />
+    <link rel="stylesheet" href="../styles.css" />
+    <title>auzui — eine benutzbare Oberfläche für Zabbix</title>
+  </head>
+  <body>
+    <header class="nav">
+      <div class="wrap nav-inner">
+        <a class="brand" href="./">
+          <img src="../assets/logo.svg" alt="" width="28" height="28" />
+          auzui
+        </a>
+        <ul class="nav-links">
+          <li><a href="#features">Funktionen</a></li>
+          <li class="nav-anchor"><a href="#how">Architektur</a></li>
+          <li><a href="#screenshots">Screenshots</a></li>
+          <li><a href="#deploy">Installation</a></li>
+          <li><a href="https://github.com/cygnusnetworks/auzui">GitHub</a></li>
+          <li class="nav-keep">
+            <span class="lang" aria-label="Sprache">
+              <a href="../" hreflang="en" lang="en">EN</a><span aria-current="true">DE</span>
+            </span>
+          </li>
+          <li class="nav-keep"><a class="btn btn-primary" href="../demo/">Live-Demo</a></li>
+        </ul>
+      </div>
+    </header>
+
+    <main>
+      <section class="hero">
+        <div class="wrap">
+          <div class="eyebrow">Selbst gehostet · AGPL-3.0 · React + TypeScript</div>
+          <h1>Zabbix, endlich <em>benutzbar.</em></h1>
+          <p class="lede">
+            auzui ist eine schnelle, informationsdichte Monitoring-Oberfläche im Dark Mode,
+            die <strong>neben</strong> der bestehenden Zabbix-Weboberfläche läuft — nicht
+            an ihrer Stelle. Die Konfiguration bleibt im klassischen Zabbix; auzui baut die
+            Abläufe neu, die Sie in der Rufbereitschaft täglich brauchen.
+          </p>
+          <div class="btn-row">
+            <a class="btn btn-primary" href="../demo/">Live-Demo ausprobieren</a>
+            <a class="btn btn-ghost" href="https://github.com/cygnusnetworks/auzui">Auf GitHub ansehen</a>
+            <a class="btn btn-ghost" href="#deploy">Mit Docker starten</a>
+          </div>
+        </div>
+      </section>
+
+      <section id="features">
+        <div class="wrap">
+          <div class="section-head">
+            <h2>Tiefe Einblicke ohne Konfiguration</h2>
+            <p>
+              auzui leitet ab, was Zabbix ohnehin weiß — Item-Tags, Einheiten, Templates,
+              Trigger-Ausdrücke, LLD, Inventar —, statt Sie Dashboards, Panels und
+              Schwellwerte von Hand bauen zu lassen.
+            </p>
+          </div>
+          <div class="feature-grid">
+            <article class="feature">
+              <div class="icon">◧</div>
+              <h3>Problems als Live-Triage-Board</h3>
+              <p>
+                Virtualisierte Liste, Quittieren und Kommentieren direkt in der Zeile,
+                Schweregrad-Filter, Sammelaktionen und ein Seitenpanel statt Pop-ups — jeder
+                Filter ist ein teilbarer Link.
+              </p>
+            </article>
+            <article class="feature">
+              <div class="icon">▤</div>
+              <h3>Automatische Host-Dashboards</h3>
+              <p>
+                Abschnitte nach Komponenten, Trigger-Schwellen als Diagrammzonen,
+                Interface-Matrix, Speicher- und Zertifikatsprognosen und 7-Tage-Vergleichslinien
+                — ganz ohne Dashboard-Konfiguration.
+              </p>
+            </article>
+            <article class="feature">
+              <div class="icon">▦</div>
+              <h3>Infrastruktur-Explorer</h3>
+              <p>
+                Heatmap-Drill-down von Hostgruppen über Hosts und Komponenten bis zum Item,
+                eingefärbt nach Status oder Auslastung, mit „Top Movers“ auf jeder Ebene.
+              </p>
+            </article>
+            <article class="feature">
+              <div class="icon">◈</div>
+              <h3>Auto-Topologie</h3>
+              <p>
+                Abhängigkeitsgraph aus Trigger-Abhängigkeiten, LLDP/CDP-Nachbarn, gemeinsamen
+                Subnetzen und Ereigniskorrelation — jede Kante mit Herkunft und Konfidenz.
+              </p>
+            </article>
+            <article class="feature">
+              <div class="icon">▥</div>
+              <h3>Metrik-Browser</h3>
+              <p>
+                Facettensuche über alle Items, eine Small-Multiples-Wand sortiert nach
+                Abweichung von der Baseline und Overlay-Vergleich über Hosts hinweg.
+              </p>
+            </article>
+            <article class="feature">
+              <div class="icon">⌘</div>
+              <h3>⌘K-Command-Palette</h3>
+              <p>
+                Direkt zu jedem Host, Item, Trigger oder Dashboard springen — oder Aktionen
+                wie „Problem quittieren…“ ausführen, ohne Menüs zu durchsuchen.
+              </p>
+            </article>
+            <article class="feature">
+              <div class="icon">◎</div>
+              <h3>Web-Szenarien</h3>
+              <p>
+                Live-Status aller Zabbix-HTTP-Checks, Antwortzeit pro Schritt,
+                Statuscodes, 14-Tage-Verfügbarkeit und Aktivierung per Klick.
+              </p>
+            </article>
+            <article class="feature">
+              <div class="icon">◐</div>
+              <h3>Gebaut für die Rufbereitschaft</h3>
+              <p>
+                Dark Mode zuerst, hohe Informationsdichte, einheitliche Schweregrad-Farben und
+                Skeleton-Loading statt Spinner.
+              </p>
+            </article>
+            <article class="feature">
+              <div class="icon">⚡</div>
+              <h3>InfluxDB-Schnellpfad <span class="opt">optional</span></h3>
+              <p>
+                Lange Zeiträume und dichte Dashboards über eine Flux-<code>aggregateWindow</code>-Abfrage
+                — serverseitig verdichtet aus einem <code>effluence</code>-Export.
+              </p>
+            </article>
+            <article class="feature">
+              <div class="icon">≡</div>
+              <h3>Graylog-Logs <span class="opt">optional</span></h3>
+              <p>
+                Stream-Browser und hostbezogenes Log-Panel, synchron zum Zeitraum der
+                Diagramme.
+                <a href="#screenshots-integrations">Screens ↓</a>
+              </p>
+            </article>
+            <article class="feature">
+              <div class="icon">▣</div>
+              <h3>Docker-Container <span class="opt">optional</span></h3>
+              <p>
+                Container auf beliebig vielen Hosts: Suche, Logs, Live-Statistiken,
+                Start/Stop/Restart, Update-Prüfung und Compose-Stack-Aktionen.
+                <a href="#screenshots-integrations">Screens ↓</a>
+              </p>
+            </article>
+            <article class="feature">
+              <div class="icon">🔑</div>
+              <h3>Kerberos-SSO <span class="opt">optional</span></h3>
+              <p>
+                SPNEGO-Single-Sign-on über das Gateway — oder einfach die normale
+                Zabbix-Passwortanmeldung.
+              </p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section id="how">
+        <div class="wrap">
+          <div class="section-head">
+            <h2>Neben Zabbix, nicht statt Zabbix</h2>
+            <p>
+              Nichts zu migrieren: auzui nutzt die JSON-RPC-API, die Ihre Zabbix-Weboberfläche
+              ohnehin bereitstellt; die klassische Oberfläche bleibt für Konfiguration und
+              Administration.
+              <a href="https://github.com/cygnusnetworks/auzui/blob/main/docs/architecture.md">Architektur ↗</a>
+            </p>
+          </div>
+          <div class="cards">
+            <article class="card">
+              <div class="num">1</div>
+              <h3>Single-Page-App</h3>
+              <p>
+                React 19 + TypeScript mit nativen uPlot-Diagrammen. Der Browser spricht mit
+                der Zabbix-API — mit Ihren eigenen Zabbix-Berechtigungen.
+              </p>
+            </article>
+            <article class="card">
+              <div class="num">2</div>
+              <h3>Zabbix bleibt, wie es ist</h3>
+              <p>
+                Das vorhandene <code>api_jsonrpc.php</code> ist das Backend. Keine
+                Schemaänderungen, keine Plugins, kein Zabbix-Code — eine Clean-Room-Implementierung.
+              </p>
+            </article>
+            <article class="card">
+              <div class="num">3</div>
+              <h3>Kleines, optionales Gateway</h3>
+              <p>
+                <code>auzui-gateway</code> (FastAPI) liefert die App aus und schaltet InfluxDB,
+                Graylog, Docker und Kerberos frei — jeweils nur, wenn konfiguriert.
+              </p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section id="screenshots">
+        <div class="wrap">
+          <div class="section-head">
+            <h2>So sieht es aus</h2>
+            <p>
+              Thema wählen und durch die Ansichten klicken. Ein Klick auf das große Bild zeigt
+              es in voller Größe; die Pfeiltasten blättern.
+            </p>
+          </div>
+
+          <!-- Keep in sync with the English page (../index.html). -->
+          <div class="gallery" id="gallery" data-base="../">
+            <div class="gallery-bar">
+              <div class="topic-tabs" role="tablist" aria-label="Screenshot-Themen"></div>
+              <div class="shot-toggle" role="group" aria-label="Farbschema der Screenshots">
+                <button type="button" data-theme-btn="light" class="is-active">Hell</button>
+                <button type="button" data-theme-btn="dark">Dunkel</button>
+              </div>
+            </div>
+
+            <div class="stage" hidden>
+              <button type="button" class="stage-frame" aria-label="In voller Größe anzeigen">
+                <img class="stage-img" alt="" />
+              </button>
+              <button type="button" class="stage-nav stage-prev" aria-label="Vorherige Ansicht">‹</button>
+              <button type="button" class="stage-nav stage-next" aria-label="Nächste Ansicht">›</button>
+              <div class="stage-caption">
+                <div>
+                  <strong class="stage-title"></strong>
+                  <span class="stage-desc"></span>
+                </div>
+                <span class="stage-count"></span>
+              </div>
+            </div>
+
+            <div class="topic" data-topic="triage" data-label="Triage">
+              <h3 class="topic-title">Triage</h3>
+              <figure data-shot="problems">
+                <img src="../assets/screenshots/problems.png" alt="Problems-Triage-Board" loading="lazy" />
+                <figcaption><strong>Problems</strong> Virtualisiertes Triage-Board mit Quittieren in der Zeile, Schweregrad-Filtern und Seitenpanel</figcaption>
+              </figure>
+              <figure data-shot="command-palette">
+                <img src="../assets/screenshots/command-palette.png" alt="Command-Palette" loading="lazy" />
+                <figcaption><strong>⌘K-Command-Palette</strong> Globale Suche über Hosts, Items und Trigger, dazu Aktionen</figcaption>
+              </figure>
+            </div>
+
+            <div class="topic" data-topic="hosts" data-label="Hosts &amp; Daten">
+              <h3 class="topic-title">Hosts &amp; Daten</h3>
+              <figure data-shot="host-detail">
+                <img src="../assets/screenshots/host-detail.png" alt="Automatisch generiertes Host-Dashboard" loading="lazy" />
+                <figcaption><strong>Host-Detail</strong> Ein komplettes Dashboard, erzeugt aus dem, was Zabbix über den Host weiß</figcaption>
+              </figure>
+              <figure data-shot="latest-data">
+                <img src="../assets/screenshots/latest-data.png" alt="Latest Data" loading="lazy" />
+                <figcaption><strong>Latest Data</strong> Schnelles Durchsuchen der Items über alle Hosts, mit Sparklines</figcaption>
+              </figure>
+              <figure data-shot="metrics">
+                <img src="../assets/screenshots/metrics.png" alt="Metrik-Browser" loading="lazy" />
+                <figcaption><strong>Metrik-Browser</strong> Facettensuche und Small Multiples, sortiert nach Abweichung</figcaption>
+              </figure>
+              <figure data-shot="web-scenarios">
+                <img src="../assets/screenshots/web-scenarios.png" alt="Web-Szenarien" loading="lazy" />
+                <figcaption><strong>Web-Szenarien</strong> HTTP-Checks mit Zeit pro Schritt und 14-Tage-Verfügbarkeit</figcaption>
+              </figure>
+            </div>
+
+            <div class="topic" data-topic="explore" data-label="Erkunden">
+              <h3 class="topic-title">Erkunden</h3>
+              <figure data-shot="explorer">
+                <img src="../assets/screenshots/explorer.png" alt="Infrastruktur-Explorer-Heatmap" loading="lazy" />
+                <figcaption><strong>Infrastruktur-Explorer</strong> Heatmap-Drill-down von Hostgruppen bis zum Item, mit Top Movers</figcaption>
+              </figure>
+              <figure data-shot="topology">
+                <img src="../assets/screenshots/topology.png" alt="Auto-Topologie" loading="lazy" />
+                <figcaption><strong>Auto-Topologie</strong> Abhängigkeitsgraph mit Herkunft und Konfidenz an jeder Kante</figcaption>
+              </figure>
+            </div>
+
+            <div class="topic" data-topic="integrations" data-label="Integrationen">
+              <h3 class="topic-title">Integrationen</h3>
+              <figure data-shot="logs">
+                <img src="../assets/screenshots/logs.png" alt="Graylog-Log-Panel" loading="lazy" />
+                <figcaption><strong>Graylog-Logs</strong> Optionales Log-Panel, synchron zum Zeitraum der Diagramme</figcaption>
+              </figure>
+              <figure data-shot="docker">
+                <img src="../assets/screenshots/docker.png" alt="Docker-Containerliste" loading="lazy" />
+                <figcaption><strong>Docker-Container</strong> Container aller konfigurierten Hosts, mit Suche und Update-Prüfung</figcaption>
+              </figure>
+              <figure data-shot="docker-detail">
+                <img src="../assets/screenshots/docker-detail.png" alt="Docker-Containerdetail" loading="lazy" />
+                <figcaption><strong>Container-Detail</strong> Live-Statistiken, Logs und Aktionen für einen Container</figcaption>
+              </figure>
+            </div>
+          </div>
+
+          <dialog class="lightbox" aria-label="Screenshot">
+            <img alt="" />
+            <p class="lightbox-caption"></p>
+            <button type="button" class="lightbox-close" aria-label="Schließen">×</button>
+            <button type="button" class="stage-nav lightbox-prev" aria-label="Vorherige Ansicht">‹</button>
+            <button type="button" class="stage-nav lightbox-next" aria-label="Nächste Ansicht">›</button>
+          </dialog>
+        </div>
+      </section>
+
+      <section id="deploy">
+        <div class="wrap">
+          <div class="section-head">
+            <h2>Ein Container genügt</h2>
+            <p>
+              Ein Image enthält Gateway und App. Pflicht ist nur
+              <code>ZABBIX_API_URL</code>, alles andere ist optional. Veröffentlicht auf GHCR
+              und Docker Hub für <code>amd64</code> und <code>arm64</code>.
+            </p>
+          </div>
+          <div class="split">
+            <div class="quickstart">
+              <h3>Docker</h3>
+              <pre><code>docker run -d --name auzui \
+  -p 127.0.0.1:8080:8000 \
+  -e ZABBIX_API_URL=https://zabbix.example.com/api_jsonrpc.php \
+  ghcr.io/cygnusnetworks/auzui:latest</code></pre>
+              <p>
+                Danach <code>http://localhost:8080/</code> öffnen und mit dem Zabbix-Konto
+                anmelden. Für TLS einen Reverse Proxy davorsetzen.
+              </p>
+            </div>
+            <div class="quickstart">
+              <h3>Optionale Integrationen</h3>
+              <pre><code># InfluxDB-Zeitreihen
+INFLUX_URL / INFLUX_TOKEN / INFLUX_ORG
+# Graylog-Log-Panels
+GRAYLOG_URL / GRAYLOG_TOKEN
+# Docker-Containerverwaltung
+DOCKER_HOSTS / DOCKER_REGISTRIES
+# Kerberos-SSO
+SPNEGO_ENABLED / KRB5_KTNAME</code></pre>
+              <p>
+                Alternativ als TOML/YAML-Datei über <code>AUZUI_CONFIG_FILE</code> —
+                <a href="https://github.com/cygnusnetworks/auzui/blob/main/docs/configuration.md">Konfigurationsreferenz</a> (englisch).
+              </p>
+            </div>
+          </div>
+          <div class="chips" aria-label="Technik">
+            <span class="chip">React 19 · TypeScript · Vite</span>
+            <span class="chip">TanStack Router/Query</span>
+            <span class="chip">shadcn/ui · uPlot</span>
+            <span class="chip">Python · FastAPI</span>
+            <span class="chip">Zabbix JSON-RPC</span>
+            <span class="chip">Docker · amd64/arm64</span>
+            <span class="chip">AGPL-3.0</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="cta">
+        <div class="wrap">
+          <h2>Interaktive Demo ausprobieren</h2>
+          <p>
+            Die komplette Monitoring-Oberfläche im Browser — nur Beispieldaten, nichts wird
+            gespeichert, kein Zabbix nötig.
+          </p>
+          <div class="btn-row">
+            <a class="btn btn-primary" href="../demo/">Demo starten</a>
+            <a class="btn btn-ghost" href="https://github.com/cygnusnetworks/auzui">Auf GitHub folgen</a>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <div class="wrap">
+        <div class="footer-grid">
+          <div>
+            <strong>auzui</strong> · Copyright © 2026
+            <a href="https://www.cygnusnetworks.de/">Cygnus Networks GmbH</a>
+          </div>
+          <div class="footer-links">
+            <a href="https://github.com/cygnusnetworks/auzui">GitHub</a>
+            <a href="https://github.com/cygnusnetworks/auzui/blob/main/LICENSE">Lizenz</a>
+            <a href="https://github.com/cygnusnetworks/auzui/blob/main/docs/README.md">Dokumentation</a>
+            <a href="../demo/">Demo</a>
+            <a href="../" hreflang="en" lang="en">English</a>
+          </div>
+        </div>
+        <p class="legal">
+          auzui ist eine unabhängige Clean-Room-Implementierung, die ausschließlich gegen
+          die dokumentierte JSON-RPC-API von Zabbix entwickelt wurde, und enthält keinen
+          Zabbix-Quellcode. „Zabbix“ ist eine Marke der Zabbix LLC / SIA Zabbix; „Graylog“,
+          „InfluxDB“ und „Docker“ sind Marken ihrer jeweiligen Inhaber. auzui steht in keiner
+          Verbindung zu diesen Unternehmen und wird von ihnen weder unterstützt noch
+          gesponsert — die Namen dienen allein der Beschreibung der Interoperabilität.
+        </p>
+      </div>
+    </footer>
+    <script src="../gallery.js"></script>
+  </body>
+</html>
