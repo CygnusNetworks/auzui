@@ -5,11 +5,13 @@ auzui has two runtime pieces:
 - **`frontend/`** — a static Vite build (plain HTML/CSS/JS), served either
   by any static web server / CDN, or by `auzui-gateway` itself
   (`AUZUI_SERVE_FRONTEND`, see below).
-- **`services/gateway`** (`auzui-gateway`) — a small FastAPI service that
-  provides the optional integrations: InfluxDB time-series, Graylog logs,
-  and Kerberos/SPNEGO SSO. Without it, the SPA talks directly to the
-  existing Zabbix `api_jsonrpc.php` endpoint with password login and
-  everything else works normally.
+- **`services/gateway`** (`auzui-gateway`) — a small FastAPI service,
+  **required in every deployment**. It serves `POST /api_jsonrpc.php`
+  itself as a filtering proxy to `ZABBIX_API_URL` (method allowlist, login
+  throttling — see [Zabbix API proxy](#zabbix-api-proxy)), so the Zabbix
+  frontend never has to be reachable from the internet. It also provides
+  the optional integrations: InfluxDB time-series, Graylog logs, Docker,
+  and Kerberos/SPNEGO SSO.
 
 ## Gateway environment variables
 
@@ -23,7 +25,20 @@ surface — nothing else is affected.
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `ZABBIX_API_URL` | `https://zabbix-api.example.com/api_jsonrpc.php` | Upstream JSON-RPC endpoint the gateway calls to verify item/host permissions for the session token it was given. |
+| `ZABBIX_API_URL` | `https://zabbix-api.example.com/api_jsonrpc.php` | Upstream JSON-RPC endpoint. The gateway forwards the SPA's `/api_jsonrpc.php` requests to it and uses it to verify item/host permissions. Should be an **internal-only** address. |
+
+### Zabbix API proxy
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `ZABBIX_PROXY_ENABLED` | `true` | Serve `POST /api_jsonrpc.php` from the gateway. |
+| `ZABBIX_PROXY_EXTRA_METHODS` | *(empty)* | CSV of additional JSON-RPC methods, added to the built-in allowlist. |
+| `ZABBIX_PROXY_MAX_BODY_BYTES` | `1048576` | Maximum request body size. |
+| `ZABBIX_LOGIN_MAX_FAILURES` | `5` | Failed `user.login` attempts per client IP and per username before lockout. |
+| `ZABBIX_LOGIN_LOCKOUT_SECONDS` | `300` | Lockout duration. |
+| `FORWARDED_ALLOW_IPS` | `127.0.0.1` | uvicorn setting (the image runs with `--proxy-headers`): reverse-proxy addresses whose `X-Forwarded-For` is trusted for the client IP. |
+
+Details: [Security notes](#zabbix-api-proxy-and-network-exposure).
 
 ### InfluxDB (optional — time-series fast path)
 
@@ -140,30 +155,30 @@ server {
     #       img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; \
     #       base-uri 'self'; object-src 'none'" always;
 
-    # Static SPA (or proxied to auzui-gateway if AUZUI_SERVE_FRONTEND=true)
+    # Everything goes to the gateway: the SPA (AUZUI_SERVE_FRONTEND=true),
+    # /api/* and the filtered Zabbix JSON-RPC proxy at /api_jsonrpc.php.
     location / {
         proxy_pass http://127.0.0.1:8080;
-    }
-
-    # Optional gateway API surface (Influx/Graylog)
-    location /api/ {
-        proxy_pass http://127.0.0.1:8080/api/;
         proxy_set_header Host $host;
-    }
-
-    # Zabbix JSON-RPC API. The SPA calls the same-origin path
-    # /api_jsonrpc.php directly (login and every Zabbix query); the gateway
-    # does not proxy it, so without this block login fails.
-    location = /api_jsonrpc.php {
-        proxy_pass http://zabbix-web-nginx-pgsql/api_jsonrpc.php;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
     }
 }
 ```
 
-If `auzui-gateway` serves the built frontend itself
-(`AUZUI_SERVE_FRONTEND=true`), nginx needs no separate static file server:
-`location /` goes to the gateway container, and only `/api_jsonrpc.php` is
-routed to Zabbix.
+`/api_jsonrpc.php` is served by the gateway, which forwards allowlisted
+calls to `ZABBIX_API_URL`. Do **not** add a `location = /api_jsonrpc.php`
+block that proxies to the Zabbix frontend: it would bypass the gateway's
+filtering. Set `FORWARDED_ALLOW_IPS` on the gateway to nginx's address so
+the real client IP is used for login throttling.
+
+### Upgrading an existing deployment
+
+Earlier versions routed `/api_jsonrpc.php` straight from nginx to the Zabbix
+frontend. After upgrading, **remove that `location = /api_jsonrpc.php`
+block** (nginx would keep bypassing the gateway and its filtering), point
+`location /` at the gateway, set `FORWARDED_ALLOW_IPS`, and then restrict the
+Zabbix frontend as described in the security notes below.
 
 ## Deploying the Docker plugin
 
@@ -278,6 +293,39 @@ for the exact invocation.
 ## Security notes
 
 Read these before exposing auzui to users.
+
+### Zabbix API proxy and network exposure
+
+The gateway's `/api_jsonrpc.php` is the only Zabbix API surface exposed to
+browsers. It:
+
+- allows only the JSON-RPC methods the SPA uses (the `DEFAULT_ALLOWED_METHODS`
+  constant in
+  [`services/gateway/src/auzui_gateway/zabbix_proxy.py`](../services/gateway/src/auzui_gateway/zabbix_proxy.py);
+  extend it with `ZABBIX_PROXY_EXTRA_METHODS`); everything else gets
+  JSON-RPC error `-32601`;
+- rejects batch requests, bodies above `ZABBIX_PROXY_MAX_BODY_BYTES` and
+  content types other than `application/json(-rpc)`;
+- forwards only the JSON-RPC body and the `Authorization` header — cookies
+  and other headers never reach Zabbix;
+- does not echo Zabbix error `data` details to clients (they are logged);
+- throttles `user.login` per client IP and per username and logs
+  `auzui login failure ip=<ip> user=<username>` on every failure.
+
+Hardening checklist:
+
+- Point `ZABBIX_API_URL` at an **internal-only** address and restrict the
+  Zabbix frontend (including its public vhost's `/api_jsonrpc.php`) to the
+  gateway's source IP / internal network. Remove any old public route to it.
+- Set `FORWARDED_ALLOW_IPS` to the reverse proxy's address; otherwise all
+  clients share the proxy's IP for throttling.
+- Optional fail2ban filter for the login log line:
+
+```ini
+# /etc/fail2ban/filter.d/auzui.conf
+[Definition]
+failregex = auzui login failure ip=<HOST> user=.*$
+```
 
 ### SPNEGO SSO: isolate `index_http.php`
 

@@ -84,6 +84,24 @@ class Settings(BaseSettings):
     # separate, IP-restricted vhost. Empty = derive from zabbix_api_url.
     zabbix_ui_url: str = ""
 
+    # JSON-RPC filtering proxy for POST /api_jsonrpc.php (zabbix_proxy.py).
+    # The SPA calls that path same-origin; serving it from the gateway lets
+    # Zabbix itself be internal-only instead of publishing the whole API.
+    # Disable only if the reverse proxy still forwards /api_jsonrpc.php to
+    # Zabbix directly (the old, unfiltered setup).
+    zabbix_proxy_enabled: bool = True
+    # CSV of extra JSON-RPC methods allowed on top of the built-in set the
+    # SPA uses (zabbix_proxy.DEFAULT_ALLOWED_METHODS). Exact, case-sensitive.
+    zabbix_proxy_extra_methods: str = ""
+    # Request body cap for the proxy (bytes); enforced while streaming the
+    # body, so a lying or absent Content-Length cannot get around it.
+    zabbix_proxy_max_body_bytes: int = 1_048_576
+    # user.login throttling (in-memory, per client IP and per username): after
+    # this many Zabbix-reported failures the key is locked for the lockout
+    # period. Zabbix's own account blocking is the second line of defence.
+    zabbix_login_max_failures: int = 5
+    zabbix_login_lockout_seconds: float = 300.0
+
     # Build provenance, injected as Docker build args (see Dockerfile/CI).
     auzui_version: str = ""
     auzui_git_sha: str = ""
@@ -190,6 +208,10 @@ class Settings(BaseSettings):
         if self.zabbix_ui_url:
             return self.zabbix_ui_url.rstrip("/")
         return self.zabbix_api_url.rsplit("/", 1)[0].rstrip("/")
+
+    @property
+    def zabbix_proxy_extra_method_set(self) -> frozenset[str]:
+        return frozenset(m.strip() for m in self.zabbix_proxy_extra_methods.split(",") if m.strip())
 
     @property
     def influx_enabled(self) -> bool:

@@ -61,6 +61,16 @@ Run from `frontend/`, or via `pnpm --filter auzui-frontend <script>` /
 | `pnpm test` | `vitest run` |
 | `pnpm preview` | Preview a production build locally |
 
+## Dev server and API proxying
+
+`pnpm dev` (Vite, port 5173) proxies both `/api_jsonrpc.php` and `/api` to
+the local `auzui-gateway`. The target is `AUZUI_DEV_GATEWAY_URL` (default
+`http://localhost:8000`; `just gateway-dev` listens on 8080, so set
+`AUZUI_DEV_GATEWAY_URL=http://localhost:8080`). The gateway in turn needs
+`ZABBIX_API_URL` pointing at a reachable Zabbix. `AUZUI_DEV_ZABBIX_URL` is
+no longer used. The demo build (`pnpm build:demo`) intercepts the API calls
+in the browser and needs neither.
+
 ## Gateway commands
 
 Run with `uv run --package auzui-gateway <cmd>` (or from inside

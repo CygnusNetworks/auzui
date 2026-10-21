@@ -12,10 +12,13 @@ authorization model for the data it proxies. Source of truth:
 
 1. The user submits username/password on the login form
    (`frontend/src/routes/LoginPage.tsx`).
-2. The frontend calls Zabbix's JSON-RPC `user.login` directly against
-   `/api_jsonrpc.php` (proxied by the dev server / reverse proxy — see
-   [deployment.md](deployment.md)), **not** through `auzui-gateway` — the
-   gateway is not in the password-login path at all.
+2. The frontend calls JSON-RPC `user.login` on the same-origin
+   `/api_jsonrpc.php`, which `auzui-gateway` serves as a filtering proxy to
+   Zabbix (SPA → gateway → Zabbix; see
+   [deployment.md](deployment.md#zabbix-api-proxy-and-network-exposure)).
+   The gateway throttles failed logins per client IP and per username
+   (`ZABBIX_LOGIN_MAX_FAILURES` / `ZABBIX_LOGIN_LOCKOUT_SECONDS`) and logs
+   `auzui login failure ip=<ip> user=<username>` for fail2ban.
 3. The returned session ID is stored as the Bearer token (see "Session
    storage" below) and used directly as the Zabbix API authentication token
    for all subsequent JSON-RPC calls and as the `Authorization: Bearer
@@ -152,7 +155,7 @@ granularities:
 
 | Path | Granularity | Mechanism |
 |---|---|---|
-| `api_jsonrpc.php` (Problems, Hosts, Latest Data, dashboards, CRUD) | Whatever Zabbix's own JSON-RPC methods already enforce | Direct — no auzui-gateway involved |
+| `/api_jsonrpc.php` (Problems, Hosts, Latest Data, dashboards, CRUD) | Whatever Zabbix's own JSON-RPC methods already enforce | Filtering proxy in auzui-gateway: method allowlist, then forwarded to Zabbix with the caller's own token — Zabbix still makes the permission decision |
 | `POST /api/ts/query` (InfluxDB) | **Per-item** | `ZabbixClient.check_items_visible()` calls `item.get` with the caller's token before ever querying Influx — Influx access can never exceed what Zabbix already grants for those `itemid`s. Cached per token+item for `PERMISSION_CACHE_TTL` seconds. |
 | `POST /api/logs/host/{hostid}` | **Per-host** | `ZabbixClient.get_host_identity()` calls `host.get` with the caller's token; a host invisible to the session yields `403`. The resulting host aliases (technical name, visible name, interface DNS/IP) become the Graylog `source` query. |
 | `GET /api/logs/streams`, `POST /api/logs/search` | **Coarse-grained** — any live session | Only `validate_session()` (a live-session check, not a permission check) gates these. **Any authenticated Zabbix user can free-text search every Graylog stream the gateway is configured to see** — Graylog streams are not mapped to Zabbix host permissions. Operators **must** scope `GRAYLOG_DEFAULT_STREAMS` to streams every auzui user is allowed to read. See [deployment.md — Log access is coarse-grained](deployment.md#log-access-is-coarse-grained) for the full security note. |

@@ -1,6 +1,8 @@
 import base64
 import binascii
 import logging
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Literal
 
@@ -22,6 +24,7 @@ from .graylog import GraylogService, LogFilter, apply_filters, build_host_query,
 from .influx import VALID_FNS, InfluxClient
 from .spnego import SpnegoAuthFailed, SpnegoService, SpnegoUnavailable, principal_to_login
 from .zabbix import ZabbixClient
+from .zabbix_proxy import create_zabbix_proxy_router
 
 logger = logging.getLogger(__name__)
 
@@ -113,9 +116,22 @@ def create_app(
     docker_client_factory: DockerClientFactory | None = None,
 ) -> FastAPI:
     settings = settings or get_settings()
-    app = FastAPI(title="auzui-gateway", version=__version__, docs_url=None, redoc_url=None)
-
     zabbix = ZabbixClient(settings)
+
+    @asynccontextmanager
+    async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+        yield
+        # The Zabbix client's pooled connections (shared with the JSON-RPC
+        # proxy) are the only long-lived resource that needs closing.
+        await zabbix.aclose()
+
+    app = FastAPI(
+        title="auzui-gateway",
+        version=__version__,
+        docs_url=None,
+        redoc_url=None,
+        lifespan=lifespan,
+    )
     influx = InfluxClient(settings)
     graylog = GraylogService(settings)
     filter_store = FilterSetStore(settings.filter_sets_path)
@@ -358,6 +374,13 @@ def create_app(
         username = await zabbix.get_username(token)
         await filter_store.delete(set_id, username)
         return {"deleted": True}
+
+    # ---- Zabbix JSON-RPC filtering proxy ----------------------------------
+    # Registered before the SPA catch-all below so that path is never served
+    # index.html (the catch-all is GET-only anyway; a disabled proxy answers
+    # POST /api_jsonrpc.php with 405 rather than reaching Zabbix).
+    if settings.zabbix_proxy_enabled:
+        app.include_router(create_zabbix_proxy_router(settings, zabbix.http))
 
     # ---- optional SPA serving -------------------------------------------
 

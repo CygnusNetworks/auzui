@@ -142,4 +142,11 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
     CMD curl -fs http://localhost:8000/health || exit 1
 
-CMD ["uvicorn", "auzui_gateway.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# --proxy-headers makes request.client.host the real client IP (from
+# X-Forwarded-For) — the user.login throttle in zabbix_proxy.py keys on it.
+# uvicorn only trusts those headers from FORWARDED_ALLOW_IPS (read natively
+# from the environment; comma-separated IPs/CIDRs or "*"). Default is
+# 127.0.0.1, i.e. effectively off: set it to your reverse proxy's address, or
+# every client behind it shares one throttle bucket (the proxy's IP).
+ENV FORWARDED_ALLOW_IPS=127.0.0.1
+CMD ["uvicorn", "auzui_gateway.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers"]

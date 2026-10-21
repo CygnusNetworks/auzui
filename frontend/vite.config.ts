@@ -9,9 +9,10 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      // Zabbix JSON-RPC and the auzui-gateway during development.
+      // Both the filtered Zabbix JSON-RPC proxy (/api_jsonrpc.php) and the
+      // other API routes are served by the auzui-gateway during development.
       "/api_jsonrpc.php": {
-        target: process.env.AUZUI_DEV_ZABBIX_URL ?? "https://zabbix-api.example.com",
+        target: process.env.AUZUI_DEV_GATEWAY_URL ?? "http://localhost:8000",
         changeOrigin: true,
       },
       "/api": {

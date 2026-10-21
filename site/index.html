@@ -222,16 +222,17 @@
               <div class="num">2</div>
               <h3>Zabbix stays as it is</h3>
               <p>
-                The existing <code>api_jsonrpc.php</code> is the backend. No schema changes,
+                The existing <code>api_jsonrpc.php</code> is the backend, reached only through the gateway. No schema changes,
                 no plugins, no Zabbix code — a clean-room implementation.
               </p>
             </article>
             <article class="card">
               <div class="num">3</div>
-              <h3>Small gateway, optional</h3>
+              <h3>Small gateway, filtering proxy</h3>
               <p>
-                <code>auzui-gateway</code> (FastAPI) serves the app and unlocks InfluxDB,
-                Graylog, Docker and Kerberos — each feature-gated, each hidden when unset.
+                <code>auzui-gateway</code> (FastAPI) serves the app and proxies the Zabbix API
+                with a method allowlist and login throttling, so Zabbix can stay internal. It also
+                unlocks InfluxDB, Graylog, Docker and Kerberos — each feature-gated, each hidden when unset.
               </p>
             </article>
           </div>

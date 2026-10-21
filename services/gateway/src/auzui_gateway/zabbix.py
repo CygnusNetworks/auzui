@@ -4,6 +4,7 @@ must be allowed to see the item/host in Zabbix, otherwise Influx/Graylog
 would open a permission hole (PLAN.md)."""
 
 import logging
+from http.cookiejar import DefaultCookiePolicy
 from typing import Any
 
 import httpx
@@ -15,16 +16,36 @@ from .config import Settings
 logger = logging.getLogger(__name__)
 
 
+def build_http_client(timeout: float) -> httpx.AsyncClient:
+    """The one AsyncClient shared by ZabbixClient and the JSON-RPC proxy
+    (keeps connections alive instead of a TLS handshake per call).
+
+    A shared client has a shared cookie jar, which would be a cross-user
+    session leak: index_http.php answers with a `zbx_session` Set-Cookie and
+    the jar would replay it on every later request. An empty allowed_domains
+    list makes the policy reject every cookie, both stored and sent;
+    `Response.cookies` (read by http_auth_session) is extracted per response
+    and is unaffected. Redirects stay off (httpx default) so a Location can
+    never turn the gateway into an SSRF hop."""
+    client = httpx.AsyncClient(timeout=timeout, follow_redirects=False)
+    client.cookies.jar.set_policy(DefaultCookiePolicy(allowed_domains=[]))
+    return client
+
+
 class ZabbixClient:
     def __init__(self, settings: Settings) -> None:
         self._url = settings.zabbix_api_url
         self._timeout = settings.zabbix_timeout
+        self.http = build_http_client(self._timeout)
         self._perm_cache: TTLCache[bool] = TTLCache(settings.permission_cache_ttl)
         self._username_cache: TTLCache[str] = TTLCache(settings.permission_cache_ttl)
         self._host_cache: TTLCache[dict[str, Any] | None] = TTLCache(
             settings.host_mapping_cache_ttl
         )
         self._role_cache: TTLCache[int] = TTLCache(settings.permission_cache_ttl)
+
+    async def aclose(self) -> None:
+        await self.http.aclose()
 
     async def _call(self, token: str | None, method: str, params: Any, *, auth: bool = True) -> Any:
         """`auth=False` omits the Authorization header entirely — Zabbix
@@ -37,8 +58,7 @@ class ZabbixClient:
         if auth:
             headers["Authorization"] = f"Bearer {token}"
         try:
-            async with httpx.AsyncClient(timeout=self._timeout) as client:
-                res = await client.post(self._url, json=payload, headers=headers)
+            res = await self.http.post(self._url, json=payload, headers=headers)
         except httpx.TimeoutException as e:
             raise HTTPException(504, "Zabbix API timeout") from e
         except httpx.HTTPError as e:
@@ -73,11 +93,10 @@ class ZabbixClient:
 
         basic = base64.b64encode(f"{username}:x".encode()).decode()
         try:
-            async with httpx.AsyncClient(timeout=self._timeout, follow_redirects=False) as client:
-                res = await client.get(
-                    f"{settings_web_url}/index_http.php",
-                    headers={"Authorization": f"Basic {basic}"},
-                )
+            res = await self.http.get(
+                f"{settings_web_url}/index_http.php",
+                headers={"Authorization": f"Basic {basic}"},
+            )
         except httpx.TimeoutException as e:
             raise HTTPException(504, "Zabbix web frontend timeout") from e
         except httpx.HTTPError as e:

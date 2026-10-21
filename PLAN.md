@@ -28,7 +28,7 @@ Das Zabbix-Web-UI (`ui/` im Zabbix-Repo) ist ein ~1.700-Dateien-PHP-Monolith (ei
 └──────────┬────────────────────┬──────────────────┬───────────┘
            │ JSON-RPC (Bearer)  │ /api/ts          │ /api/logs (opt.)
            ▼                    ▼                  ▼
-  api_jsonrpc.php        auzui-gateway (optional, klein)
+  api_jsonrpc.php        auzui-gateway (erforderlich, klein)  [Stand 2026-10-21: SPA -> Gateway -> api_jsonrpc.php]
   (bestehendes PHP-UI,   – Flux aggregateWindow („N Punkte…“)
    headless betrieben)   – versteckt Influx-Token
            │             – optional: Graylog-Proxy (Token, Streams, Search)
@@ -40,7 +40,8 @@ Das Zabbix-Web-UI (`ui/` im Zabbix-Repo) ist ein ~1.700-Dateien-PHP-Monolith (ei
 - **Datasource-Abstraktion** im Frontend: Interface `TimeseriesSource` mit zwei Implementierungen:
   - `ZabbixApiSource` (**Default, immer verfügbar**): `history.get` für kurze/aktuelle Zeiträume (innerhalb History-/Value-Cache bzw. „warmer“ History), `trend.get` für längere Fenster; Punktreduktion (LTTB) im Web Worker. UI-Defaults halten sich an sichere Ranges; außerhalb der warmen History drohen auf großen Instanzen Timeouts (siehe Messung).
   - `InfluxSource` (**optional, wenn konfiguriert → Primär**): ruft `auzui-gateway` → Flux `aggregateWindow`, serverseitig heruntergerechnet, bis 365d, <120 ms gemessen. Deutlich performanter als der API-Pfad; empfohlen, sobald dichte Charts oder lange Zeiträume gebraucht werden.
-- **auzui-gateway** (nur nötig, sobald Influx und/oder Graylog genutzt wird — versteckt Tokens): bewusst minimal (Go- oder FastAPI-Container). Nimmt das Zabbix-Session-Token, prüft **Item-Permission via `item.get`** (damit Influx keine Rechte-Lücke öffnet), löst dann die **`itemid`** in eine Flux-Query auf. effluence-Schema & Query siehe Abschnitt „Messung/InfluxDB". Kein genereller API-Proxy — CRUD/Problems/Config spricht die SPA direkt gegen `api_jsonrpc.php`.
+- **auzui-gateway** (erforderlich; versteckt Tokens, Influx/Graylog optional): bewusst minimal (Go- oder FastAPI-Container). Nimmt das Zabbix-Session-Token, prüft **Item-Permission via `item.get`** (damit Influx keine Rechte-Lücke öffnet), löst dann die **`itemid`** in eine Flux-Query auf. effluence-Schema & Query siehe Abschnitt „Messung/InfluxDB". Kein genereller API-Proxy — CRUD/Problems/Config spricht die SPA direkt gegen `api_jsonrpc.php`.
+  - **Revidiert (2026-10-21):** Dieser Punkt gilt nicht mehr. Aus Sicherheitsgründen (die Zabbix-API war über den durchgereichten nginx-Pfad ungefiltert öffentlich erreichbar) stellt der Gateway jetzt `POST /api_jsonrpc.php` selbst als **filternden Proxy** bereit (Methoden-Allowlist, keine Batches, Body-Limit, nur Body + `Authorization` weitergeleitet, Login-Throttling pro IP/Benutzer, Zabbix-Fehlerdetails nur im Log). `ZABBIX_API_URL` kann damit intern bleiben; der Gateway ist **in jedem Deployment erforderlich**, nicht mehr nur für Influx/Graylog. Das Frontend ruft unverändert `/api_jsonrpc.php` auf.
 - **Graylog (optional, Phase 3)**: derselbe Gateway-Pfad (`/api/logs/*`) — versteckt das Graylog-API-Token, mappt Zabbix-Hosts → Log-Quellen, listet Streams und führt host-scoped Searches aus. Siehe Abschnitt H. Ohne Graylog-Config fehlen die Log-Panels einfach; Monitoring bleibt voll nutzbar.
 - **Realtime**: Smart-Polling via TanStack Query (`refetchInterval`, sichtbarkeitsabhängig, Delta-Abfragen über `eventid`-Cursor bei Problems). Kein WebSocket-Nachbau im MVP.
 - **Auth im MVP**: `user.login` (Username/Passwort) → Session-Token im Memory + Refresh. SPNEGO/SSO später über den bestehenden nginx (X-Forwarded-User-Muster wie bei Grafana im Beispiel-Setup denkbar), nicht im MVP.

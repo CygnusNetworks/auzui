@@ -7,15 +7,16 @@ through its documented JSON-RPC API (`api_jsonrpc.php`). Configuration,
 administration, templates, and users all stay in the classic Zabbix UI — see
 the [clean-room statement](../README.md#clean-room-statement). No Zabbix
 server-side configuration is required beyond having the JSON-RPC endpoint
-reachable and a user account to log in with.
+reachable from the auzui gateway (an internal address is fine) and a user
+account to log in with.
 
 ### Why don't I see any charts / why are charts slow?
 
 Charts always work through the Zabbix API path (`history.get`/`trend.get`)
 by default — no configuration needed. If they're missing entirely, check
 `GET /health` on the gateway for `"influx": false` (expected without
-`INFLUX_URL`/`INFLUX_TOKEN`/`INFLUX_ORG` set) and confirm the frontend can
-reach `api_jsonrpc.php` at all. For long ranges and dense dashboards,
+`INFLUX_URL`/`INFLUX_TOKEN`/`INFLUX_ORG` set) and confirm the gateway can
+reach `ZABBIX_API_URL` (and that `/api_jsonrpc.php` is routed to the gateway). For long ranges and dense dashboards,
 consider configuring the optional InfluxDB source — see
 [timeseries-sources.md](timeseries-sources.md).
 
@@ -84,13 +85,19 @@ build target.
 
 ### Can I run auzui without `auzui-gateway` at all?
 
-Yes. Without the gateway (or with it running but Influx/Graylog left
-unconfigured), the SPA talks straight to `api_jsonrpc.php` and every core
-monitoring workflow — Problems, Hosts, Latest Data, Explorer, Topology,
-Metrics, Web Scenarios, command palette — works normally. You lose only the InfluxDB fast
-path and Graylog log panels, and (if you were relying on it)
-`AUZUI_SERVE_FRONTEND`'s single-container serving. See
-[getting-started.md](getting-started.md#what-works-without-auzui-gateway).
+No. The gateway serves `/api_jsonrpc.php` as a filtering proxy to Zabbix
+(method allowlist, login throttling), so it is required in every
+deployment. With Influx/Graylog left unconfigured, every core monitoring
+workflow — Problems, Hosts, Latest Data, Explorer, Topology, Metrics, Web
+Scenarios, command palette — still works normally; you lose only the
+InfluxDB fast path and Graylog log panels. See
+[getting-started.md](getting-started.md#what-works-without-influx--graylog--spnego).
+
+### Why does a Zabbix API method return "Method not found" (-32601)?
+
+The gateway only forwards the JSON-RPC methods the SPA uses. Add others with
+`ZABBIX_PROXY_EXTRA_METHODS` (CSV) — see
+[deployment.md](deployment.md#zabbix-api-proxy-and-network-exposure).
 
 ### How do I follow the project's direction?
 

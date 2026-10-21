@@ -208,16 +208,17 @@
               <div class="num">2</div>
               <h3>Zabbix bleibt, wie es ist</h3>
               <p>
-                Das vorhandene <code>api_jsonrpc.php</code> ist das Backend. Keine
+                Das vorhandene <code>api_jsonrpc.php</code> ist das Backend, erreichbar nur über das Gateway. Keine
                 Schemaänderungen, keine Plugins, kein Zabbix-Code — eine Clean-Room-Implementierung.
               </p>
             </article>
             <article class="card">
               <div class="num">3</div>
-              <h3>Kleines, optionales Gateway</h3>
+              <h3>Kleines Gateway als Filter-Proxy</h3>
               <p>
-                <code>auzui-gateway</code> (FastAPI) liefert die App aus und schaltet InfluxDB,
-                Graylog, Docker und Kerberos frei — jeweils nur, wenn konfiguriert.
+                <code>auzui-gateway</code> (FastAPI) liefert die App aus und proxyt die Zabbix-API
+                mit Methoden-Allowlist und Login-Throttling, sodass Zabbix intern bleiben kann. Es schaltet
+                außerdem InfluxDB, Graylog, Docker und Kerberos frei — jeweils nur, wenn konfiguriert.
               </p>
             </article>
           </div>

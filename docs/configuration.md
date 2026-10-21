@@ -12,16 +12,32 @@ an equally supported alternative to ENV, not a fallback of last resort.
 Every integration is **feature-gated**: leave its variables empty and the
 corresponding `/api/*/status` endpoint reports `enabled: false`, and the SPA
 hides that surface entirely — nothing else is affected. See
-[getting-started.md](getting-started.md#what-works-without-auzui-gateway) for
+[getting-started.md](getting-started.md#what-works-without-influx--graylog--spnego) for
 what still works with everything disabled.
 
 ## Zabbix (required)
 
 | Variable | Default | Effect |
 |---|---|---|
-| `ZABBIX_API_URL` | `https://zabbix-api.example.com/api_jsonrpc.php` | Upstream JSON-RPC endpoint the gateway calls to validate session tokens and check item/host permissions (`user.get`, `item.get`, `host.get`). |
+| `ZABBIX_API_URL` | `https://zabbix-api.example.com/api_jsonrpc.php` | Upstream JSON-RPC endpoint. The gateway forwards the SPA's `/api_jsonrpc.php` requests to it (filtered, see below) and calls it to validate session tokens and check item/host permissions (`user.get`, `item.get`, `host.get`). Should be an **internal-only** address. |
 | `ZABBIX_WEB_URL` | *(empty → derived from `ZABBIX_API_URL`)* | Base URL of the Zabbix web frontend used for the SPNEGO SSO exchange (`index_http.php`). Only relevant when `SPNEGO_ENABLED=true`; see [authentication.md](authentication.md). Set this to a network-restricted vhost — see the security note below. |
 | `ZABBIX_UI_URL` | *(empty → derived from `ZABBIX_API_URL`)* | User-facing Zabbix UI base URL, used for "open in old UI" links in the SPA (`GET /api/config`). May differ from `ZABBIX_WEB_URL` when the SSO exchange goes through a separate, IP-restricted vhost. |
+
+## Zabbix API proxy
+
+The gateway serves `POST /api_jsonrpc.php` itself as a filtering proxy to
+`ZABBIX_API_URL`; route all traffic (including that path) to the gateway. See
+[deployment.md](deployment.md#zabbix-api-proxy-and-network-exposure) for the
+filtering rules and hardening checklist.
+
+| Variable | Default | Effect |
+|---|---|---|
+| `ZABBIX_PROXY_ENABLED` | `true` | Serve `/api_jsonrpc.php` from the gateway. |
+| `ZABBIX_PROXY_EXTRA_METHODS` | *(empty)* | CSV of additional JSON-RPC methods, added to the built-in allowlist (`DEFAULT_ALLOWED_METHODS` in `zabbix_proxy.py`). All other methods are rejected with JSON-RPC error `-32601`. |
+| `ZABBIX_PROXY_MAX_BODY_BYTES` | `1048576` | Maximum request body size in bytes. |
+| `ZABBIX_LOGIN_MAX_FAILURES` | `5` | Failed `user.login` attempts allowed per client IP and per username before lockout. Failures are logged as `auzui login failure ip=<ip> user=<username>` (fail2ban-friendly). |
+| `ZABBIX_LOGIN_LOCKOUT_SECONDS` | `300` | Lockout duration after reaching `ZABBIX_LOGIN_MAX_FAILURES`. |
+| `FORWARDED_ALLOW_IPS` | `127.0.0.1` | Not a gateway setting but a uvicorn one (the image runs with `--proxy-headers`): addresses of the reverse proxy whose `X-Forwarded-For` is trusted for the client IP used in login throttling. Set it to your reverse proxy's address. Environment only (not read from the config file). |
 
 ## Build provenance
 
@@ -191,6 +207,8 @@ permission_cache_ttl = 300
 [zabbix]
 api_url = "https://zabbix.example.com/api_jsonrpc.php"
 ui_url  = "https://zabbix.example.com"
+# proxy_extra_methods = "item.create,item.update"
+# login_max_failures = 5
 
 [influx]
 url = "http://influx:8086"
@@ -237,6 +255,8 @@ permission_cache_ttl: 300
 zabbix:
   api_url: https://zabbix.example.com/api_jsonrpc.php
   ui_url: https://zabbix.example.com
+  # proxy_extra_methods: "item.create,item.update"
+  # login_max_failures: 5
 
 influx:
   url: http://influx:8086

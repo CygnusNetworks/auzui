@@ -13,16 +13,21 @@ auto-generated dashboards, and infrastructure exploration.
 │  auzui SPA (React + TS, Vite)                                │
 │  TanStack Router/Query · shadcn/ui · uPlot                   │
 └──────────┬────────────────────┬──────────────────┬───────────┘
-           │ JSON-RPC (Bearer)  │ /api/ts          │ /api/logs (opt.)
-           ▼                    ▼                  ▼
-  api_jsonrpc.php        auzui-gateway (optional, small)
-  (existing PHP UI,      – Flux aggregateWindow ("N points over range")
-   run headless)         – hides the Influx token
-                          – optional: Graylog proxy (token, streams, search)
+           │ /api_jsonrpc.php (Bearer), /api/ts, /api/logs (opt.)
+           ▼
+   auzui-gateway (required, small)
+   – /api_jsonrpc.php: filtering proxy (method allowlist, login throttling)
+   – Flux aggregateWindow ("N points over range"), hides the Influx token
+   – optional: Graylog proxy (token, streams, search)
            │                    │                  │
            ▼                    ▼                  ▼
-   PostgreSQL/Timescale     InfluxDB 2         Graylog REST API
-                            (effluence)        (streams + search)
+  api_jsonrpc.php           InfluxDB 2         Graylog REST API
+  (existing PHP UI,         (effluence)        (streams + search)
+   run headless,
+   internal only)
+           │
+           ▼
+   PostgreSQL/Timescale
 ```
 
 - **The Zabbix JSON-RPC API lives in the PHP frontend**
@@ -60,12 +65,25 @@ optional Graylog integration (`GraylogSource` / `NullLogSource`).
 
 ## auzui-gateway
 
-`services/gateway` provides the optional integrations (InfluxDB
-time-series, Graylog logs, Docker container management, Kerberos/SPNEGO
-SSO) — it exists to keep upstream tokens out of the browser and to enforce
-Zabbix permissions on data it proxies. It is deliberately minimal
-(FastAPI, Python) and is **not** a general API proxy: CRUD, Problems, and
-configuration traffic goes straight from the SPA to `api_jsonrpc.php`.
+`services/gateway` is required in every deployment. It serves the Zabbix
+JSON-RPC endpoint to the SPA as a **filtering proxy** and provides the
+optional integrations (InfluxDB time-series, Graylog logs, Docker container
+management, Kerberos/SPNEGO SSO) — it exists to keep upstream tokens out of
+the browser and to enforce Zabbix permissions on data it proxies. It is
+deliberately minimal (FastAPI, Python). The Zabbix frontend only needs to be
+reachable from the gateway, not from the internet.
+
+### `/api_jsonrpc.php` — Zabbix API proxy
+
+`POST /api_jsonrpc.php` forwards the SPA's JSON-RPC calls to
+`ZABBIX_API_URL`. Only allowlisted methods (those the SPA uses; see
+`DEFAULT_ALLOWED_METHODS` in `services/gateway/src/auzui_gateway/zabbix_proxy.py`,
+extendable via `ZABBIX_PROXY_EXTRA_METHODS`) pass; others get JSON-RPC error
+`-32601`. Batch requests, oversized bodies and non-JSON content types are
+rejected; only the body and the `Authorization` header are forwarded (no
+cookies); Zabbix error `data` is logged, not returned; `user.login` is
+throttled per client IP and username. See
+[deployment.md](deployment.md#zabbix-api-proxy-and-network-exposure).
 Docker is the first component that talks directly to managed hosts (rather
 than a monitoring backend) and the first with write actions beyond Zabbix
 itself — see `/api/docker/*` below.
@@ -186,7 +204,7 @@ packages/
   logs/                    LogSource abstraction (Graylog), optional
   docker/                  DockerSource abstraction, optional
 services/
-  gateway/                 auzui-gateway (FastAPI) — optional Influx/Graylog/Docker proxy
+  gateway/                 auzui-gateway (FastAPI) — Zabbix API proxy + optional Influx/Graylog/Docker
 docs/                      architecture, deployment, time-series notes
 site/                      static product page (GitHub Pages)
 ```

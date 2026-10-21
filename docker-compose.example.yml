@@ -22,9 +22,20 @@ services:
       # for TLS and external access.
       - "127.0.0.1:8080:8000"
     environment:
-      # Required: the Zabbix JSON-RPC endpoint the gateway talks to for
-      # permission checks (item/host visibility) and session validation.
+      # Required: the Zabbix JSON-RPC endpoint. The gateway serves
+      # /api_jsonrpc.php itself as a filtering proxy to this URL, so it
+      # should be an INTERNAL-only address (not publicly reachable).
       ZABBIX_API_URL: "https://zabbix.example.com/api_jsonrpc.php"
+
+      # Optional: Zabbix API proxy tuning (defaults shown).
+      # ZABBIX_PROXY_ENABLED: "true"
+      # ZABBIX_PROXY_EXTRA_METHODS: ""         # CSV, added to the allowlist
+      # ZABBIX_PROXY_MAX_BODY_BYTES: "1048576"
+      # ZABBIX_LOGIN_MAX_FAILURES: "5"
+      # ZABBIX_LOGIN_LOCKOUT_SECONDS: "300"
+      # Address of the reverse proxy in front of auzui, so the real client IP
+      # is used for login throttling (uvicorn --proxy-headers).
+      # FORWARDED_ALLOW_IPS: "127.0.0.1"
 
       # Optional: InfluxDB (effluence) time-series path. Set all three to
       # enable /api/ts/*; otherwise the SPA falls back to the Zabbix API

@@ -90,24 +90,30 @@ fast triage.
 │  auzui SPA (React + TS, Vite)                                │
 │  TanStack Router/Query · shadcn/ui · uPlot                   │
 └──────────┬────────────────────┬──────────────────┬───────────┘
-           │ JSON-RPC (Bearer)  │ /api/ts          │ /api/logs (opt.)
-           ▼                    ▼                  ▼
-  api_jsonrpc.php        auzui-gateway (optional, small)
-  (existing PHP UI,      – Flux aggregateWindow ("N points over range")
-   run headless)         – hides the Influx token
-                          – optional: Graylog proxy (token, streams, search)
+           │ /api_jsonrpc.php (Bearer), /api/ts, /api/logs (opt.)
+           ▼
+   auzui-gateway (required, small)
+   – /api_jsonrpc.php: filtering proxy (method allowlist, login throttling)
+   – Flux aggregateWindow ("N points over range"), hides the Influx token
+   – optional: Graylog proxy (token, streams, search)
            │                    │                  │
            ▼                    ▼                  ▼
-   PostgreSQL/Timescale     InfluxDB 2         Graylog REST API
-                            (effluence)        (streams + search)
+  api_jsonrpc.php           InfluxDB 2         Graylog REST API
+  (existing PHP UI,         (effluence)        (streams + search)
+   run headless,
+   internal only)
+           │
+           ▼
+   PostgreSQL/Timescale
 ```
 
 The existing Zabbix web UI is kept running as a **headless API backend**
 (its JSON-RPC layer lives in the PHP frontend, not the C server — auzui
-does not reimplement it). `auzui-gateway` is needed for the optional
-integrations — InfluxDB time-series, Graylog logs, and Kerberos/SPNEGO
-SSO; without it, the SPA talks straight to `api_jsonrpc.php` with
-password login and everything else still works. Full breakdown:
+does not reimplement it). `auzui-gateway` is required in every deployment:
+it serves `/api_jsonrpc.php` as a filtering proxy (method allowlist, login
+throttling), so the Zabbix frontend only needs to be reachable from the
+gateway, not from the internet. It also provides the optional integrations
+— InfluxDB time-series, Graylog logs, and Kerberos/SPNEGO SSO. Full breakdown:
 [docs/architecture.md](./docs/architecture.md).
 
 ## Time-series sources
@@ -137,7 +143,7 @@ packages/
   timeseries/              TimeseriesSource abstraction (Zabbix + Influx) + LTTB
   logs/                    LogSource abstraction (Graylog), optional
 services/
-  gateway/                 auzui-gateway (FastAPI) — optional Influx/Graylog proxy
+  gateway/                 auzui-gateway (FastAPI) — Zabbix API proxy + optional Influx/Graylog
 docs/                      architecture, deployment, time-series notes
 site/                      static product page (GitHub Pages)
 ```
@@ -197,14 +203,15 @@ security headers: [docs/deployment.md](./docs/deployment.md).
 
 Prerequisites: Node ≥ 22, [pnpm](https://pnpm.io/) (version pinned via
 `packageManager` in `package.json`), and [uv](https://docs.astral.sh/uv/)
-for the optional gateway.
+for the gateway.
 
 ```bash
 # Frontend + workspace packages
 pnpm install
 pnpm dev            # runs the frontend/ dev server
 
-# Optional: auzui-gateway (only needed for InfluxDB/Graylog)
+# auzui-gateway (serves /api_jsonrpc.php; the vite dev server proxies to it,
+# set AUZUI_DEV_GATEWAY_URL=http://localhost:8080 for this port)
 uv sync --package auzui-gateway --extra dev
 uv run uvicorn auzui_gateway.main:app --reload --host 0.0.0.0 --port 8080
 ```

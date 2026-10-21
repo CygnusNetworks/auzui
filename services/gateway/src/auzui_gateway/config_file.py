@@ -67,7 +67,7 @@ DEFAULT_CONFIG_PATHS = (
 JSON_STRING_FIELDS = {"graylog_servers", "docker_hosts", "docker_registries"}
 
 # Settings fields that are CSV strings; a config file may supply a list.
-CSV_STRING_FIELDS = {"cors_origins", "graylog_default_streams"}
+CSV_STRING_FIELDS = {"cors_origins", "graylog_default_streams", "zabbix_proxy_extra_methods"}
 
 
 def _resolve_config_file_path() -> str:

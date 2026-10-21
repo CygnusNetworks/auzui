@@ -3,7 +3,8 @@
 ## Prerequisites
 
 - An existing **Zabbix ≥ 6.4** installation with the classic web frontend
-  (`ui/`) reachable, and its JSON-RPC endpoint (`api_jsonrpc.php`) exposed —
+  (`ui/`) with its JSON-RPC endpoint (`api_jsonrpc.php`) reachable **from the
+  auzui gateway** (an internal address is enough and preferred) —
   auzui talks to Zabbix exclusively through that Bearer-token API, it does
   not touch the database or any other Zabbix component. See
   [Clean-room statement](../README.md#clean-room-statement).
@@ -46,9 +47,9 @@ docker compose logs -f auzui   # watch startup / health
 
 The container binds to `127.0.0.1:8080` by default (see the compose file) —
 put a reverse proxy (nginx, Traefik, …) in front for TLS and external access.
-The proxy must also route `/api_jsonrpc.php` to your Zabbix frontend: the SPA
-calls the Zabbix API on its own origin, and the gateway does not proxy it.
-See [deployment.md](deployment.md) for the nginx pattern, security headers,
+Route everything (including `/api_jsonrpc.php`) to the gateway: it serves the
+SPA and proxies the allowlisted Zabbix API calls to `ZABBIX_API_URL`, so the
+Zabbix frontend does not need to be publicly reachable. See [deployment.md](deployment.md) for the nginx pattern, security headers,
 and hardening notes, and [configuration.md](configuration.md) for the full
 environment variable reference (InfluxDB, Graylog, SPNEGO, CORS, …).
 
@@ -89,20 +90,20 @@ curl -fs http://127.0.0.1:8080/health
    time and 14-day availability.
 9. **Maintenance** (`/maintenance`) manages Zabbix maintenance windows.
 
-## What works without `auzui-gateway`
+## What works without Influx / Graylog / SPNEGO
 
-`auzui-gateway` (`services/gateway`) is entirely optional. Without it — or
-with it running but `INFLUX_URL`/`GRAYLOG_URL` unset — the SPA talks directly
-to `api_jsonrpc.php` and every core monitoring workflow works normally:
+`auzui-gateway` (`services/gateway`) is required: it serves the SPA and
+proxies the Zabbix API (`/api_jsonrpc.php`). With `INFLUX_URL`/`GRAYLOG_URL`
+unset, every core monitoring workflow still works normally:
 
-| Feature | Without gateway / without Influx / without Graylog |
+| Feature | Without Influx / without Graylog / without SPNEGO |
 |---|---|
 | Problems, Hosts, Latest Data, Explorer, Topology, Metrics, Web Scenarios, command palette | **Fully functional** — driven entirely by the Zabbix JSON-RPC API |
 | Chart time-series | Falls back to `history.get`/`trend.get` (see [timeseries-sources.md](timeseries-sources.md)) |
 | Log panels (`/logs`, host-scoped log tab) | Hidden entirely — `/api/logs/status` reports `enabled: false` |
 | Kerberos/SPNEGO SSO | Falls back to the password login form — `/api/auth/methods` reports `spnego: false` |
 
-In other words: `auzui-gateway` unlocks the InfluxDB time-series source,
-the Graylog log panels, and Kerberos/SPNEGO SSO, and optionally serves
-the built SPA — it is never required for the core monitoring UI to work. Full variable-by-variable
+In other words: the optional integrations unlock the InfluxDB time-series
+source, the Graylog log panels, and Kerberos/SPNEGO SSO; the core monitoring
+UI needs only the gateway and Zabbix. Full variable-by-variable
 reference: [configuration.md](configuration.md).

@@ -20,7 +20,15 @@
 # --- Zabbix (required) -----------------------------------------------------
 
 [zabbix]
+# Should be an INTERNAL-only address: the gateway serves /api_jsonrpc.php as a
+# filtering proxy to it.
 api_url = "https://zabbix.example.com/api_jsonrpc.php"
+# proxy_enabled = true
+# proxy_extra_methods = ""        # CSV, added to the method allowlist
+# proxy_max_body_bytes = 1048576
+# login_max_failures = 5
+# login_lockout_seconds = 300
+# (FORWARDED_ALLOW_IPS is a uvicorn env var, not a config-file setting.)
 # User-facing Zabbix UI ("open in old UI" links). Empty = derived from api_url.
 ui_url = "https://zabbix.example.com"
 

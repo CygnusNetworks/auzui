@@ -7,7 +7,7 @@
 
 | Document | Content |
 |---|---|
-| [getting-started.md](getting-started.md) | Prerequisites, `docker compose` quickstart, first steps in the UI, what works without the gateway |
+| [getting-started.md](getting-started.md) | Prerequisites, `docker compose` quickstart, first steps in the UI, what works without Influx/Graylog/SPNEGO |
 | [architecture.md](architecture.md) | Components, data flow, the `TimeseriesSource`/`LogSource` abstractions |
 | [development.md](development.md) | Repo layout, local setup (pnpm + uv), lint/test/build commands, demo mode |
 
