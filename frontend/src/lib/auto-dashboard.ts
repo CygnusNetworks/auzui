@@ -698,6 +698,33 @@ export function isContainerItem(item: Pick<ZabbixItem, "key_" | "name" | "tags">
 export const CONTAINER_SECTION = "container";
 
 /**
+ * Item tags that name WHAT is measured rather than which instance — part of
+ * the family key so one key base doesn't overlay different quantities.
+ * ipmi.value[<sensor>] carries fans (RPM), temperatures (C) and voltages
+ * (volts), all without a Zabbix unit (only the name says ", RPM"/", C"), and
+ * would otherwise land in one chart; the IPMI template tags them
+ * sensor=fan|temperature|voltage.
+ */
+const CATEGORY_TAGS = ["sensor"];
+
+function categoryOf(item: Pick<ZabbixItem, "tags">): string {
+  return CATEGORY_TAGS.map((tag) => item.tags?.find((t) => t.tag === tag)?.value ?? "").join("\x01");
+}
+
+/**
+ * Title of a category family: the category tag plus the unit the template
+ * appends to the name ("CPU1 Temp, C" + sensor=temperature → "Temperature
+ * (C)"). The instance names share no head, so the name-derived title would be
+ * just "C"/"RPM". Undefined for items without a category tag.
+ */
+function categoryTitle(item: Pick<ZabbixItem, "name" | "tags">): string | undefined {
+  const category = CATEGORY_TAGS.map((tag) => item.tags?.find((t) => t.tag === tag)?.value).find(Boolean);
+  if (!category) return undefined;
+  const unit = /,\s*([^,]+)$/.exec(item.name)?.[1]?.trim();
+  return unit ? `${capitalize(category)} (${unit})` : capitalize(category);
+}
+
+/**
  * Groups items that share a base after direction-pair normalization
  * (PLAN.md D.2/D.3): items with the same pairKey+params merge into one
  * "instance" (an in/out or rx/tx pair → 2 series). Instances that
@@ -728,7 +755,7 @@ export function buildInstanceFamilyCharts(items: ZabbixItem[], triggers: ZabbixT
 
   const byFamilyKey = new Map<string, Instance[]>();
   for (const inst of byInstanceKey.values()) {
-    const famKey = `${inst.pairBase}${inst.units}`;
+    const famKey = `${inst.pairBase}${inst.units}${categoryOf(inst.items[0]!)}`;
     const list = byFamilyKey.get(famKey);
     if (list) list.push(inst);
     else byFamilyKey.set(famKey, [inst]);
@@ -795,22 +822,24 @@ export function buildInstanceFamilyCharts(items: ZabbixItem[], triggers: ZabbixT
     // Title and series labels come from the instance names: the shared head/
     // tail names the metric, the varying middle names the instance (falling
     // back to the raw key params when the names don't differ, e.g. MACs only
-    // in the key).
+    // in the key). Category families (see CATEGORY_TAGS) are titled by their
+    // category and labelled by the key param, which is the sensor name.
     // Split over ALL instances, not just the shown ones: the title must also
     // hold for the hidden "(+N weitere)" (the top 8 ports may all be on one
     // switch). `shown` is a prefix of `ranked`, so middles[n] lines up.
     const parts = splitNameParts(ranked.map(instanceName));
+    const catTitle = categoryTitle(ranked[0]!.items[0]!);
     const chartItems: ZabbixItem[] = [];
     const seriesLabels: string[] = [];
     shown.forEach((inst, n) => {
-      const label = parts.middles[n] || instanceLabel(inst);
+      const label = (catTitle === undefined && parts.middles[n]) || instanceLabel(inst);
       inst.items.forEach((it, i) => {
         chartItems.push(it);
         seriesLabels.push(inst.items.length > 1 ? `${label} (${inst.directionLabels[i]})` : label);
       });
     });
 
-    let stem = parts.title || commonStem(instances.map((inst) => inst.items[0]!.name));
+    let stem = catTitle ?? (parts.title || commonStem(instances.map((inst) => inst.items[0]!.name)));
     const directions = [...new Set(shown.flatMap((inst) => (inst.items.length > 1 ? inst.directionLabels : [])))];
     if (directions.length > 1) stem = `${stem} (${directions.join("/")})`;
     charts.push({

@@ -375,6 +375,25 @@ describe("buildInstanceFamilyCharts", () => {
     expect(link.seriesLabels).toEqual(["USW-Buero 1", "USW-Flur 2"]);
   });
 
+  it("splits unit-less IPMI sensors by their sensor tag (fan/temperature/voltage), titled by category", () => {
+    const ipmi = (itemid: string, sensor: string, name: string, kind: string) =>
+      mkItem({ itemid, name, key_: `ipmi.value[${sensor}]`, units: "", tags: [{ tag: "sensor", value: kind }] });
+    const items = [
+      ipmi("1", "FAN 1", "FAN 1, RPM", "fan"),
+      ipmi("2", "FAN 2", "FAN 2, RPM", "fan"),
+      ipmi("3", "CPU Temp", "CPU Temp, C", "temperature"),
+      ipmi("4", "System Temp", "System Temp, C", "temperature"),
+      ipmi("5", "12V", "12V, volts", "voltage"),
+    ];
+    const charts = buildInstanceFamilyCharts(items, []);
+    const byTitle = Object.fromEntries(charts.map((c) => [c.title, c.seriesLabels]));
+    expect(byTitle).toEqual({
+      "Fan (RPM)": ["FAN 1", "FAN 2"],
+      "Temperature (C)": ["CPU Temp", "System Temp"],
+      "12V, volts": ["12V, volts"],
+    });
+  });
+
   it("builds a capped family's title from ALL instances, not only the shown top ones", () => {
     // The 8 highest-valued ports are all on USW-Buero; the hidden ones are not.
     const items = [
