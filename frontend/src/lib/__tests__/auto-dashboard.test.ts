@@ -12,6 +12,7 @@ import {
   orderSections,
   pairKey,
   parseItemKey,
+  splitNameParts,
 } from "../auto-dashboard";
 import { NO_COMPONENT_SECTION } from "../latest-items";
 
@@ -335,6 +336,109 @@ describe("buildInstanceFamilyCharts", () => {
         seriesLabels: ["Solo"],
         thresholds: [],
       },
+    ]);
+  });
+
+  // vcz switch template: the instance (switch + port) sits in the MIDDLE of the
+  // name, the metric at the end, and the key params are MACs.
+  function vczPort(itemid: string, sw: string, mac: string, port: string, metric: string, base: string, units: string) {
+    return mkItem({ itemid, name: `Port ${sw} ${port}: ${metric}`, key_: `vcz.port.${base}["${mac}","${port}"]`, units });
+  }
+
+  it("titles a family by the shared head + tail and labels series by the varying middle", () => {
+    const items = [
+      mkItem({ itemid: "1", name: "Switch USW-Buero: CPU-Auslastung", key_: "vcz.switch.cpu[74:fa:29:79:d2:27]", units: "%" }),
+      mkItem({ itemid: "2", name: "Switch USW-Flur: CPU-Auslastung", key_: "vcz.switch.cpu[28:70:4e:c9:8a:9c]", units: "%" }),
+    ];
+    const charts = buildInstanceFamilyCharts(items, []);
+    expect(charts).toHaveLength(1);
+    expect(charts[0]!.title).toBe("Switch: CPU-Auslastung");
+    expect(charts[0]!.seriesLabels).toEqual(["USW-Buero", "USW-Flur"]);
+  });
+
+  it("does not pair a unit-less 'up' state item with the in/out traffic pair", () => {
+    const items = [
+      vczPort("1", "USW-Buero", "74:fa:29:79:d2:27", "1", "Ausgang", "out", "bps"),
+      vczPort("2", "USW-Buero", "74:fa:29:79:d2:27", "1", "Eingang", "in", "bps"),
+      vczPort("3", "USW-Buero", "74:fa:29:79:d2:27", "1", "Link", "up", ""),
+      vczPort("4", "USW-Flur", "28:70:4e:c9:8a:9c", "2", "Ausgang", "out", "bps"),
+      vczPort("5", "USW-Flur", "28:70:4e:c9:8a:9c", "2", "Eingang", "in", "bps"),
+      vczPort("6", "USW-Flur", "28:70:4e:c9:8a:9c", "2", "Link", "up", ""),
+    ];
+    const charts = buildInstanceFamilyCharts(items, []);
+    const traffic = charts.find((c) => c.items[0]!.units === "bps")!;
+    const link = charts.find((c) => c.items[0]!.units === "")!;
+    expect(charts).toHaveLength(2);
+    expect(traffic.title).toBe("Port … (out/in)");
+    expect(traffic.seriesLabels).toEqual(["USW-Buero 1 (out)", "USW-Buero 1 (in)", "USW-Flur 2 (out)", "USW-Flur 2 (in)"]);
+    expect(link.title).toBe("Port: Link");
+    expect(link.seriesLabels).toEqual(["USW-Buero 1", "USW-Flur 2"]);
+  });
+
+  it("builds a capped family's title from ALL instances, not only the shown top ones", () => {
+    // The 8 highest-valued ports are all on USW-Buero; the hidden ones are not.
+    const items = [
+      ...Array.from({ length: 8 }, (_, i) =>
+        mkItem({ ...vczPort(String(i), "USW-Buero", "aa", String(i + 1), "PoE-Leistung", "poe_power", "W"), lastvalue: "10" }),
+      ),
+      mkItem({ ...vczPort("9", "USW-Flur", "bb", "1", "PoE-Leistung", "poe_power", "W"), lastvalue: "1" }),
+    ];
+    const charts = buildInstanceFamilyCharts(items, []);
+    expect(charts[0]!.title).toBe("Port: PoE-Leistung (+1 weitere)");
+    expect(charts[0]!.seriesLabels[0]).toBe("USW-Buero 1");
+  });
+});
+
+describe("splitNameParts", () => {
+  it("cuts the head at whitespace and the tail at ': '", () => {
+    expect(splitNameParts(["Port USW-Buero 1: PoE-Leistung", "Port USW-Flur 7: PoE-Leistung"])).toEqual({
+      title: "Port: PoE-Leistung",
+      middles: ["USW-Buero 1", "USW-Flur 7"],
+    });
+  });
+
+  it("keeps a tail that starts with whitespace", () => {
+    expect(
+      splitNameParts([
+        "Utilization of poller data collector processes, in %",
+        "Utilization of icmp pinger data collector processes, in %",
+      ]),
+    ).toEqual({ title: "Utilization of data collector processes, in %", middles: ["poller", "icmp pinger"] });
+  });
+
+  it("never splits a bracketed token and unwraps a fully bracketed middle", () => {
+    expect(splitNameParts(["[sda sat]: Temperature", "[sdb sat]: Temperature"])).toEqual({
+      title: "Temperature",
+      middles: ["sda sat", "sdb sat"],
+    });
+    expect(
+      splitNameParts(["Proxy [zabbix-docker-a.stw-bonn.de]: Certificate", "Proxy [zabbix-proxy1.cygnusnet.de]: Certificate"]),
+    ).toEqual({ title: "Proxy: Certificate", middles: ["zabbix-docker-a.stw-bonn.de", "zabbix-proxy1.cygnusnet.de"] });
+  });
+
+  it("does not treat a ':' inside a token as the tail start", () => {
+    expect(splitNameParts(["Image nickfedor/watchtower:latest: Created", "Image beatkind/watchtower:latest: Created"])).toEqual({
+      title: "Image: Created",
+      middles: ["nickfedor/watchtower:latest", "beatkind/watchtower:latest"],
+    });
+  });
+
+  it("marks a middle at the very end with an ellipsis", () => {
+    expect(splitNameParts(["Storage Used on /volume1", "Storage Used on /volume2"]).title).toBe("Storage Used on …");
+  });
+
+  it("does not unwrap a middle that merely starts and ends with a quote", () => {
+    const parts = splitNameParts([
+      'Response time for step "Index page" of scenario "Aptly".',
+      'Response time for step "API" of scenario "Registry".',
+    ]);
+    expect(parts.middles).toEqual(['"Index page" of scenario "Aptly".', '"API" of scenario "Registry".']);
+  });
+
+  it("returns empty middles (caller falls back to key params) when nothing is shared", () => {
+    expect(splitNameParts(["pacemaker.process.corosync.active", "pacemaker.process.pacemakerd.active"]).middles).toEqual([
+      "",
+      "",
     ]);
   });
 });

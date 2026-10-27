@@ -168,7 +168,9 @@ export function DashboardSection({
  * the selected range — rendered in place of the useless flatline graphs, like
  * the Latest-Data "Fakten" rubric: item name, current value (formatUnitValue),
  * and a "konstant" marker. Each constant multi-series chart contributes one
- * row per series item.
+ * row per series item, labelled with the full item name — chart title + series
+ * label lose the metric for family charts ("Port (+8 weitere) · USW-Buero 1"
+ * is the same for speed, link and PoE state).
  */
 function FactsBar({ charts }: { charts: DashboardChart[] }) {
   const t = useT();
@@ -176,9 +178,9 @@ function FactsBar({ charts }: { charts: DashboardChart[] }) {
   if (charts.length === 0) return null;
 
   const facts = charts.flatMap((chart) =>
-    chart.items.map((item, i) => ({
+    chart.items.map((item) => ({
       key: `${chart.id}:${item.itemid}`,
-      label: chart.items.length > 1 ? `${chart.title} · ${chart.seriesLabels[i] ?? item.name}` : item.name,
+      label: item.name,
       value: factValue(item, locale),
     })),
   );

@@ -445,6 +445,19 @@ function instanceLastValue(inst: Instance): number {
   return max;
 }
 
+/**
+ * Display name of one instance: the item name, or for a direction pair the
+ * names with the direction word cut out ("Container /x: Networks bytes
+ * received per second" + "… sent per second" → "Container /x: Networks bytes
+ * per second").
+ */
+function instanceName(inst: Instance): string {
+  if (inst.items.length === 1) return inst.items[0]!.name;
+  const names = inst.items.map((it) => it.name);
+  // The cut-off part is the direction word, shown as series label — no "…".
+  return splitNameParts(names).title.replace(/ …$/, "") || commonStem(names);
+}
+
 function instanceLabel(inst: Instance): string {
   // Keep the raw params verbatim — do NOT strip a leading "/", or the root
   // mountpoint "/" (vfs.fs.size[/,used]) collapses to an empty label and the
@@ -479,6 +492,100 @@ function commonStem(names: string[]): string {
   const trimmed = prefix.replace(/[\s\-:/_[\]().]+$/, "");
   if (midWord || trimmed === "") return names[0]!;
   return trimmed;
+}
+
+/** Leading/trailing brackets or quotes that wrap a whole name middle ("[eth0]", "\"x\""). */
+const WRAPPED_MIDDLE_RE = /^([[("'])(.*)([\])"'])$/;
+const WRAP_PAIRS: Record<string, string> = { "[": "]", "(": ")", '"': '"', "'": "'" };
+
+function unwrapMiddle(middle: string): string {
+  // Web-scenario names end in a sentence dot: scenario "X". → X
+  const m = WRAPPED_MIDDLE_RE.exec(middle.replace(/(["'\])])\.$/, "$1"));
+  // Only a single wrapping pair: '"a" of "b"' starts and ends with a quote too.
+  return m && WRAP_PAIRS[m[1]!] === m[3] && isBalanced(m[2]!) && !m[2]!.includes(m[1]!) ? m[2]! : middle;
+}
+
+export interface NameParts {
+  /** Common head + common tail with the varying middle cut out, e.g. "Port: PoE-Leistung"; "" when nothing is shared. */
+  title: string;
+  /** The varying middle of each name (aligned with the input), e.g. "USW-Buero 1"; "" when a name has none. */
+  middles: string[];
+}
+
+/**
+ * Splits instance names of one family into what they share and what tells them
+ * apart. Zabbix LLD names usually put the instance in the middle
+ * ("Port USW-Buero 1: PoE-Leistung", "Switch USW-Flur: CPU-Auslastung",
+ * "Utilization of poller data collector processes, in %"), so a plain common
+ * prefix ("Port USW") drops the actual metric at the end. The shared head is
+ * cut back to a whitespace boundary and the shared tail to a whitespace/":"/","
+ * boundary so neither ends mid-word; the title is head + tail ("Port: PoE-
+ * Leistung"), the middles are the series labels ("USW-Buero 1").
+ */
+export function splitNameParts(names: string[]): NameParts {
+  if (names.length === 0) return { title: "", middles: [] };
+  const first = names[0]!;
+  const minLen = Math.min(...names.map((n) => n.length));
+
+  let head = 0;
+  while (head < minLen && names.every((n) => n[head] === first[head])) head++;
+  // Back off to just after a whitespace (unless every name ends right here),
+  // and never inside an open bracket/quote ("[dns1.stw-bonn.de, ").
+  const headOk = (h: number) => (h === 0 || /\s/.test(first[h - 1]!)) && isBalanced(first.slice(0, h));
+  if (!names.every((n) => n.length === head)) {
+    while (head > 0 && !headOk(head)) head--;
+  }
+
+  let tail = 0;
+  while (
+    tail < minLen - head &&
+    names.every((n) => n[n.length - 1 - tail] === first[first.length - 1 - tail])
+  ) {
+    tail++;
+  }
+  // Tail must start at whitespace or a ": "/", " separator — ": PoE-Leistung",
+  // not "g: Auslastung" or ":latest: Created" — and leave every middle with
+  // balanced brackets/quotes ("[sda sat]", not "[sda").
+  const tailOk = (t: number) =>
+    t === 0 ||
+    ((/\s/.test(first[first.length - t]!) || /^[:,]\s/.test(first.slice(first.length - t))) &&
+      names.every((n) => isBalanced(n.slice(head, n.length - t))));
+  while (tail > 0 && !tailOk(tail)) tail--;
+
+  const headText = first.slice(0, head).replace(/[\s\-/_[(".:,]+$/, "");
+  const tailText = first.slice(first.length - tail).trimEnd();
+  // A middle at the very end leaves the head dangling ("Storage Used on",
+  // "Download speed for") — mark the cut with "…".
+  const title = headText
+    ? tailText
+      ? (headText + tailText).trim()
+      : `${headText} …`
+    : capitalize(tailText.replace(/^[\s:,]+/, ""));
+  // Nothing shared at all: the middles are just the full names, which say
+  // less than the key params (callers fall back on ""), e.g.
+  // "pacemaker.process.corosync.active" vs. "corosync".
+  const middles =
+    head === 0 && tail === 0 ? names.map(() => "") : names.map((n) => unwrapMiddle(n.slice(head, n.length - tail).trim()));
+  return { title, middles };
+}
+
+/** Brackets and double quotes are all closed — a name cut there doesn't split a "[…]"/"(…)"/"\"…\"" token. */
+function isBalanced(s: string): boolean {
+  let square = 0;
+  let round = 0;
+  let quotes = 0;
+  for (const c of s) {
+    if (c === "[") square++;
+    else if (c === "]") square--;
+    else if (c === "(") round++;
+    else if (c === ")") round--;
+    else if (c === '"') quotes++;
+  }
+  return square === 0 && round === 0 && quotes % 2 === 0;
+}
+
+function capitalize(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
 /**
@@ -606,7 +713,10 @@ export function buildInstanceFamilyCharts(items: ZabbixItem[], triggers: ZabbixT
   for (const item of items) {
     const { base, params } = parseItemKey(item.key_);
     const pairBase = pairKey(base);
-    const instKey = `${pairBase}${params.join(" ")}`;
+    // Units are part of the instance identity: a "direction" word can be a
+    // false friend (vcz.port.up = link state 0/1 next to vcz.port.in/out in
+    // bps) and must not be overlaid onto the traffic pair.
+    const instKey = `${pairBase}${params.join(" ")}${item.units ?? ""}`;
     let inst = byInstanceKey.get(instKey);
     if (!inst) {
       inst = { pairBase, units: item.units ?? "", params, items: [], directionLabels: [] };
@@ -669,7 +779,7 @@ export function buildInstanceFamilyCharts(items: ZabbixItem[], triggers: ZabbixT
       const paired = inst.items.length > 1;
       charts.push({
         id: first.itemid,
-        title: paired ? commonStem(inst.items.map((it) => it.name)) : first.name,
+        title: paired ? instanceName(inst) : first.name,
         viz: classifyItem(first).viz,
         items: inst.items,
         seriesLabels: paired ? inst.directionLabels : [first.name],
@@ -682,17 +792,27 @@ export function buildInstanceFamilyCharts(items: ZabbixItem[], triggers: ZabbixT
     const shown = ranked.slice(0, MAX_CHARTS_PER_SECTION);
     const hiddenCount = ranked.length - shown.length;
 
+    // Title and series labels come from the instance names: the shared head/
+    // tail names the metric, the varying middle names the instance (falling
+    // back to the raw key params when the names don't differ, e.g. MACs only
+    // in the key).
+    // Split over ALL instances, not just the shown ones: the title must also
+    // hold for the hidden "(+N weitere)" (the top 8 ports may all be on one
+    // switch). `shown` is a prefix of `ranked`, so middles[n] lines up.
+    const parts = splitNameParts(ranked.map(instanceName));
     const chartItems: ZabbixItem[] = [];
     const seriesLabels: string[] = [];
-    for (const inst of shown) {
-      const label = instanceLabel(inst);
+    shown.forEach((inst, n) => {
+      const label = parts.middles[n] || instanceLabel(inst);
       inst.items.forEach((it, i) => {
         chartItems.push(it);
         seriesLabels.push(inst.items.length > 1 ? `${label} (${inst.directionLabels[i]})` : label);
       });
-    }
+    });
 
-    const stem = commonStem(instances.map((inst) => inst.items[0]!.name));
+    let stem = parts.title || commonStem(instances.map((inst) => inst.items[0]!.name));
+    const directions = [...new Set(shown.flatMap((inst) => (inst.items.length > 1 ? inst.directionLabels : [])))];
+    if (directions.length > 1) stem = `${stem} (${directions.join("/")})`;
     charts.push({
       id: `family:${famKey}`,
       title: hiddenCount > 0 ? `${stem} (+${hiddenCount} weitere)` : stem,
