@@ -38,12 +38,19 @@ export function ValueChip({ problem }: { problem: EnrichedProblem }) {
   const threshold = parseThreshold(problem.triggerExpression);
   const arrow = threshold ? arrowFor(value, threshold.value) : undefined;
 
+  const formatted = formatUnitValue(value, problem.itemUnits, 1, locale);
+
   return (
     <span
-      className={`inline-flex items-center gap-1 whitespace-nowrap rounded-md border px-1.5 py-px font-mono text-[11px] font-semibold [font-variant-numeric:tabular-nums] ${STATE_CLASS[state]}`}
+      title={formatted}
+      className={`inline-block max-w-full truncate rounded-md border px-1.5 py-px align-middle font-mono text-[11px] font-semibold [font-variant-numeric:tabular-nums] ${STATE_CLASS[state]}`}
     >
-      {arrow && <span aria-hidden="true">{arrow}</span>}
-      {formatUnitValue(value, problem.itemUnits, 1, locale)}
+      {arrow && (
+        <span aria-hidden="true" className="mr-1">
+          {arrow}
+        </span>
+      )}
+      {formatted}
     </span>
   );
 }

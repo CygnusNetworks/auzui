@@ -315,7 +315,7 @@ export function LaneSection({
   );
 }
 
-const ROW_GRID_COLS = "70px 170px minmax(220px,1fr) 100px 170px 90px";
+const ROW_GRID_COLS = "70px 170px minmax(220px,1fr) 140px 170px 90px";
 
 function ProblemRow({
   problem,
@@ -373,7 +373,7 @@ function ProblemRow({
         <span className={`flex items-center gap-1.5 pr-2.5 ${dimClass}`}>
           <span className="truncate">{problem.name}</span>
         </span>
-        <span className={`pr-2.5 ${dimClass}`}>
+        <span className={`min-w-0 pr-2.5 ${dimClass}`}>
           <ValueChip problem={problem} />
         </span>
         <span className={`pr-2.5 ${dimClass}`}>
