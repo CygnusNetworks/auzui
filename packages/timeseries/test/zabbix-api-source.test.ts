@@ -44,4 +44,35 @@ describe("ZabbixApiSource", () => {
     await src.query([{ itemid: "7", valueType: 0 }], { from: 0, to: 60 });
     expect(api.historyGet).toHaveBeenCalledWith(expect.objectContaining({ history: 0 }));
   });
+
+  it("falls back to history.get when trend.get is empty", async () => {
+    const api = mkApi();
+    api.trendGet.mockResolvedValue([]);
+    const src = new ZabbixApiSource(api, { historyMaxRangeSeconds: 3600 });
+    const [series] = await src.query([{ itemid: "1", valueType: 0 }], { from: 0, to: 86400 });
+    expect(api.trendGet).toHaveBeenCalledOnce();
+    expect(api.historyGet).toHaveBeenCalledOnce();
+    expect(series!.source).toBe("history");
+    expect(series!.points).toHaveLength(2);
+  });
+
+  it("skips trend.get on later long queries once trends proved unavailable", async () => {
+    const api = mkApi();
+    api.trendGet.mockResolvedValue([]);
+    const src = new ZabbixApiSource(api, { historyMaxRangeSeconds: 3600 });
+    await src.query([{ itemid: "1", valueType: 0 }], { from: 0, to: 86400 });
+    await src.query([{ itemid: "1", valueType: 0 }], { from: 0, to: 86400 });
+    expect(api.trendGet).toHaveBeenCalledOnce();
+    expect(api.historyGet).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not flag trends unavailable when history is empty too", async () => {
+    const api = mkApi();
+    api.trendGet.mockResolvedValue([]);
+    api.historyGet.mockResolvedValue([]);
+    const src = new ZabbixApiSource(api, { historyMaxRangeSeconds: 3600 });
+    await src.query([{ itemid: "1", valueType: 0 }], { from: 0, to: 86400 });
+    await src.query([{ itemid: "1", valueType: 0 }], { from: 0, to: 86400 });
+    expect(api.trendGet).toHaveBeenCalledTimes(2);
+  });
 });

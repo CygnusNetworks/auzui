@@ -136,12 +136,22 @@ export function useWebScenarioDetail(scenario: EnrichedWebScenario | undefined):
     queryKey: ["web-scenarios", "fail-trend", scenario?.failItem?.itemid],
     queryFn: () => {
       const till = Math.floor(Date.now() / 1000);
+      const itemid = scenario!.failItem!.itemid;
+      const time_from = till - 14 * DAY_SECONDS;
       return withTimeout(
-        zabbixApi.trendGet({
-          itemids: [scenario!.failItem!.itemid],
-          time_from: till - 14 * DAY_SECONDS,
-          time_till: till,
-        }),
+        (async () => {
+          const trends = await zabbixApi.trendGet({ itemids: [itemid], time_from, time_till: till });
+          if (trends.length > 0) return trends;
+          // Zabbix 8.0 with ClickHouse history keeps no trends: fall back to
+          // raw history, shaped like trend rows (one sample each).
+          const rows = await zabbixApi.historyGet({
+            itemids: [itemid],
+            history: 3,
+            time_from,
+            time_till: till,
+          });
+          return rows.map((r) => ({ clock: r.clock, value_avg: r.value, num: "1" }));
+        })(),
         QUERY_TIMEOUT_MS,
       );
     },
