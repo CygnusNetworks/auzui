@@ -1,6 +1,6 @@
-# Time-series sources: Zabbix API vs. InfluxDB
+# Time-series sources: Zabbix API, InfluxDB, ClickHouse
 
-auzui reads time-series data from two possible sources behind a single
+auzui reads time-series data from three possible sources behind a single
 `TimeseriesSource` interface.
 
 ## The short version
@@ -13,11 +13,24 @@ auzui reads time-series data from two possible sources behind a single
   Flux `aggregateWindow` query, which makes long ranges and dense
   multi-item dashboards cheap regardless of instance size.
 
+- **ClickHouse (Zabbix 8.0 history provider) is optional too.** The
+  gateway reads Zabbix's own `history`/`history_uint` tables directly and
+  downsamples server-side with the same semantics as the Flux path. In
+  `TS_BACKEND=auto` it is preferred over InfluxDB. Use a read-only
+  ClickHouse user with limits (`readonly=1`, `max_execution_time`,
+  `max_memory_usage`, `max_rows_to_read`).
+- **Caveat:** with ClickHouse history Zabbix stores no trends, so
+  `trend.get` returns nothing. The Zabbix-API path then falls back to
+  `history.get` for long ranges (client-side LTTB), which can be slow;
+  the gateway ClickHouse backend is therefore the recommended setup there.
+
 | Path | Good for |
 |---|---|
 | Zabbix `history.get` | short/recent ranges, latest values |
 | Zabbix `trend.get` | longer ranges at hourly aggregation |
+| Zabbix `history.get` (trend fallback) | long ranges when Zabbix keeps no trends (ClickHouse history); slow on large ranges |
 | InfluxDB (effluence) | all chart ranges, multi-item views, server-side downsampling |
+| ClickHouse (gateway) | same, reading Zabbix 8.0 history directly; recommended with ClickHouse history |
 
 ## Operator recommendation
 
@@ -30,14 +43,18 @@ auzui reads time-series data from two possible sources behind a single
   chart and long-range view (up to 365 days) uses server-side
   downsampling.
 
+- If Zabbix 8.0 stores history in ClickHouse, **configure
+  `CLICKHOUSE_URL` in `auzui-gateway`** — there are no trends, so the
+  Zabbix API path alone is slow or sparse for long ranges.
+
 ## Implementation behaviour
 
 1. **Without Influx, default chart ranges are conservative**; longer
-   ranges fall back to `trend.get`.
+   ranges use `trend.get` (or `history.get` when trends are empty).
 2. **Timeouts and slow calls are handled gracefully** — abort, skeleton
    loading, retry — never blocking the rest of the view.
-3. **InfluxDB is feature-gated** exactly like Graylog: `/api/ts/status`
-   tells the SPA whether to use `InfluxSource`, otherwise it falls back to
+3. **InfluxDB and ClickHouse are feature-gated** exactly like Graylog:
+   `/api/ts/status` tells the SPA whether to use the gateway source, otherwise it falls back to
    `ZabbixApiSource`.
 
 ## effluence schema and Flux query reference

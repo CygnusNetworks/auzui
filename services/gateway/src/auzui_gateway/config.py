@@ -1,10 +1,11 @@
 import json
 import logging
+import re
 from dataclasses import dataclass
 from functools import lru_cache
 from urllib.parse import urlparse
 
-from pydantic import AliasChoices, Field
+from pydantic import AliasChoices, Field, field_validator
 from pydantic_settings import (
     BaseSettings,
     PydanticBaseSettingsSource,
@@ -124,6 +125,20 @@ class Settings(BaseSettings):
     # Zabbix default item interval.
     influx_min_window_seconds: int = 60
 
+    # ClickHouse (Zabbix 8.0 history provider) — alternative time-series
+    # backend reading Zabbix's own history/history_uint tables (clickhouse.py).
+    # Use a read-only user with a limited settings profile.
+    clickhouse_url: str = ""
+    clickhouse_user: str = ""
+    clickhouse_password: str = ""
+    clickhouse_database: str = "zabbix"
+    # Same meaning as influx_min_window_seconds (see choose_every).
+    clickhouse_min_window_seconds: int = 60
+
+    # Which backend serves /api/ts/query: "auto" prefers ClickHouse when it
+    # is configured and falls back to Influx; "influx"/"clickhouse" force one.
+    ts_backend: str = "auto"
+
     graylog_url: str = ""
     graylog_token: str = ""
     # Multiple Graylog servers as a JSON list, e.g.
@@ -161,6 +176,7 @@ class Settings(BaseSettings):
     # Upstream timeouts (seconds)
     zabbix_timeout: float = 15.0
     influx_timeout: float = 10.0
+    clickhouse_timeout: float = 10.0
     graylog_timeout: float = 15.0
 
     # Permission / mapping cache TTLs (seconds)
@@ -197,6 +213,14 @@ class Settings(BaseSettings):
     # default for that; tune per-deployment if stacks are bigger.
     docker_ssh_exec_timeout: float = 300.0
 
+    @field_validator("clickhouse_database")
+    @classmethod
+    def _valid_clickhouse_database(cls, v: str) -> str:
+        # Interpolated into SQL (clickhouse.build_sql), so restrict to a plain identifier.
+        if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", v):
+            raise ValueError("clickhouse_database must match ^[A-Za-z_][A-Za-z0-9_]*$")
+        return v
+
     @property
     def effective_zabbix_web_url(self) -> str:
         if self.zabbix_web_url:
@@ -216,6 +240,26 @@ class Settings(BaseSettings):
     @property
     def influx_enabled(self) -> bool:
         return bool(self.influx_url and self.influx_token and self.influx_org)
+
+    @property
+    def clickhouse_enabled(self) -> bool:
+        return bool(self.clickhouse_url)
+
+    @property
+    def ts_backend_active(self) -> str | None:
+        """The backend /api/ts/query uses, or None when none is usable."""
+        choice = self.ts_backend.strip().lower()
+        if choice == "clickhouse":
+            return "clickhouse" if self.clickhouse_enabled else None
+        if choice == "influx":
+            return "influx" if self.influx_enabled else None
+        if self.clickhouse_enabled:
+            return "clickhouse"
+        return "influx" if self.influx_enabled else None
+
+    @property
+    def ts_enabled(self) -> bool:
+        return self.ts_backend_active is not None
 
     @property
     def graylog_server_list(self) -> list[GraylogServer]:

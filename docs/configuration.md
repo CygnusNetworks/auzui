@@ -55,7 +55,7 @@ filtering rules and hardening checklist.
 
 Full flow: [authentication.md](authentication.md).
 
-## InfluxDB (optional — time-series fast path)
+## InfluxDB / ClickHouse (optional — time-series fast path)
 
 | Variable | Default | Effect |
 |---|---|---|
@@ -65,9 +65,19 @@ Full flow: [authentication.md](authentication.md).
 | `INFLUX_BUCKET` | `zabbix` | Bucket populated by the `effluence` export (measurements `history`/`history_uint`, tag `itemid`). |
 | `INFLUX_MIN_WINDOW_SECONDS` | `60` | Minimum `aggregateWindow` size in seconds. Downsampling never uses a finer window, so every item in a multi-series query shares one time grid (whole-minute boundaries by default); a finer window scatters items sampled a few seconds apart onto non-coinciding timestamps, which renders as a blank chart for short ranges. Match this to the smallest item poll interval you actually chart. |
 | `INFLUX_TIMEOUT` | `10.0` | HTTP timeout (seconds) for Influx queries. |
+| `CLICKHOUSE_URL` | *(empty)* | ClickHouse HTTP URL (e.g. `https://clickhouse:8443`) of the Zabbix 8.0 history provider. Setting it enables the ClickHouse time-series path. |
+| `CLICKHOUSE_USER` | *(empty)* | ClickHouse user. Use a read-only user with a limited settings profile (`readonly=1`, `max_execution_time`, `max_memory_usage`, `max_rows_to_read`). |
+| `CLICKHOUSE_PASSWORD` | *(empty)* | Password for `CLICKHOUSE_USER`. Never exposed to the browser. |
+| `CLICKHOUSE_DATABASE` | `zabbix` | Database holding Zabbix's `history`/`history_uint` tables. |
+| `CLICKHOUSE_MIN_WINDOW_SECONDS` | `60` | Same as `INFLUX_MIN_WINDOW_SECONDS`, for the ClickHouse path. |
+| `CLICKHOUSE_TIMEOUT` | `10.0` | HTTP timeout (seconds) for ClickHouse queries. |
+| `TS_BACKEND` | `auto` | Backend for `/api/ts/query`: `auto` uses ClickHouse when configured, else Influx; `influx`/`clickhouse` force one. `/api/ts/status` reports the active one as `backend`. |
 
 `INFLUX_URL`, `INFLUX_TOKEN`, and `INFLUX_ORG` must **all** be set for
-`influx_enabled` to be true and `/api/ts/status` to report `enabled: true`.
+`influx_enabled` to be true; `CLICKHOUSE_URL` alone enables the ClickHouse
+path. `/api/ts/status` reports `enabled: true` when the selected backend
+(`TS_BACKEND`) is usable. `CLICKHOUSE_DATABASE` must be a plain identifier
+(`[A-Za-z_][A-Za-z0-9_]*`).
 See [timeseries-sources.md](timeseries-sources.md) for when this path is
 worth setting up.
 

@@ -1,0 +1,80 @@
+# Local time-series backends for developing/benchmarking the gateway's
+# time-series path (services/gateway/src/auzui_gateway/clickhouse.py).
+#
+#   docker compose -f dev/clickhouse/compose.yml up -d              # ClickHouse only
+#   docker compose -f dev/clickhouse/compose.yml --profile compare up -d
+#                                       # + InfluxDB 2 and TimescaleDB for bench.py
+#
+# ClickHouse  127.0.0.1:8123  admin/admin (full), auzui/auzui (read-only profile)
+# InfluxDB    127.0.0.1:8086  org "dev", bucket "zabbix", token "dev-token"
+# TimescaleDB 127.0.0.1:5432  zabbix/zabbix, database "zabbix" (Zabbix schema)
+#
+# All three get the same CPU/memory limits so bench.py compares like with like.
+name: auzui-clickhouse
+
+x-limits: &limits
+  cpus: "4"
+  mem_limit: 6g
+
+services:
+  clickhouse:
+    <<: *limits
+    # Zabbix 8.0.0 accepts ClickHouse 26.3.0 – 26.9.x (ZBX_CLICKHOUSE_MIN/MAX_VERSION,
+    # checked at server start); "latest" was already 26.10.
+    image: clickhouse/clickhouse-server:26.8
+    container_name: auzui-clickhouse
+    environment:
+      CLICKHOUSE_USER: admin
+      CLICKHOUSE_PASSWORD: admin
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: "1"
+    ports:
+      - "127.0.0.1:8123:8123"
+    volumes:
+      - ./initdb.d:/docker-entrypoint-initdb.d:ro
+      - clickhouse-data:/var/lib/clickhouse
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+
+  influxdb:
+    <<: *limits
+    profiles: [compare]
+    # Same image as production (zabbix-influxdb on docker-zabbix).
+    image: influxdb:2
+    container_name: auzui-influxdb
+    environment:
+      DOCKER_INFLUXDB_INIT_MODE: setup
+      DOCKER_INFLUXDB_INIT_USERNAME: admin
+      DOCKER_INFLUXDB_INIT_PASSWORD: admin-password
+      DOCKER_INFLUXDB_INIT_ORG: dev
+      DOCKER_INFLUXDB_INIT_BUCKET: zabbix
+      DOCKER_INFLUXDB_INIT_ADMIN_TOKEN: dev-token
+      # Fully compact a shard 30 s after the last write instead of 4 h, so
+      # the storage numbers reflect compacted TSM files right after loading.
+      INFLUXD_STORAGE_COMPACT_FULL_WRITE_COLD_DURATION: 30s
+    ports:
+      - "127.0.0.1:8086:8086"
+    volumes:
+      - influxdb-data:/var/lib/influxdb2
+
+  timescaledb:
+    <<: *limits
+    profiles: [compare]
+    # Same image as production (zabbix-postgres on docker-zabbix).
+    image: timescale/timescaledb:latest-pg17
+    container_name: auzui-timescaledb
+    environment:
+      POSTGRES_USER: zabbix
+      POSTGRES_PASSWORD: zabbix
+      POSTGRES_DB: zabbix
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - ./timescale-initdb.d:/docker-entrypoint-initdb.d:ro
+      - timescale-data:/var/lib/postgresql/data
+
+volumes:
+  clickhouse-data:
+  influxdb-data:
+  timescale-data:

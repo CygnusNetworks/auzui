@@ -12,6 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator
 
 from . import __version__
+from .clickhouse import ClickHouseClient
 from .config import Settings, get_settings
 from .deps import bearer_token
 from .docker_compose import ComposeRunner
@@ -121,9 +122,10 @@ def create_app(
     @asynccontextmanager
     async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         yield
-        # The Zabbix client's pooled connections (shared with the JSON-RPC
-        # proxy) are the only long-lived resource that needs closing.
+        # Pooled connections: the Zabbix client (shared with the JSON-RPC
+        # proxy) and the ClickHouse client.
         await zabbix.aclose()
+        await clickhouse.aclose()
 
     app = FastAPI(
         title="auzui-gateway",
@@ -133,6 +135,7 @@ def create_app(
         lifespan=lifespan,
     )
     influx = InfluxClient(settings)
+    clickhouse = ClickHouseClient(settings)
     graylog = GraylogService(settings)
     filter_store = FilterSetStore(settings.filter_sets_path)
 
@@ -228,6 +231,7 @@ def create_app(
             # sonst meldet /health ewig die zuletzt hartkodierte Zahl.
             "version": settings.auzui_version or __version__,
             "influx": settings.influx_enabled,
+            "clickhouse": settings.clickhouse_enabled,
             "graylog": settings.graylog_enabled,
             "docker": settings.docker_enabled,
         }
@@ -235,21 +239,23 @@ def create_app(
     # ---- time series -----------------------------------------------------
 
     @app.get("/api/ts/status")
-    async def ts_status() -> dict[str, bool]:
-        return {"enabled": settings.influx_enabled}
+    async def ts_status() -> dict[str, object]:
+        return {"enabled": settings.ts_enabled, "backend": settings.ts_backend_active}
 
     @app.post("/api/ts/query")
     async def ts_query(
         req: TsQueryRequest, token: str = Depends(bearer_token)
     ) -> dict[str, object]:
-        if not settings.influx_enabled:
-            raise HTTPException(404, "InfluxDB path not configured")
+        backend = settings.ts_backend_active
+        if backend is None:
+            raise HTTPException(404, "Time-series backend not configured")
         if req.fn not in VALID_FNS:
             raise HTTPException(422, f"fn must be one of {sorted(VALID_FNS)}")
         if req.end <= req.start:
             raise HTTPException(422, "end must be after start")
         await zabbix.check_items_visible(token, req.itemids)
-        series = await influx.query_series(req.itemids, req.start, req.end, req.points, req.fn)
+        source = clickhouse if backend == "clickhouse" else influx
+        series = await source.query_series(req.itemids, req.start, req.end, req.points, req.fn)
         return {
             "series": [
                 {"itemid": itemid, "points": [[t, v] for t, v in pts]}

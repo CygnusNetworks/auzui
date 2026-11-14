@@ -15,12 +15,12 @@ INFLUX_CSV = (
 async def test_ts_status_enabled(client):
     res = await client.get("/api/ts/status")
     assert res.status_code == 200
-    assert res.json() == {"enabled": True}
+    assert res.json() == {"enabled": True, "backend": "influx"}
 
 
 async def test_ts_status_disabled(client_disabled):
     res = await client_disabled.get("/api/ts/status")
-    assert res.json() == {"enabled": False}
+    assert res.json() == {"enabled": False, "backend": None}
 
 
 async def test_ts_query_requires_token(client):
