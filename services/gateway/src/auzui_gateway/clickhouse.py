@@ -16,6 +16,7 @@ All user-controlled values go in as typed query parameters ({name:Type}),
 never by string interpolation.
 """
 
+import asyncio
 import logging
 
 import httpx
@@ -71,11 +72,20 @@ class ClickHouseClient:
         # Pooled keep-alive connection: for small queries the TCP/HTTP setup
         # costs more than the query itself (ClickHouse answers in ~3 ms).
         self._http: httpx.AsyncClient | None = None
+        # The SPA fires one query per chart at once; ClickHouse rejects the
+        # excess (TOO_MANY_SIMULTANEOUS_QUERIES), so cap in-flight requests
+        # and let the rest queue. Created lazily to bind to the running loop.
+        self._sem: asyncio.Semaphore | None = None
 
     def _client(self) -> httpx.AsyncClient:
         if self._http is None:
             self._http = httpx.AsyncClient(timeout=self._settings.clickhouse_timeout)
         return self._http
+
+    def _semaphore(self) -> asyncio.Semaphore:
+        if self._sem is None:
+            self._sem = asyncio.Semaphore(self._settings.clickhouse_max_concurrent)
+        return self._sem
 
     async def aclose(self) -> None:
         if self._http is not None:
@@ -98,12 +108,13 @@ class ClickHouseClient:
             headers["X-ClickHouse-User"] = s.clickhouse_user
             headers["X-ClickHouse-Key"] = s.clickhouse_password
         try:
-            res = await self._client().post(
-                s.clickhouse_url.rstrip("/") + "/",
-                params=params,
-                headers=headers,
-                content=build_sql(s.clickhouse_database, fn),
-            )
+            async with self._semaphore():
+                res = await self._client().post(
+                    s.clickhouse_url.rstrip("/") + "/",
+                    params=params,
+                    headers=headers,
+                    content=build_sql(s.clickhouse_database, fn),
+                )
         except httpx.TimeoutException as e:
             raise HTTPException(504, "ClickHouse timeout") from e
         except httpx.HTTPError as e:

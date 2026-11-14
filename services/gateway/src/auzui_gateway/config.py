@@ -134,6 +134,9 @@ class Settings(BaseSettings):
     clickhouse_database: str = "zabbix"
     # Same meaning as influx_min_window_seconds (see choose_every).
     clickhouse_min_window_seconds: int = 60
+    # Max in-flight ClickHouse queries per gateway process; the rest wait.
+    # Keep below the ClickHouse user's max_concurrent_queries_for_user.
+    clickhouse_max_concurrent: int = 16
 
     # Which backend serves /api/ts/query: "auto" prefers ClickHouse when it
     # is configured and falls back to Influx; "influx"/"clickhouse" force one.
@@ -219,6 +222,13 @@ class Settings(BaseSettings):
         # Interpolated into SQL (clickhouse.build_sql), so restrict to a plain identifier.
         if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", v):
             raise ValueError("clickhouse_database must match ^[A-Za-z_][A-Za-z0-9_]*$")
+        return v
+
+    @field_validator("clickhouse_max_concurrent")
+    @classmethod
+    def _valid_clickhouse_max_concurrent(cls, v: int) -> int:
+        if v < 1:
+            raise ValueError("clickhouse_max_concurrent must be >= 1")
         return v
 
     @property

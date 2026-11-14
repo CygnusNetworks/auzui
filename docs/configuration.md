@@ -70,6 +70,7 @@ Full flow: [authentication.md](authentication.md).
 | `CLICKHOUSE_PASSWORD` | *(empty)* | Password for `CLICKHOUSE_USER`. Never exposed to the browser. |
 | `CLICKHOUSE_DATABASE` | `zabbix` | Database holding Zabbix's `history`/`history_uint` tables. |
 | `CLICKHOUSE_MIN_WINDOW_SECONDS` | `60` | Same as `INFLUX_MIN_WINDOW_SECONDS`, for the ClickHouse path. |
+| `CLICKHOUSE_MAX_CONCURRENT` | `16` | Max in-flight ClickHouse queries per gateway process; further queries wait. Keep below the ClickHouse user's `max_concurrent_queries_for_user`. Must be >= 1. |
 | `CLICKHOUSE_TIMEOUT` | `10.0` | HTTP timeout (seconds) for ClickHouse queries. |
 | `TS_BACKEND` | `auto` | Backend for `/api/ts/query`: `auto` uses ClickHouse when configured, else Influx; `influx`/`clickhouse` force one. `/api/ts/status` reports the active one as `backend`. |
 

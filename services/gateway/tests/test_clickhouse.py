@@ -1,5 +1,6 @@
 """ClickHouse time-series backend (clickhouse.py) and backend selection."""
 
+import asyncio
 import os
 import time
 
@@ -33,6 +34,13 @@ def test_database_name_must_be_plain_identifier():
     for bad in ("", "1db", "a-b", "zabbix; DROP TABLE x", "a.b", "`x`"):
         with pytest.raises(ValueError):
             make_settings(clickhouse_database=bad)
+
+
+def test_max_concurrent_must_be_positive():
+    assert make_settings(clickhouse_max_concurrent=1).clickhouse_max_concurrent == 1
+    for bad in (0, -1):
+        with pytest.raises(ValueError):
+            make_settings(clickhouse_max_concurrent=bad)
 
 
 # ---- backend selection -----------------------------------------------------
@@ -166,3 +174,29 @@ async def test_live_query_against_clickhouse():
     mean = await ch.query_series(["1"], t0, t0 + 3600, 60, "mean")
     await ch.aclose()
     assert mean["1"][0] == (float(t0 + 60), 0.5)
+
+
+@respx.mock
+async def test_concurrent_queries_are_capped():
+    in_flight = 0
+    peak = 0
+
+    async def handler(request):
+        nonlocal in_flight, peak
+        in_flight += 1
+        peak = max(peak, in_flight)
+        await asyncio.sleep(0.02)
+        in_flight -= 1
+        return Response(200, json={"data": [["1", 1000, 1.5]]})
+
+    respx.post(CH_URL + "/").mock(side_effect=handler)
+    client = ClickHouseClient(make_settings(clickhouse_url=CH_URL, clickhouse_max_concurrent=2))
+    try:
+        results = await asyncio.gather(
+            *(client.query_series(["1"], 0, 3600, 60, "mean") for _ in range(10))
+        )
+    finally:
+        await client.aclose()
+    assert peak == 2
+    assert all(r == {"1": [(1000.0, 1.5)]} for r in results)
+    assert len(results) == 10
