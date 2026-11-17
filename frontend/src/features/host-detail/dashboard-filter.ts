@@ -1,4 +1,11 @@
-import type { Dashboard, DashboardChart, DashboardSection } from "../../lib/auto-dashboard";
+import {
+  MAX_CHARTS_PER_SECTION,
+  familyTitle,
+  type Dashboard,
+  type DashboardChart,
+  type DashboardFamilyMember,
+  type DashboardSection,
+} from "../../lib/auto-dashboard";
 
 /**
  * Reine Filterfunktion für das Host-Deep-Dive-Dashboard (Textfilter +
@@ -7,7 +14,10 @@ import type { Dashboard, DashboardChart, DashboardSection } from "../../lib/auto
  * Textfilter: case-insensitive Substring-Match auf Chart-Titel, jedes
  * `chart.seriesLabels[i]`, sowie `item.name`/`item.key_` eines Chart-Items.
  * Matcht zusätzlich der Sektionsname (`section.section`), bleiben alle
- * Charts der Sektion erhalten. `textItem`s (Status-Parameter) matchen über
+ * Charts der Sektion erhalten. Instanz-Familien-Charts (`chart.family`), deren
+ * Titel nicht matcht, werden aus den passenden Instanzen neu aufgebaut (inkl.
+ * der hinter "(+N weitere)" versteckten), statt die unpassenden Top-N zu
+ * behalten. `textItem`s (Status-Parameter) matchen über
  * `item.name`/`item.key_`.
  *
  * Template-Filter (`templateItemIds`, optional): ein Chart bleibt nur, wenn
@@ -51,14 +61,44 @@ function filterSection(
 ): DashboardSection | undefined {
   const sectionNameMatches = text !== "" && matchesText(section.section, text);
 
-  const charts = section.charts.filter((chart) => {
-    if (templateItemIds && !chart.items.some((item) => templateItemIds.has(item.itemid))) return false;
-    if (text === "" || sectionNameMatches) return true;
-    return chartMatchesText(chart, text);
+  const charts = section.charts.flatMap((chart): DashboardChart[] => {
+    if (templateItemIds && !chart.items.some((item) => templateItemIds.has(item.itemid))) return [];
+    if (text === "" || sectionNameMatches || matchesText(chart.title, text)) return [chart];
+    if (chart.family) {
+      const narrowed = narrowFamilyChart(chart, chart.family.members, text);
+      return narrowed ? [narrowed] : [];
+    }
+    return chartMatchesText(chart, text) ? [chart] : [];
   });
 
   if (charts.length === 0) return undefined;
   return { ...section, charts };
+}
+
+/**
+ * Rebuilds a family chart from the members matching `text` (series label,
+ * item name or key_), keeping the original ranking and the per-section cap.
+ * Returns undefined when no member matches.
+ */
+function narrowFamilyChart(
+  chart: DashboardChart,
+  members: DashboardFamilyMember[],
+  text: string,
+): DashboardChart | undefined {
+  const matching = members.filter(
+    (m) =>
+      m.labels.some((label) => matchesText(label, text)) ||
+      m.items.some((item) => matchesText(item.name, text) || matchesText(item.key_, text)),
+  );
+  if (matching.length === 0) return undefined;
+  const shown = matching.slice(0, MAX_CHARTS_PER_SECTION);
+  return {
+    ...chart,
+    title: familyTitle(chart.family!.stem, matching.length, shown.length),
+    items: shown.flatMap((m) => m.items),
+    seriesLabels: shown.flatMap((m) => m.labels),
+    thresholds: shown.flatMap((m) => m.thresholds),
+  };
 }
 
 function chartMatchesText(chart: DashboardChart, text: string): boolean {

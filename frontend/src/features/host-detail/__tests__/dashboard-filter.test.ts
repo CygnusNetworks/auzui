@@ -157,3 +157,55 @@ describe("filterDashboard", () => {
     expect(filtered.generatedFromItemCount).toBe(dashboard.generatedFromItemCount);
   });
 });
+
+describe("filterDashboard – instance-family charts", () => {
+  function familyChart(names: string[], shownCount: number): DashboardChart {
+    const members = names.map((n, i) => ({
+      items: [mkItem({ itemid: String(i + 1), name: `AP ${n}: Auslastung`, key_: `ap.util[${n}]` })],
+      labels: [n],
+      thresholds: [{ value: 80, label: `T ${n}` }],
+    }));
+    const shown = members.slice(0, shownCount);
+    return mkChart({
+      id: "family:ap",
+      title: `AP: Auslastung (+${names.length - shownCount} weitere)`,
+      items: shown.flatMap((m) => m.items),
+      seriesLabels: shown.flatMap((m) => m.labels),
+      thresholds: shown.flatMap((m) => m.thresholds),
+      family: { stem: "AP: Auslastung", members },
+    });
+  }
+
+  it("rebuilds the chart from matching members, including hidden ones", () => {
+    const chart = familyChart(["Foyer2", "OG-Saal1", "Kita", "OG-Essen1", "OG-Kueche"], 2);
+    const filtered = filterDashboard(mkDashboard({ sections: [mkSection({ charts: [chart] })] }), { text: "og-" });
+    const c = filtered.sections[0]!.charts[0]!;
+    expect(c.seriesLabels).toEqual(["OG-Saal1", "OG-Essen1", "OG-Kueche"]);
+    expect(c.items.map((i) => i.itemid)).toEqual(["2", "4", "5"]);
+    expect(c.thresholds.map((t) => t.label)).toEqual(["T OG-Saal1", "T OG-Essen1", "T OG-Kueche"]);
+    expect(c.title).toBe("AP: Auslastung");
+  });
+
+  it("caps matching members and keeps the '+N weitere' suffix", () => {
+    const names = Array.from({ length: 12 }, (_, i) => `OG-${i}`);
+    const filtered = filterDashboard(
+      mkDashboard({ sections: [mkSection({ charts: [familyChart(names, 8)] })] }),
+      { text: "og-" },
+    );
+    const c = filtered.sections[0]!.charts[0]!;
+    expect(c.items).toHaveLength(8);
+    expect(c.title).toBe("AP: Auslastung (+4 weitere)");
+  });
+
+  it("keeps the chart unchanged when the title matches", () => {
+    const chart = familyChart(["Foyer2", "OG-Saal1", "Kita"], 2);
+    const filtered = filterDashboard(mkDashboard({ sections: [mkSection({ charts: [chart] })] }), { text: "auslast" });
+    expect(filtered.sections[0]!.charts[0]).toBe(chart);
+  });
+
+  it("drops the chart when no member matches", () => {
+    const chart = familyChart(["Foyer2", "Kita"], 2);
+    const filtered = filterDashboard(mkDashboard({ sections: [mkSection({ charts: [chart] })] }), { text: "mensa" });
+    expect(filtered.sections).toHaveLength(0);
+  });
+});

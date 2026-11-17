@@ -143,6 +143,31 @@ export interface DashboardChart {
   /** Per-series label, aligned with `items` (only meaningful when items.length > 1). */
   seriesLabels: string[];
   thresholds: TimeChartThreshold[];
+  /**
+   * Instance-family charts only: ALL instances (ranked, incl. the ones hidden
+   * behind "(+N weitere)") so the host-detail filter can rebuild the chart
+   * from the matching instances instead of keeping the unrelated top 8.
+   */
+  family?: DashboardFamily;
+}
+
+export interface DashboardFamilyMember {
+  items: ZabbixItem[];
+  /** Series labels aligned with `items`. */
+  labels: string[];
+  thresholds: TimeChartThreshold[];
+}
+
+export interface DashboardFamily {
+  /** Title without the "(+N weitere)" suffix. */
+  stem: string;
+  members: DashboardFamilyMember[];
+}
+
+/** Title for a family chart showing `shown` of `total` instances. */
+export function familyTitle(stem: string, total: number, shown: number): string {
+  const hidden = total - shown;
+  return hidden > 0 ? `${stem} (+${hidden} weitere)` : stem;
 }
 
 export interface DashboardSection {
@@ -817,7 +842,6 @@ export function buildInstanceFamilyCharts(items: ZabbixItem[], triggers: ZabbixT
 
     const ranked = [...instances].sort((a, b) => instanceLastValue(b) - instanceLastValue(a));
     const shown = ranked.slice(0, MAX_CHARTS_PER_SECTION);
-    const hiddenCount = ranked.length - shown.length;
 
     // Title and series labels come from the instance names: the shared head/
     // tail names the metric, the varying middle names the instance (falling
@@ -829,26 +853,28 @@ export function buildInstanceFamilyCharts(items: ZabbixItem[], triggers: ZabbixT
     // switch). `shown` is a prefix of `ranked`, so middles[n] lines up.
     const parts = splitNameParts(ranked.map(instanceName));
     const catTitle = categoryTitle(ranked[0]!.items[0]!);
-    const chartItems: ZabbixItem[] = [];
-    const seriesLabels: string[] = [];
-    shown.forEach((inst, n) => {
+    const members: DashboardFamilyMember[] = ranked.map((inst, n) => {
       const label = (catTitle === undefined && parts.middles[n]) || instanceLabel(inst);
-      inst.items.forEach((it, i) => {
-        chartItems.push(it);
-        seriesLabels.push(inst.items.length > 1 ? `${label} (${inst.directionLabels[i]})` : label);
-      });
+      return {
+        items: inst.items,
+        labels: inst.items.map((_, i) => (inst.items.length > 1 ? `${label} (${inst.directionLabels[i]})` : label)),
+        thresholds: inst.items.flatMap((it) => extractThresholds(triggers, it.itemid)),
+      };
     });
+    const chartItems = members.slice(0, shown.length).flatMap((m) => m.items);
+    const seriesLabels = members.slice(0, shown.length).flatMap((m) => m.labels);
 
     let stem = catTitle ?? (parts.title || commonStem(instances.map((inst) => inst.items[0]!.name)));
     const directions = [...new Set(shown.flatMap((inst) => (inst.items.length > 1 ? inst.directionLabels : [])))];
     if (directions.length > 1) stem = `${stem} (${directions.join("/")})`;
     charts.push({
       id: `family:${famKey}`,
-      title: hiddenCount > 0 ? `${stem} (+${hiddenCount} weitere)` : stem,
+      title: familyTitle(stem, ranked.length, shown.length),
       viz: classifyItem(shown[0]!.items[0]!).viz,
       items: chartItems,
       seriesLabels,
-      thresholds: chartItems.flatMap((it) => extractThresholds(triggers, it.itemid)),
+      thresholds: members.slice(0, shown.length).flatMap((m) => m.thresholds),
+      family: { stem, members },
     });
   }
   disambiguateSplitFamilyTitles(charts);
